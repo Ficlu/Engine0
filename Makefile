@@ -2,7 +2,7 @@
 CC := gcc
 CFLAGS := -Isrc/include/SDL2 -Isrc/include/GL -Isrc/include -Wall -Wextra -g
 LDFLAGS := -Lsrc/lib
-LIBS := -lmingw32 -lSDL2main -lSDL2 -lglew32 -lopengl32
+LIBS := -lmingw32 -lSDL2main -lSDL2 -lSDL2_ttf -lglew32 -lopengl32
 SRC := gameloop.c 
 OBJ := $(SRC:.c=.o)
 TARGET := bin/gameloop.exe
