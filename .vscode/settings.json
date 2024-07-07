@@ -3,6 +3,10 @@
         "stdbool.h": "c",
         "stdatomic.h": "c",
         "matrix_transform.hpp": "c",
-        "cstdlib": "c"
+        "cstdlib": "c",
+        "player.h": "c",
+        "stdlib.h": "c",
+        "atomic": "c",
+        "stdio.h": "c"
     }
 }

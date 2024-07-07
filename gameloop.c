@@ -1,28 +1,10 @@
-#include <SDL2/SDL.h>
-#include <stdbool.h>
+#include "gameloop.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdatomic.h>
 #include <math.h>
 #include "rendering.h"
-
-#define WINDOW_WIDTH 800
-#define WINDOW_HEIGHT 600
-#define GRID_SIZE 20
-#define TILE_SIZE (2.0f / GRID_SIZE)  // Size of a tile in normalized device coordinates
-#define MOVE_SPEED 0.05f
-#define GAME_LOGIC_INTERVAL_MS 600
-#define TARGET_FPS 200
-#define FRAME_TIME_MS (1000 / TARGET_FPS)
-
-// Forward declarations
-void GameLoop();
-void Initialize();
-void HandleInput();
-void UpdateGameLogic();
-void Render();
-void CleanUp();
-int PhysicsLoop(void* arg);
+#include "player.h"
+#include "enemy.h"
 
 atomic_bool isRunning = true;
 SDL_Window* window = NULL;
@@ -33,15 +15,9 @@ GLuint squareVAO;
 GLuint squareVBO;
 int vertexCount;
 
-typedef struct {
-    bool walkable;
-} Tile;
-
 Tile grid[GRID_SIZE][GRID_SIZE];
-
-// Square position
-float squarePosX = 0.0f, squarePosY = 0.0f;
-float targetPosX = 0.0f, targetPosY = 0.0f;
+Player player;
+Enemy enemies[MAX_ENEMIES];
 
 void GameLoop() {
     Initialize();
@@ -141,6 +117,14 @@ void Initialize() {
             grid[y][x].walkable = (rand() % 100 < 80);  // 80% chance of being walkable
         }
     }
+
+    InitPlayer(&player, 0.0f, 0.0f, MOVE_SPEED);
+
+    // Initialize enemies
+    for (int i = 0; i < MAX_ENEMIES; i++) {
+        InitEnemy(&enemies[i], ((float)(rand() % GRID_SIZE) / GRID_SIZE) * 2.0f - 1.0f, 
+                  1.0f - ((float)(rand() % GRID_SIZE) / GRID_SIZE) * 2.0f, MOVE_SPEED * 0.5f);
+    }
 }
 
 void HandleInput() {
@@ -160,17 +144,24 @@ void HandleInput() {
                 // Ensure the clicked tile is within the grid bounds
                 if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE) {
                     // Set target position to the center of the clicked tile
-                    targetPosX = (2.0f * gridX / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
-                    targetPosY = 1.0f - (2.0f * gridY / GRID_SIZE) - (1.0f / GRID_SIZE);
+                    player.entity.targetPosX = (2.0f * gridX / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
+                    player.entity.targetPosY = 1.0f - (2.0f * gridY / GRID_SIZE) - (1.0f / GRID_SIZE);
 
-                    printf("Tile Clicked: gridX = %d, gridY = %d, targetPosX = %f, targetPosY = %f\n", gridX, gridY, targetPosX, targetPosY);
+                    printf("Tile Clicked: gridX = %d, gridY = %d, targetPosX = %f, targetPosY = %f\n", gridX, gridY, player.entity.targetPosX, player.entity.targetPosY);
                 }
             }
         }
     }
 }
+
 void UpdateGameLogic() {
-    // Game logic updates can be placed here
+    UpdateEntity(&player.entity);
+
+    // Update enemies
+    for (int i = 0; i < MAX_ENEMIES; i++) {
+        MovementAI(&enemies[i]);
+        UpdateEnemy(&enemies[i]);
+    }
 }
 
 void Render() {
@@ -183,18 +174,32 @@ void Render() {
     glDrawArrays(GL_LINES, 0, vertexCount / 2);
     glBindVertexArray(0);
 
-    // Render square at its current position
-    float squareVertices[] = {
-        squarePosX - TILE_SIZE / 2, squarePosY - TILE_SIZE / 2,
-        squarePosX + TILE_SIZE / 2, squarePosY - TILE_SIZE / 2,
-        squarePosX + TILE_SIZE / 2, squarePosY + TILE_SIZE / 2,
-        squarePosX - TILE_SIZE / 2, squarePosY + TILE_SIZE / 2
+    // Render player
+    float playerVertices[] = {
+        player.entity.posX - TILE_SIZE / 2, player.entity.posY - TILE_SIZE / 2,
+        player.entity.posX + TILE_SIZE / 2, player.entity.posY - TILE_SIZE / 2,
+        player.entity.posX + TILE_SIZE / 2, player.entity.posY + TILE_SIZE / 2,
+        player.entity.posX - TILE_SIZE / 2, player.entity.posY + TILE_SIZE / 2
     };
 
     glBindVertexArray(squareVAO);
     glBindBuffer(GL_ARRAY_BUFFER, squareVBO);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(squareVertices), squareVertices);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(playerVertices), playerVertices);
     glDrawArrays(GL_QUADS, 0, 4);
+
+    // Render enemies
+    for (int i = 0; i < MAX_ENEMIES; i++) {
+        float enemyVertices[] = {
+            enemies[i].entity.posX - TILE_SIZE / 2, enemies[i].entity.posY - TILE_SIZE / 2,
+            enemies[i].entity.posX + TILE_SIZE / 2, enemies[i].entity.posY - TILE_SIZE / 2,
+            enemies[i].entity.posX + TILE_SIZE / 2, enemies[i].entity.posY + TILE_SIZE / 2,
+            enemies[i].entity.posX - TILE_SIZE / 2, enemies[i].entity.posY + TILE_SIZE / 2
+        };
+
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(enemyVertices), enemyVertices);
+        glDrawArrays(GL_QUADS, 0, 4);
+    }
+
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 
@@ -205,26 +210,11 @@ int PhysicsLoop(void* arg) {
     (void)arg;
     while (atomic_load(&isRunning)) {
         Uint32 startTime = SDL_GetTicks();
+        UpdateEntity(&player.entity);
 
-        // Calculate the direction vector
-        float dx = targetPosX - squarePosX;
-        float dy = targetPosY - squarePosY;
-        
-        // Calculate the distance to the target
-        float distance = sqrt(dx*dx + dy*dy);
-
-        if (distance > MOVE_SPEED) {
-            // Normalize the direction vector
-            float normalizedDx = dx / distance;
-            float normalizedDy = dy / distance;
-
-            // Move the square
-            squarePosX += normalizedDx * MOVE_SPEED;
-            squarePosY += normalizedDy * MOVE_SPEED;
-        } else {
-            // If we're closer than MOVE_SPEED, snap to the target position
-            squarePosX = targetPosX;
-            squarePosY = targetPosY;
+        // Update enemies
+        for (int i = 0; i < MAX_ENEMIES; i++) {
+            UpdateEnemy(&enemies[i]);
         }
 
         int interval = 8 - (SDL_GetTicks() - startTime);
