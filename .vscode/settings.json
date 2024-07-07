@@ -1,6 +1,8 @@
 {
     "files.associations": {
         "stdbool.h": "c",
-        "stdatomic.h": "c"
+        "stdatomic.h": "c",
+        "matrix_transform.hpp": "c",
+        "cstdlib": "c"
     }
 }

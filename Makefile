@@ -1,26 +1,17 @@
-# Define variables
-CC := gcc
-CFLAGS := -Isrc/include/SDL2 -Isrc/include/GL -Isrc/include -Wall -Wextra -g
-LDFLAGS := -Lsrc/lib
-LIBS := -lmingw32 -lSDL2main -lSDL2 -lSDL2_ttf -lglew32 -lopengl32
-SRC := gameloop.c 
-OBJ := $(SRC:.c=.o)
-TARGET := bin/gameloop.exe
+CC = gcc
+CFLAGS = -Isrc/include -Wall -Wextra -g
+LDFLAGS = -Lsrc/lib -lmingw32 -Isrc/include/cglm/include -lSDL2main -lSDL2 -lSDL2_ttf -lglew32 -lglfw3 -mconsole -lopengl32 -lm
 
-# Default target
-all: $(TARGET)
+OBJS = gameloop.o rendering.o
 
-# Link the object files to create the executable
-$(TARGET): $(OBJ)
-	$(CC) -o $@ $^ $(LDFLAGS) $(LIBS)
+bin/gameloop.exe: $(OBJS)
+	$(CC) -o $@ $(OBJS) $(LDFLAGS)
 
-# Compile source files into object files
-%.o: %.c
-	$(CC) $(CFLAGS) -c -o $@ $<
+gameloop.o: gameloop.c rendering.h
+	$(CC) $(CFLAGS) -c gameloop.c
 
-# Clean up build files
+rendering.o: rendering.c rendering.h
+	$(CC) $(CFLAGS) -c rendering.c
+
 clean:
-	rm -f $(OBJ) $(TARGET)
-
-# Phony targets
-.PHONY: all clean
+	rm -f $(OBJS) bin/gameloop.exe
