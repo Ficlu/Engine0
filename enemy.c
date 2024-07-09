@@ -1,6 +1,10 @@
+// enemy.c
 #include "enemy.h"
-#include "gameloop.h"  // Ensure GRID_SIZE is available
+#include "gameloop.h"
 #include <stdlib.h>
+#include <math.h>
+#include <stdio.h>
+#include "grid.h"
 
 void InitEnemy(Enemy* enemy, float startX, float startY, float speed) {
     InitEntity(&enemy->entity, startX, startY, speed);
@@ -11,11 +15,23 @@ void UpdateEnemy(Enemy* enemy) {
 }
 
 void MovementAI(Enemy* enemy) {
-    // Randomly change target position within the grid
-    int targetGridX = rand() % GRID_SIZE;
-    int targetGridY = rand() % GRID_SIZE;
+    static int moveCounter = 0;
+    moveCounter++;
 
-    // Ensure the target position is within the grid bounds
-    enemy->entity.targetPosX = (2.0f * targetGridX / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
-    enemy->entity.targetPosY = 1.0f - (2.0f * targetGridY / GRID_SIZE) - (1.0f / GRID_SIZE);
+    // Only update the path every 100 frames (adjust as needed)
+    if (moveCounter % 100 == 0) {
+        int targetGridX = rand() % GRID_SIZE;
+        int targetGridY = rand() % GRID_SIZE;
+
+        // Ensure the target position is walkable
+        while (!isWalkable(targetGridX, targetGridY)) {
+            targetGridX = rand() % GRID_SIZE;
+            targetGridY = rand() % GRID_SIZE;
+        }
+
+        enemy->entity.targetPosX = (2.0f * targetGridX / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
+        enemy->entity.targetPosY = 1.0f - (2.0f * targetGridY / GRID_SIZE) - (1.0f / GRID_SIZE);
+        
+        enemy->entity.needsPathfinding = true;
+    }
 }

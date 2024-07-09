@@ -26,14 +26,18 @@ void initRendering() {
 
 const char* vertexShaderSource = "#version 330 core\n"
 "layout(location = 0) in vec2 position;\n"
+"out vec4 vertexColor;\n"
+"uniform vec4 color;\n"
 "void main() {\n"
 "    gl_Position = vec4(position, 0.0, 1.0);\n"
+"    vertexColor = color;\n"
 "}\n";
 
 const char* fragmentShaderSource = "#version 330 core\n"
-"out vec4 color;\n"
+"in vec4 vertexColor;\n"
+"out vec4 FragColor;\n"
 "void main() {\n"
-"    color = vec4(1.0, 1.0, 1.0, 1.0);\n"
+"    FragColor = vertexColor;\n"
 "}\n";
 
 GLuint createShader(GLenum type, const char* source) {

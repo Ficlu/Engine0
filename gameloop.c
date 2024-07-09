@@ -1,10 +1,17 @@
+// gameloop.c
 #include "gameloop.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <SDL2/SDL.h>
+#include <GL/glew.h>
+#include <SDL2/SDL_opengl.h>
+#include <stdatomic.h>
 #include "rendering.h"
 #include "player.h"
 #include "enemy.h"
+#include "grid.h"
+#include "entity.h"
 
 atomic_bool isRunning = true;
 SDL_Window* window = NULL;
@@ -14,8 +21,8 @@ GLuint gridVAO;
 GLuint squareVAO;
 GLuint squareVBO;
 int vertexCount;
+GLuint colorUniform;
 
-Tile grid[GRID_SIZE][GRID_SIZE];
 Player player;
 Enemy enemies[MAX_ENEMIES];
 
@@ -80,6 +87,8 @@ void Initialize() {
         printf("Failed to create shader program\n");
         exit(1);
     }
+
+    colorUniform = glGetUniformLocation(shaderProgram, "color");
 
     float* vertices;
     createGridVertices(&vertices, &vertexCount, 800, 800, 800 / GRID_SIZE);
@@ -146,6 +155,7 @@ void HandleInput() {
                     // Set target position to the center of the clicked tile
                     player.entity.targetPosX = (2.0f * gridX / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
                     player.entity.targetPosY = 1.0f - (2.0f * gridY / GRID_SIZE) - (1.0f / GRID_SIZE);
+                    player.entity.needsPathfinding = true;
 
                     printf("Tile Clicked: gridX = %d, gridY = %d, targetPosX = %f, targetPosY = %f\n", gridX, gridY, player.entity.targetPosX, player.entity.targetPosY);
                 }
@@ -160,7 +170,7 @@ void UpdateGameLogic() {
     // Update enemies
     for (int i = 0; i < MAX_ENEMIES; i++) {
         MovementAI(&enemies[i]);
-        UpdateEnemy(&enemies[i]);
+        UpdateEntity(&enemies[i].entity);
     }
 }
 
@@ -169,12 +179,39 @@ void Render() {
 
     glUseProgram(shaderProgram);
 
+    // Render tiles
+    glBindVertexArray(squareVAO);
+    for (int y = 0; y < GRID_SIZE; y++) {
+        for (int x = 0; x < GRID_SIZE; x++) {
+            float posX = (2.0f * x / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
+            float posY = 1.0f - (2.0f * y / GRID_SIZE) - (1.0f / GRID_SIZE);
+
+            if (!grid[y][x].walkable) {
+                glUniform4f(colorUniform, 0.7f, 0.2f, 0.2f, 1.0f);  // Red for unwalkable
+            } else {
+                glUniform4f(colorUniform, 0.2f, 0.7f, 0.2f, 1.0f);  // Green for walkable
+            }
+
+            float tileVertices[] = {
+                posX - TILE_SIZE / 2, posY - TILE_SIZE / 2,
+                posX + TILE_SIZE / 2, posY - TILE_SIZE / 2,
+                posX + TILE_SIZE / 2, posY + TILE_SIZE / 2,
+                posX - TILE_SIZE / 2, posY + TILE_SIZE / 2
+            };
+
+            glBindBuffer(GL_ARRAY_BUFFER, squareVBO);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(tileVertices), tileVertices);
+            glDrawArrays(GL_QUADS, 0, 4);
+        }
+    }
+
     // Render grid
+    glUniform4f(colorUniform, 1.0f, 1.0f, 1.0f, 1.0f);  // White for grid lines
     glBindVertexArray(gridVAO);
     glDrawArrays(GL_LINES, 0, vertexCount / 2);
-    glBindVertexArray(0);
 
     // Render player
+    glUniform4f(colorUniform, 0.0f, 0.0f, 1.0f, 1.0f);  // Blue for player
     float playerVertices[] = {
         player.entity.posX - TILE_SIZE / 2, player.entity.posY - TILE_SIZE / 2,
         player.entity.posX + TILE_SIZE / 2, player.entity.posY - TILE_SIZE / 2,
@@ -188,6 +225,7 @@ void Render() {
     glDrawArrays(GL_QUADS, 0, 4);
 
     // Render enemies
+    glUniform4f(colorUniform, 1.0f, 0.0f, 0.0f, 1.0f);  // Red for enemies
     for (int i = 0; i < MAX_ENEMIES; i++) {
         float enemyVertices[] = {
             enemies[i].entity.posX - TILE_SIZE / 2, enemies[i].entity.posY - TILE_SIZE / 2,
@@ -214,7 +252,7 @@ int PhysicsLoop(void* arg) {
 
         // Update enemies
         for (int i = 0; i < MAX_ENEMIES; i++) {
-            UpdateEnemy(&enemies[i]);
+            UpdateEntity(&enemies[i].entity);
         }
 
         int interval = 8 - (SDL_GetTicks() - startTime);
