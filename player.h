@@ -8,6 +8,7 @@ typedef struct {
     Entity entity;
 } Player;
 
-void InitPlayer(Player* player, float startX, float startY, float speed);
+void InitPlayer(Player* player, int tileX, int tileY, float speed);
+void MovePlayer(Player* player, float dx, float dy);
 
 #endif // PLAYER_H

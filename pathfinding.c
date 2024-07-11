@@ -1,3 +1,5 @@
+// pathfinding.c
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
@@ -71,6 +73,39 @@ float heuristic(int x1, int y1, int x2, int y2) {
     return sqrtf((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2));
 }
 
+bool lineOfSight(int x0, int y0, int x1, int y1) {
+    int dx = abs(x1 - x0);
+    int dy = abs(y1 - y0);
+    int x = x0;
+    int y = y0;
+    int n = 1 + dx + dy;
+    int x_inc = (x1 > x0) ? 1 : -1;
+    int y_inc = (y1 > y0) ? 1 : -1;
+    int error = dx - dy;
+    dx *= 2;
+    dy *= 2;
+
+    for (; n > 0; --n) {
+        if (!isWalkable(x, y)) return false;
+        
+        if (error > 0) {
+            x += x_inc;
+            error -= dy;
+        } else if (error < 0) {
+            y += y_inc;
+            error += dx;
+        } else {
+            // Check both diagonal neighbors
+            if (!isWalkable(x + x_inc, y) || !isWalkable(x, y + y_inc)) return false;
+            x += x_inc;
+            y += y_inc;
+            error += dx - dy;
+            n--;
+        }
+    }
+    return true;
+}
+
 Node* findPath(int startX, int startY, int goalX, int goalY) {
     PriorityQueue* openList = createPriorityQueue(GRID_SIZE * GRID_SIZE);
     bool closedList[GRID_SIZE][GRID_SIZE] = {false};
@@ -111,17 +146,33 @@ Node* findPath(int startX, int startY, int goalX, int goalY) {
                 continue;
             }
 
-            float newG = current.g + ((i < 4) ? 1.0f : 1.414f);
             Node* neighbor = &nodes[newY * GRID_SIZE + newX];
 
-            if (newG < neighbor->g) {
-                neighbor->parent = &nodes[current.y * GRID_SIZE + current.x];
-                neighbor->g = newG;
-                neighbor->h = heuristic(newX, newY, goalX, goalY);
-                neighbor->f = neighbor->g + neighbor->h;
+            if (current.parent == NULL || !lineOfSight(current.parent->x, current.parent->y, newX, newY)) {
+                // No line of sight, use the current node as parent
+                float newG = current.g + ((i < 4) ? 1.0f : 1.414f);
+                if (newG < neighbor->g) {
+                    neighbor->parent = &nodes[current.y * GRID_SIZE + current.x];
+                    neighbor->g = newG;
+                    neighbor->h = heuristic(newX, newY, goalX, goalY);
+                    neighbor->f = neighbor->g + neighbor->h;
 
-                if (neighbor->parent == NULL) {
-                    push(openList, *neighbor);
+                    if (!closedList[newY][newX]) {
+                        push(openList, *neighbor);
+                    }
+                }
+            } else {
+                // Line of sight exists, try to use grandparent
+                float newG = current.parent->g + heuristic(current.parent->x, current.parent->y, newX, newY);
+                if (newG < neighbor->g) {
+                    neighbor->parent = current.parent;
+                    neighbor->g = newG;
+                    neighbor->h = heuristic(newX, newY, goalX, goalY);
+                    neighbor->f = neighbor->g + neighbor->h;
+
+                    if (!closedList[newY][newX]) {
+                        push(openList, *neighbor);
+                    }
                 }
             }
         }
@@ -139,6 +190,12 @@ void updateEntityPath(Entity* entity) {
     int goalX = (int)((entity->targetPosX + 1.0f) * GRID_SIZE / 2);
     int goalY = (int)((1.0f - entity->targetPosY) * GRID_SIZE / 2);
 
+    // Ensure start and goal are within bounds and walkable
+    if (!isWalkable(startX, startY) || !isWalkable(goalX, goalY)) {
+        printf("Start or goal is not walkable. Start: (%d, %d), Goal: (%d, %d)\n", startX, startY, goalX, goalY);
+        return;
+    }
+
     Node* path = findPath(startX, startY, goalX, goalY);
 
     if (path) {
@@ -150,13 +207,62 @@ void updateEntityPath(Entity* entity) {
         }
 
         if (next && next != current) {
-            entity->targetPosX = (2.0f * next->x / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
-            entity->targetPosY = 1.0f - (2.0f * next->y / GRID_SIZE) - (1.0f / GRID_SIZE);
+            // Add a small random offset to prevent getting stuck on grid alignments
+            float offsetX = ((float)rand() / RAND_MAX - 0.5f) * 0.1f;
+            float offsetY = ((float)rand() / RAND_MAX - 0.5f) * 0.1f;
+            
+            entity->targetPosX = (2.0f * next->x / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE) + offsetX;
+            entity->targetPosY = 1.0f - (2.0f * next->y / GRID_SIZE) - (1.0f / GRID_SIZE) + offsetY;
+        } else {
+            // If no valid next step, don't change the target
+            printf("No valid next step found. Entity at (%f, %f)\n", entity->posX, entity->posY);
         }
 
         free(path);
     } else {
-        // If no path is found, don't change the target
         printf("No path found from (%d, %d) to (%d, %d)\n", startX, startY, goalX, goalY);
     }
 }
+
+void unstuckEntity(Entity* entity) {
+    // Try to move the entity in a random direction if it's stuck
+    float angle = ((float)rand() / RAND_MAX) * 2 * M_PI;
+    float distance = 0.1f;  // Adjust this value based on your game's scale
+    
+    float newX = entity->posX + cosf(angle) * distance;
+    float newY = entity->posY + sinf(angle) * distance;
+    
+    int gridX = (int)((newX + 1.0f) * GRID_SIZE / 2);
+    int gridY = (int)((1.0f - newY) * GRID_SIZE / 2);
+    
+    if (isWalkable(gridX, gridY)) {
+        entity->posX = newX;
+        entity->posY = newY;
+    }
+}
+
+void avoidCollision(Entity* entity, Entity** otherEntities, int entityCount) {
+    const float COLLISION_RADIUS = 0.05f;  // Adjust based on your game's scale
+    float totalForceX = 0, totalForceY = 0;
+
+    for (int i = 0; i < entityCount; i++) {
+        if (otherEntities[i] == entity) continue;
+
+        float dx = entity->posX - otherEntities[i]->posX;
+        float dy = entity->posY - otherEntities[i]->posY;
+        float distSq = dx * dx + dy * dy;
+
+        if (distSq < COLLISION_RADIUS * COLLISION_RADIUS && distSq > 0) {
+            float dist = sqrtf(distSq);
+            float force = (COLLISION_RADIUS - dist) / COLLISION_RADIUS;
+            totalForceX += (dx / dist) * force;
+            totalForceY += (dy / dist) * force;
+        }
+    }
+
+    entity->posX += totalForceX * 0.01f;  // Adjust multiplier for stronger/weaker avoidance
+    entity->posY += totalForceY * 0.01f;
+}
+
+// Remove the UpdateEntity function from pathfinding.c
+// It should be defined in entity.c instead

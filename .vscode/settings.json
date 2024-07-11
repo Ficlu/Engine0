@@ -9,6 +9,8 @@
         "atomic": "c",
         "stdio.h": "c",
         "entity.h": "c",
-        "rendering.h": "c"
+        "rendering.h": "c",
+        "cmath": "c",
+        "grid.h": "c"
     }
 }

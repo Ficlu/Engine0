@@ -1,3 +1,4 @@
+// enemy.h
 #ifndef ENEMY_H
 #define ENEMY_H
 
@@ -7,8 +8,7 @@ typedef struct {
     Entity entity;
 } Enemy;
 
-void InitEnemy(Enemy* enemy, float startX, float startY, float speed);
-void UpdateEnemy(Enemy* enemy);
+void InitEnemy(Enemy* enemy, int startGridX, int startGridY, float speed);
 void MovementAI(Enemy* enemy);
 
 #endif // ENEMY_H

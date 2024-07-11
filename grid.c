@@ -8,5 +8,8 @@ bool isValid(int x, int y) {
 }
 
 bool isWalkable(int x, int y) {
-    return isValid(x, y) && grid[y][x].walkable;
+    if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) {
+        return false;
+    }
+    return grid[y][x].walkable;
 }

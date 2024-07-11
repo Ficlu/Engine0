@@ -12,6 +12,7 @@
 #include "enemy.h"
 #include "grid.h"
 #include "entity.h"
+#include "pathfinding.h"
 
 atomic_bool isRunning = true;
 SDL_Window* window = NULL;
@@ -123,16 +124,34 @@ void Initialize() {
     // Initialize grid
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
-            grid[y][x].walkable = (rand() % 100 < 80);  // 80% chance of being walkable
+            grid[y][x].walkable = (rand() % 100 < 95);  // 95% chance of being walkable (green)
         }
     }
 
-    InitPlayer(&player, 0.0f, 0.0f, MOVE_SPEED);
+    // Ensure there's at least one walkable path across the grid
+    for (int x = 0; x < GRID_SIZE; x++) {
+        grid[GRID_SIZE / 2][x].walkable = true;
+    }
 
-    // Initialize enemies
+    // Initialize player on a walkable tile
+    int playerGridX, playerGridY;
+    do {
+        playerGridX = rand() % GRID_SIZE;
+        playerGridY = rand() % GRID_SIZE;
+    } while (!grid[playerGridY][playerGridX].walkable);
+
+    InitPlayer(&player, playerGridX, playerGridY, MOVE_SPEED);
+
+    // Initialize enemies on walkable tiles
     for (int i = 0; i < MAX_ENEMIES; i++) {
-        InitEnemy(&enemies[i], ((float)(rand() % GRID_SIZE) / GRID_SIZE) * 2.0f - 1.0f, 
-                  1.0f - ((float)(rand() % GRID_SIZE) / GRID_SIZE) * 2.0f, MOVE_SPEED * 0.5f);
+        int enemyGridX, enemyGridY;
+        do {
+            enemyGridX = rand() % GRID_SIZE;
+            enemyGridY = rand() % GRID_SIZE;
+        } while (!grid[enemyGridY][enemyGridX].walkable || 
+                 (enemyGridX == playerGridX && enemyGridY == playerGridY));
+
+        InitEnemy(&enemies[i], enemyGridX, enemyGridY, MOVE_SPEED * 0.5f);
     }
 }
 
@@ -152,12 +171,11 @@ void HandleInput() {
 
                 // Ensure the clicked tile is within the grid bounds
                 if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE) {
-                    // Set target position to the center of the clicked tile
-                    player.entity.targetPosX = (2.0f * gridX / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
-                    player.entity.targetPosY = 1.0f - (2.0f * gridY / GRID_SIZE) - (1.0f / GRID_SIZE);
+                    player.entity.targetGridX = gridX;
+                    player.entity.targetGridY = gridY;
                     player.entity.needsPathfinding = true;
 
-                    printf("Tile Clicked: gridX = %d, gridY = %d, targetPosX = %f, targetPosY = %f\n", gridX, gridY, player.entity.targetPosX, player.entity.targetPosY);
+                    printf("Tile Clicked: gridX = %d, gridY = %d\n", gridX, gridY);
                 }
             }
         }
@@ -165,12 +183,20 @@ void HandleInput() {
 }
 
 void UpdateGameLogic() {
-    UpdateEntity(&player.entity);
+    Entity* allEntities[MAX_ENEMIES + 1];
+    allEntities[0] = &player.entity;
+    for (int i = 0; i < MAX_ENEMIES; i++) {
+        allEntities[i + 1] = &enemies[i].entity;
+    }
+
+    MovePlayer(&player, 0, 0);  // Update player position
+    UpdateEntity(&player.entity, allEntities, MAX_ENEMIES + 1);
 
     // Update enemies
     for (int i = 0; i < MAX_ENEMIES; i++) {
         MovementAI(&enemies[i]);
-        UpdateEntity(&enemies[i].entity);
+        MovePlayer((Player*)&enemies[i], 0, 0);  // Update enemy position
+        UpdateEntity(&enemies[i].entity, allEntities, MAX_ENEMIES + 1);
     }
 }
 
@@ -212,11 +238,13 @@ void Render() {
 
     // Render player
     glUniform4f(colorUniform, 0.0f, 0.0f, 1.0f, 1.0f);  // Blue for player
+    float playerPosX = (2.0f * player.entity.gridX / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
+    float playerPosY = 1.0f - (2.0f * player.entity.gridY / GRID_SIZE) - (1.0f / GRID_SIZE);
     float playerVertices[] = {
-        player.entity.posX - TILE_SIZE / 2, player.entity.posY - TILE_SIZE / 2,
-        player.entity.posX + TILE_SIZE / 2, player.entity.posY - TILE_SIZE / 2,
-        player.entity.posX + TILE_SIZE / 2, player.entity.posY + TILE_SIZE / 2,
-        player.entity.posX - TILE_SIZE / 2, player.entity.posY + TILE_SIZE / 2
+        playerPosX - TILE_SIZE / 2, playerPosY - TILE_SIZE / 2,
+        playerPosX + TILE_SIZE / 2, playerPosY - TILE_SIZE / 2,
+        playerPosX + TILE_SIZE / 2, playerPosY + TILE_SIZE / 2,
+        playerPosX - TILE_SIZE / 2, playerPosY + TILE_SIZE / 2
     };
 
     glBindVertexArray(squareVAO);
@@ -227,11 +255,13 @@ void Render() {
     // Render enemies
     glUniform4f(colorUniform, 1.0f, 0.0f, 0.0f, 1.0f);  // Red for enemies
     for (int i = 0; i < MAX_ENEMIES; i++) {
+        float enemyPosX = (2.0f * enemies[i].entity.gridX / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
+        float enemyPosY = 1.0f - (2.0f * enemies[i].entity.gridY / GRID_SIZE) - (1.0f / GRID_SIZE);
         float enemyVertices[] = {
-            enemies[i].entity.posX - TILE_SIZE / 2, enemies[i].entity.posY - TILE_SIZE / 2,
-            enemies[i].entity.posX + TILE_SIZE / 2, enemies[i].entity.posY - TILE_SIZE / 2,
-            enemies[i].entity.posX + TILE_SIZE / 2, enemies[i].entity.posY + TILE_SIZE / 2,
-            enemies[i].entity.posX - TILE_SIZE / 2, enemies[i].entity.posY + TILE_SIZE / 2
+            enemyPosX - TILE_SIZE / 2, enemyPosY - TILE_SIZE / 2,
+            enemyPosX + TILE_SIZE / 2, enemyPosY - TILE_SIZE / 2,
+            enemyPosX + TILE_SIZE / 2, enemyPosY + TILE_SIZE / 2,
+            enemyPosX - TILE_SIZE / 2, enemyPosY + TILE_SIZE / 2
         };
 
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(enemyVertices), enemyVertices);
@@ -248,11 +278,20 @@ int PhysicsLoop(void* arg) {
     (void)arg;
     while (atomic_load(&isRunning)) {
         Uint32 startTime = SDL_GetTicks();
-        UpdateEntity(&player.entity);
+        
+        Entity* allEntities[MAX_ENEMIES + 1];
+        allEntities[0] = &player.entity;
+        for (int i = 0; i < MAX_ENEMIES; i++) {
+            allEntities[i + 1] = &enemies[i].entity;
+        }
+
+        MovePlayer(&player, 0, 0);  // Update player position
+        UpdateEntity(&player.entity, allEntities, MAX_ENEMIES + 1);
 
         // Update enemies
         for (int i = 0; i < MAX_ENEMIES; i++) {
-            UpdateEntity(&enemies[i].entity);
+            MovePlayer((Player*)&enemies[i], 0, 0);  // Update enemy position
+            UpdateEntity(&enemies[i].entity, allEntities, MAX_ENEMIES + 1);
         }
 
         int interval = 8 - (SDL_GetTicks() - startTime);
