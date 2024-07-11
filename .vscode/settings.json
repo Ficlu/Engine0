@@ -11,6 +11,7 @@
         "entity.h": "c",
         "rendering.h": "c",
         "cmath": "c",
-        "grid.h": "c"
+        "grid.h": "c",
+        "math.h": "c"
     }
 }

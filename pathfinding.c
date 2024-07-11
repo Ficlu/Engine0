@@ -1,12 +1,13 @@
 // pathfinding.c
 
+#include "pathfinding.h"
+#include "entity.h"
+#include "grid.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
-#include <stdbool.h>
-#include "pathfinding.h"
-#include "grid.h"
-#include "entity.h"
+#include <float.h>
+
 
 PriorityQueue* createPriorityQueue(int capacity) {
     PriorityQueue* pq = (PriorityQueue*)malloc(sizeof(PriorityQueue));
@@ -21,7 +22,67 @@ void swap(Node* a, Node* b) {
     *a = *b;
     *b = temp;
 }
+Node* findPath(int startX, int startY, int goalX, int goalY) {
+    PriorityQueue* openList = createPriorityQueue(GRID_SIZE * GRID_SIZE);
+    bool closedList[GRID_SIZE][GRID_SIZE] = {false};
+    Node* nodes = (Node*)malloc(sizeof(Node) * GRID_SIZE * GRID_SIZE);
 
+    for (int i = 0; i < GRID_SIZE; i++) {
+        for (int j = 0; j < GRID_SIZE; j++) {
+            nodes[i * GRID_SIZE + j] = (Node){j, i, INFINITY, INFINITY, INFINITY, NULL};
+        }
+    }
+
+    Node* startNode = &nodes[startY * GRID_SIZE + startX];
+    startNode->g = 0;
+    startNode->h = heuristic(startX, startY, goalX, goalY);
+    startNode->f = startNode->g + startNode->h;
+
+    push(openList, *startNode);
+
+    int dx[] = {-1, 0, 1, 0, -1, -1, 1, 1};
+    int dy[] = {0, -1, 0, 1, -1, 1, -1, 1};
+
+    while (openList->size > 0) {
+        Node current = pop(openList);
+
+        if (current.x == goalX && current.y == goalY) {
+            free(openList->nodes);
+            free(openList);
+            return nodes;
+        }
+
+        closedList[current.y][current.x] = true;
+
+        for (int i = 0; i < 8; i++) {
+            int newX = current.x + dx[i];
+            int newY = current.y + dy[i];
+
+            if (!isValid(newX, newY) || !isWalkable(newX, newY) || closedList[newY][newX]) {
+                continue;
+            }
+
+            Node* neighbor = &nodes[newY * GRID_SIZE + newX];
+            float newG = current.g + ((i < 4) ? 1.0f : 1.414f);
+
+            if (newG < neighbor->g) {
+                neighbor->parent = &nodes[current.y * GRID_SIZE + current.x];
+                neighbor->g = newG;
+                neighbor->h = heuristic(newX, newY, goalX, goalY);
+                neighbor->f = neighbor->g + neighbor->h;
+
+                if (!closedList[newY][newX]) {
+                    push(openList, *neighbor);
+                }
+            }
+        }
+    }
+
+    free(openList->nodes);
+    free(openList);
+    free(nodes);
+    return NULL;
+}
 void heapifyUp(PriorityQueue* pq, int index) {
     while (index > 0) {
         int parent = (index - 1) / 2;
@@ -106,123 +167,6 @@ bool lineOfSight(int x0, int y0, int x1, int y1) {
     return true;
 }
 
-Node* findPath(int startX, int startY, int goalX, int goalY) {
-    PriorityQueue* openList = createPriorityQueue(GRID_SIZE * GRID_SIZE);
-    bool closedList[GRID_SIZE][GRID_SIZE] = {false};
-    Node* nodes = (Node*)malloc(sizeof(Node) * GRID_SIZE * GRID_SIZE);
-
-    for (int i = 0; i < GRID_SIZE; i++) {
-        for (int j = 0; j < GRID_SIZE; j++) {
-            nodes[i * GRID_SIZE + j] = (Node){j, i, INFINITY, INFINITY, INFINITY, NULL};
-        }
-    }
-
-    Node* startNode = &nodes[startY * GRID_SIZE + startX];
-    startNode->g = 0;
-    startNode->h = heuristic(startX, startY, goalX, goalY);
-    startNode->f = startNode->g + startNode->h;
-
-    push(openList, *startNode);
-
-    int dx[] = {-1, 0, 1, 0, -1, -1, 1, 1};
-    int dy[] = {0, -1, 0, 1, -1, 1, -1, 1};
-
-    while (openList->size > 0) {
-        Node current = pop(openList);
-
-        if (current.x == goalX && current.y == goalY) {
-            free(openList->nodes);
-            free(openList);
-            return nodes;
-        }
-
-        closedList[current.y][current.x] = true;
-
-        for (int i = 0; i < 8; i++) {
-            int newX = current.x + dx[i];
-            int newY = current.y + dy[i];
-
-            if (!isWalkable(newX, newY) || closedList[newY][newX]) {
-                continue;
-            }
-
-            Node* neighbor = &nodes[newY * GRID_SIZE + newX];
-
-            if (current.parent == NULL || !lineOfSight(current.parent->x, current.parent->y, newX, newY)) {
-                // No line of sight, use the current node as parent
-                float newG = current.g + ((i < 4) ? 1.0f : 1.414f);
-                if (newG < neighbor->g) {
-                    neighbor->parent = &nodes[current.y * GRID_SIZE + current.x];
-                    neighbor->g = newG;
-                    neighbor->h = heuristic(newX, newY, goalX, goalY);
-                    neighbor->f = neighbor->g + neighbor->h;
-
-                    if (!closedList[newY][newX]) {
-                        push(openList, *neighbor);
-                    }
-                }
-            } else {
-                // Line of sight exists, try to use grandparent
-                float newG = current.parent->g + heuristic(current.parent->x, current.parent->y, newX, newY);
-                if (newG < neighbor->g) {
-                    neighbor->parent = current.parent;
-                    neighbor->g = newG;
-                    neighbor->h = heuristic(newX, newY, goalX, goalY);
-                    neighbor->f = neighbor->g + neighbor->h;
-
-                    if (!closedList[newY][newX]) {
-                        push(openList, *neighbor);
-                    }
-                }
-            }
-        }
-    }
-
-    free(openList->nodes);
-    free(openList);
-    free(nodes);
-    return NULL;
-}
-
-void updateEntityPath(Entity* entity) {
-    int startX = (int)((entity->posX + 1.0f) * GRID_SIZE / 2);
-    int startY = (int)((1.0f - entity->posY) * GRID_SIZE / 2);
-    int goalX = (int)((entity->targetPosX + 1.0f) * GRID_SIZE / 2);
-    int goalY = (int)((1.0f - entity->targetPosY) * GRID_SIZE / 2);
-
-    // Ensure start and goal are within bounds and walkable
-    if (!isWalkable(startX, startY) || !isWalkable(goalX, goalY)) {
-        printf("Start or goal is not walkable. Start: (%d, %d), Goal: (%d, %d)\n", startX, startY, goalX, goalY);
-        return;
-    }
-
-    Node* path = findPath(startX, startY, goalX, goalY);
-
-    if (path) {
-        Node* current = &path[goalY * GRID_SIZE + goalX];
-        Node* next = current;
-        
-        while (next->parent && (next->parent->x != startX || next->parent->y != startY)) {
-            next = next->parent;
-        }
-
-        if (next && next != current) {
-            // Add a small random offset to prevent getting stuck on grid alignments
-            float offsetX = ((float)rand() / RAND_MAX - 0.5f) * 0.1f;
-            float offsetY = ((float)rand() / RAND_MAX - 0.5f) * 0.1f;
-            
-            entity->targetPosX = (2.0f * next->x / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE) + offsetX;
-            entity->targetPosY = 1.0f - (2.0f * next->y / GRID_SIZE) - (1.0f / GRID_SIZE) + offsetY;
-        } else {
-            // If no valid next step, don't change the target
-            printf("No valid next step found. Entity at (%f, %f)\n", entity->posX, entity->posY);
-        }
-
-        free(path);
-    } else {
-        printf("No path found from (%d, %d) to (%d, %d)\n", startX, startY, goalX, goalY);
-    }
-}
 
 void unstuckEntity(Entity* entity) {
     // Try to move the entity in a random direction if it's stuck

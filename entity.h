@@ -17,5 +17,6 @@ typedef struct {
 } Entity;
 
 void UpdateEntity(Entity* entity, Entity** allEntities, int entityCount);
+void updateEntityPath(Entity* entity);  // Add this line
 
 #endif // ENTITY_H
