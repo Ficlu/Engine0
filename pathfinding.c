@@ -6,9 +6,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <stdbool.h>
+
 #include <float.h>
-
-
+/*Initialize and allocate memory to priorityQueue*/
 PriorityQueue* createPriorityQueue(int capacity) {
     PriorityQueue* pq = (PriorityQueue*)malloc(sizeof(PriorityQueue));
     pq->nodes = (Node*)malloc(sizeof(Node) * capacity);
@@ -17,72 +18,29 @@ PriorityQueue* createPriorityQueue(int capacity) {
     return pq;
 }
 
+/*Checks if an input PriorityQueue has, as a member, the input node*/
+bool inPriorityQueue(PriorityQueue* pq, Node node) {
+    for (int i = 0; i < pq->size; i++) {
+        if (pq->nodes[i].x == node.x && pq->nodes[i].y == node.y) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/*Swaps the values of two nodes*/
 void swap(Node* a, Node* b) {
     Node temp = *a;
     *a = *b;
     *b = temp;
 }
-Node* findPath(int startX, int startY, int goalX, int goalY) {
-    PriorityQueue* openList = createPriorityQueue(GRID_SIZE * GRID_SIZE);
-    bool closedList[GRID_SIZE][GRID_SIZE] = {false};
-    Node* nodes = (Node*)malloc(sizeof(Node) * GRID_SIZE * GRID_SIZE);
 
-    for (int i = 0; i < GRID_SIZE; i++) {
-        for (int j = 0; j < GRID_SIZE; j++) {
-            nodes[i * GRID_SIZE + j] = (Node){j, i, INFINITY, INFINITY, INFINITY, NULL};
-        }
-    }
-
-    Node* startNode = &nodes[startY * GRID_SIZE + startX];
-    startNode->g = 0;
-    startNode->h = heuristic(startX, startY, goalX, goalY);
-    startNode->f = startNode->g + startNode->h;
-
-    push(openList, *startNode);
-
-    int dx[] = {-1, 0, 1, 0, -1, -1, 1, 1};
-    int dy[] = {0, -1, 0, 1, -1, 1, -1, 1};
-
-    while (openList->size > 0) {
-        Node current = pop(openList);
-
-        if (current.x == goalX && current.y == goalY) {
-            free(openList->nodes);
-            free(openList);
-            return nodes;
-        }
-
-        closedList[current.y][current.x] = true;
-
-        for (int i = 0; i < 8; i++) {
-            int newX = current.x + dx[i];
-            int newY = current.y + dy[i];
-
-            if (!isValid(newX, newY) || !isWalkable(newX, newY) || closedList[newY][newX]) {
-                continue;
-            }
-
-            Node* neighbor = &nodes[newY * GRID_SIZE + newX];
-            float newG = current.g + ((i < 4) ? 1.0f : 1.414f);
-
-            if (newG < neighbor->g) {
-                neighbor->parent = &nodes[current.y * GRID_SIZE + current.x];
-                neighbor->g = newG;
-                neighbor->h = heuristic(newX, newY, goalX, goalY);
-                neighbor->f = neighbor->g + neighbor->h;
-
-                if (!closedList[newY][newX]) {
-                    push(openList, *neighbor);
-                }
-            }
-        }
-    }
-
-    free(openList->nodes);
-    free(openList);
-    free(nodes);
-    return NULL;
-}
+/*For the input PriorityQueue, this function takes the value of the heuristic (f-value) at the 
+input index, compares it to the f-value of the parent-node and swaps the parent and child; repeating
+the process until the pq satisfies the heap property.
+- Nodes in the min-heap are ordered by their heuristic value for the pathfinding algorithm
+- Maintains heap property--our desired ordering for the PriorityQueue
+- Used when inserting new nodes into a pq*/
 void heapifyUp(PriorityQueue* pq, int index) {
     while (index > 0) {
         int parent = (index - 1) / 2;
@@ -95,6 +53,13 @@ void heapifyUp(PriorityQueue* pq, int index) {
     }
 }
 
+/*For the input PirorityQueue, this function takes the value of the heuristic (f-value) at the 
+input index, compares it to the f-value of the child-node(s) and if either child's f-value is 
+smaller than the parent node's, swaps the parent with the smallest child; repeating the process 
+until the pq satisfies the heap property.
+- Nodes in the min-heap are ordered by their heuristic value for the pathfinding algorithm
+- Maintains heap property--our desired ordering for the PriorityQueue
+- Used when removing the root node from a pq*/
 void heapifyDown(PriorityQueue* pq, int index) {
     int smallest = index;
     int left = 2 * index + 1;
@@ -112,6 +77,8 @@ void heapifyDown(PriorityQueue* pq, int index) {
     }
 }
 
+/*Adds a new node to the priorityQueue, resizes the pq if it exceeds capacity. 
+- Calls heapifyUp function to maintain the heap property of pq*/
 void push(PriorityQueue* pq, Node node) {
     if (pq->size == pq->capacity) {
         pq->capacity *= 2;
@@ -122,6 +89,8 @@ void push(PriorityQueue* pq, Node node) {
     pq->size++;
 }
 
+/*Removes and returns the node with the smallest f-value from the priorityQueue.
+- Calls heapifyDown function to maintain heap property of pq*/
 Node pop(PriorityQueue* pq) {
     Node top = pq->nodes[0];
     pq->nodes[0] = pq->nodes[pq->size - 1];
@@ -130,10 +99,15 @@ Node pop(PriorityQueue* pq) {
     return top;
 }
 
+/*Calculates the euclidean distance between the two tiles at the input coords
+- Used in determining which candidate tiles to explore in the search algorithm.*/
 float heuristic(int x1, int y1, int x2, int y2) {
     return sqrtf((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2));
 }
 
+/*Checks if there is direct line-of-sight between the two tiles at the input coords
+- Used to detect unwalkable tiles which determine whether or not the entity needs to use 
+a search algorithm to reach it's target-tile*/
 bool lineOfSight(int x0, int y0, int x1, int y1) {
     int dx = abs(x1 - x0);
     int dy = abs(y1 - y0);
@@ -167,46 +141,83 @@ bool lineOfSight(int x0, int y0, int x1, int y1) {
     return true;
 }
 
+/*Implements a search algorithm to pathfind from the tile at the start coords 
+to the tile at the goal coords */
+Node* findPath(int startX, int startY, int goalX, int goalY) {
+    // Create a priority queue to store the open list of nodes to be explored
+    PriorityQueue* openList = createPriorityQueue(GRID_SIZE * GRID_SIZE);
+    // Create a closed list to keep track of explored nodes
+    bool closedList[GRID_SIZE][GRID_SIZE] = {false};
+    // Allocate memory for the nodes representing the grid
+    Node* nodes = (Node*)malloc(sizeof(Node) * GRID_SIZE * GRID_SIZE);
 
-void unstuckEntity(Entity* entity) {
-    // Try to move the entity in a random direction if it's stuck
-    float angle = ((float)rand() / RAND_MAX) * 2 * M_PI;
-    float distance = 0.1f;  // Adjust this value based on your game's scale
-    
-    float newX = entity->posX + cosf(angle) * distance;
-    float newY = entity->posY + sinf(angle) * distance;
-    
-    int gridX = (int)((newX + 1.0f) * GRID_SIZE / 2);
-    int gridY = (int)((1.0f - newY) * GRID_SIZE / 2);
-    
-    if (isWalkable(gridX, gridY)) {
-        entity->posX = newX;
-        entity->posY = newY;
-    }
-}
-
-void avoidCollision(Entity* entity, Entity** otherEntities, int entityCount) {
-    const float COLLISION_RADIUS = 0.05f;  // Adjust based on your game's scale
-    float totalForceX = 0, totalForceY = 0;
-
-    for (int i = 0; i < entityCount; i++) {
-        if (otherEntities[i] == entity) continue;
-
-        float dx = entity->posX - otherEntities[i]->posX;
-        float dy = entity->posY - otherEntities[i]->posY;
-        float distSq = dx * dx + dy * dy;
-
-        if (distSq < COLLISION_RADIUS * COLLISION_RADIUS && distSq > 0) {
-            float dist = sqrtf(distSq);
-            float force = (COLLISION_RADIUS - dist) / COLLISION_RADIUS;
-            totalForceX += (dx / dist) * force;
-            totalForceY += (dy / dist) * force;
+    // Initialize all nodes with default values
+    for (int i = 0; i < GRID_SIZE; i++) {
+        for (int j = 0; j < GRID_SIZE; j++) {
+            nodes[i * GRID_SIZE + j] = (Node){j, i, INFINITY, INFINITY, INFINITY, NULL};
         }
     }
 
-    entity->posX += totalForceX * 0.01f;  // Adjust multiplier for stronger/weaker avoidance
-    entity->posY += totalForceY * 0.01f;
-}
+    // Initialize the start node with appropriate g, h, and f values
+    Node* startNode = &nodes[startY * GRID_SIZE + startX];
+    startNode->g = 0;
+    startNode->h = heuristic(startX, startY, goalX, goalY);
+    startNode->f = startNode->g + startNode->h;
 
-// Remove the UpdateEntity function from pathfinding.c
-// It should be defined in entity.c instead
+    // Push the start node into the priority queue
+    push(openList, *startNode);
+
+    // Direction vectors for 8 possible movements (up, down, left, right, and diagonals)
+    int dx[] = {-1, 0, 1, 0, -1, -1, 1, 1};
+    int dy[] = {0, -1, 0, 1, -1, 1, -1, 1};
+
+    // Main loop to process nodes in the priority queue
+    while (openList->size > 0) {
+        // Pop the node with the lowest f value from the priority queue
+        Node current = pop(openList);
+
+        // If the goal is reached, return the path
+        if (current.x == goalX && current.y == goalY) {
+            free(openList->nodes);
+            free(openList);
+            return nodes;
+        }
+
+        // Mark the current node as visited by adding it to the closed list
+        closedList[current.y][current.x] = true;
+
+        // Explore all 8 possible neighbors
+        for (int i = 0; i < 8; i++) {
+            int newX = current.x + dx[i];
+            int newY = current.y + dy[i];
+
+            // Skip if the neighbor is out of bounds, not walkable, or already in the closed list
+            if (!isValid(newX, newY) || !isWalkable(newX, newY) || closedList[newY][newX]) {
+                continue;
+            }
+
+            // Get the neighbor node from the nodes array
+            Node* neighbor = &nodes[newY * GRID_SIZE + newX];
+            // Calculate the new g cost for the neighbor
+            float newG = current.g + ((i < 4) ? 1.0f : 1.414f);  // Use 1.414 (sqrt(2)) for diagonal moves
+
+            // If the new g cost is lower, update the neighbor's costs and parent
+            if (newG < neighbor->g) {
+                neighbor->parent = &nodes[current.y * GRID_SIZE + current.x];
+                neighbor->g = newG;
+                neighbor->h = heuristic(newX, newY, goalX, goalY);
+                neighbor->f = neighbor->g + neighbor->h;
+
+                // If the neighbor is not in the open list, add it
+                if (!inPriorityQueue(openList, *neighbor)) {
+                    push(openList, *neighbor);
+                }
+            }
+        }
+    }
+
+    // Free memory if no path is found
+    free(openList->nodes);
+    free(openList);
+    return NULL;  // No path found
+}

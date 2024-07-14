@@ -12,6 +12,7 @@
         "rendering.h": "c",
         "cmath": "c",
         "grid.h": "c",
-        "math.h": "c"
+        "math.h": "c",
+        "pathfinding.h": "c"
     }
 }
