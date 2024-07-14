@@ -5,6 +5,8 @@
 #include <SDL2/SDL.h>
 #include <GL/glew.h>
 #include "grid.h"
+#include "player.h"
+#include "enemy.h"
 #include <stdatomic.h>
 #include "pathfinding.h"
 

@@ -186,18 +186,19 @@ void HandleInput() {
 
                 // Ensure the clicked tile is within the grid bounds and walkable
                 if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE && isWalkable(gridX, gridY)) {
-                    player.entity.targetGridX = gridX;
-                    player.entity.targetGridY = gridY;
+                    player.entity.finalGoalX = gridX;
+                    player.entity.finalGoalY = gridY;
+                    player.entity.targetGridX = player.entity.gridX;  // Start from current position
+                    player.entity.targetGridY = player.entity.gridY;
                     player.entity.needsPathfinding = true;
 
-                    printf("Player target set: gridX = %d, gridY = %d\n", gridX, gridY);
-                } else {
-                    printf("Invalid target: gridX = %d, gridY = %d (not walkable or out of bounds)\n", gridX, gridY);
+                    printf("Player final goal set: gridX = %d, gridY = %d\n", gridX, gridY);
                 }
             }
         }
     }
 }
+
 void UpdateGameLogic() {
     Entity* allEntities[MAX_ENEMIES + 1];
     allEntities[0] = &player.entity;
@@ -254,10 +255,10 @@ void Render() {
     glBindVertexArray(squareVAO);
     
     // Render player path
-    if (player.entity.currentPath) {
-        for (int i = 0; i < player.entity.pathLength; i++) {
-            float pathX = (2.0f * player.entity.currentPath[i].x / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
-            float pathY = 1.0f - (2.0f * player.entity.currentPath[i].y / GRID_SIZE) - (1.0f / GRID_SIZE);
+if (player.entity.cachedPath) {
+    for (int i = 0; i < player.entity.cachedPathLength; i++) {
+        float pathX = (2.0f * player.entity.cachedPath[i].x / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
+        float pathY = 1.0f - (2.0f * player.entity.cachedPath[i].y / GRID_SIZE) - (1.0f / GRID_SIZE);
             float pathVertices[] = {
                 pathX - TILE_SIZE / 4, pathY - TILE_SIZE / 4,
                 pathX + TILE_SIZE / 4, pathY - TILE_SIZE / 4,
@@ -301,12 +302,11 @@ void Render() {
         glDrawArrays(GL_QUADS, 0, 4);
 
         // Render enemy path (new code)
-        if (enemies[i].entity.currentPath) {
-            glUniform4f(colorUniform, 1.0f, 1.0f, 0.0f, 0.5f);  // Semi-transparent yellow for paths
-            for (int j = 0; j < enemies[i].entity.pathLength; j++) {
-                float pathX = (2.0f * enemies[i].entity.currentPath[j].x / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
-                float pathY = 1.0f - (2.0f * enemies[i].entity.currentPath[j].y / GRID_SIZE) - (1.0f / GRID_SIZE);
-                float pathVertices[] = {
+if (enemies[i].entity.cachedPath) {
+    for (int j = 0; j < enemies[i].entity.cachedPathLength; j++) {
+        float pathX = (2.0f * enemies[i].entity.cachedPath[j].x / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
+        float pathY = 1.0f - (2.0f * enemies[i].entity.cachedPath[j].y / GRID_SIZE) - (1.0f / GRID_SIZE);
+            float pathVertices[] = {
                     pathX - TILE_SIZE / 4, pathY - TILE_SIZE / 4,
                     pathX + TILE_SIZE / 4, pathY - TILE_SIZE / 4,
                     pathX + TILE_SIZE / 4, pathY + TILE_SIZE / 4,

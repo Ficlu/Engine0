@@ -1,4 +1,3 @@
-// player.c
 #include "player.h"
 #include "gameloop.h"
 #include <math.h>
@@ -13,29 +12,31 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
     player->entity.posY = 1.0f - (2.0f * startGridY / GRID_SIZE) - (1.0f / GRID_SIZE);
     player->entity.targetGridX = startGridX;
     player->entity.targetGridY = startGridY;
+    player->entity.finalGoalX = startGridX;
+    player->entity.finalGoalY = startGridY;
     player->entity.needsPathfinding = false;
-    player->entity.currentPath = NULL;
-    player->entity.pathLength = 0;
+    player->entity.cachedPath = NULL;
+    player->entity.cachedPathLength = 0;
+    player->entity.currentPathIndex = 0;
     player->entity.isPlayer = true;
-    printf("Player initialized at (%d, %d)\n", startGridX, startGridY);
-}
 
-void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
-    if (player->entity.needsPathfinding) {
-        updateEntityPath(&player->entity);
-        player->entity.needsPathfinding = false;
+    // Ensure the player starts on a walkable tile
+    while (!isWalkable(player->entity.gridX, player->entity.gridY)) {
+        player->entity.gridX = rand() % GRID_SIZE;
+        player->entity.gridY = rand() % GRID_SIZE;
+        player->entity.posX = (2.0f * player->entity.gridX / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
+        player->entity.posY = 1.0f - (2.0f * player->entity.gridY / GRID_SIZE) - (1.0f / GRID_SIZE);
     }
+
+    printf("Player initialized at (%d, %d)\n", player->entity.gridX, player->entity.gridY);
+}
+void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
     UpdateEntity(&player->entity, allEntities, entityCount);
-    printf("Player updated. Position: (%d, %d), Target: (%d, %d), Path Length: %d\n", 
-           player->entity.gridX, player->entity.gridY, 
-           player->entity.targetGridX, player->entity.targetGridY,
-           player->entity.pathLength);
 }
 
 void CleanupPlayer(Player* player) {
-    if (player->entity.currentPath) {
-        free(player->entity.currentPath);
-        player->entity.currentPath = NULL;
-        player->entity.pathLength = 0;
+    if (player->entity.cachedPath) {
+        free(player->entity.cachedPath);
+        player->entity.cachedPath = NULL;
     }
 }
