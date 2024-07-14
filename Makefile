@@ -1,3 +1,4 @@
+# Existing Makefile
 CC = gcc
 CFLAGS = -Isrc/include -Wall -Wextra -g
 LDFLAGS = -Lsrc/lib -lmingw32 -Isrc/include/cglm/include -lSDL2main -lSDL2 -lSDL2_ttf -lglew32 -lglfw3 -mconsole -lopengl32 -lm
@@ -8,7 +9,6 @@ bin/gameloop.exe: $(OBJS)
 	$(CC) -o $@ $(OBJS) $(LDFLAGS)
 
 gameloop.o: gameloop.c gameloop.h rendering.h player.h entity.h enemy.h grid.h pathfinding.h
- 
 	$(CC) $(CFLAGS) -c gameloop.c
 
 rendering.o: rendering.c rendering.h
@@ -16,3 +16,15 @@ rendering.o: rendering.c rendering.h
 
 clean:
 	rm -f $(OBJS) bin/gameloop.exe
+
+# Test build section
+TEST_OBJS = test_enemy.o enemy.o entity.o grid.o pathfinding.o player.o
+
+test: $(TEST_OBJS)
+	$(CC) -o bin/test_enemy $^ $(LDFLAGS) -lm
+
+test_enemy.o: test_enemy.c enemy.h entity.h grid.h pathfinding.h player.h
+	$(CC) $(CFLAGS) -c test_enemy.c
+
+clean_tests:
+	rm -f $(TEST_OBJS) bin/test_enemy

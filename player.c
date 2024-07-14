@@ -16,14 +16,20 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
     player->entity.needsPathfinding = false;
     player->entity.currentPath = NULL;
     player->entity.pathLength = 0;
+    player->entity.isPlayer = true;
     printf("Player initialized at (%d, %d)\n", startGridX, startGridY);
 }
 
 void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
+    if (player->entity.needsPathfinding) {
+        updateEntityPath(&player->entity);
+        player->entity.needsPathfinding = false;
+    }
     UpdateEntity(&player->entity, allEntities, entityCount);
-    printf("Player updated. Position: (%d, %d), Target: (%d, %d)\n", 
+    printf("Player updated. Position: (%d, %d), Target: (%d, %d), Path Length: %d\n", 
            player->entity.gridX, player->entity.gridY, 
-           player->entity.targetGridX, player->entity.targetGridY);
+           player->entity.targetGridX, player->entity.targetGridY,
+           player->entity.pathLength);
 }
 
 void CleanupPlayer(Player* player) {

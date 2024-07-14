@@ -15,7 +15,7 @@ typedef struct {
     int targetGridX;
     int targetGridY;
     bool needsPathfinding;
-    // New fields for path rendering
+    bool isPlayer;
     struct Node* currentPath;
     int pathLength;
 } Entity;

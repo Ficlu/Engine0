@@ -15,12 +15,14 @@ void InitEnemy(Enemy* enemy, int startGridX, int startGridY, float speed) {
     enemy->entity.needsPathfinding = false;
     enemy->entity.currentPath = NULL;
     enemy->entity.pathLength = 0;
+    enemy->entity.isPlayer = false;
+
     printf("Enemy initialized at (%d, %d)\n", startGridX, startGridY);
 }
 
 void MovementAI(Enemy* enemy) {
     // Simple random movement
-    if (rand() % 100 < 5) {  // 5% chance to change direction
+    if (rand() % 100 < 3) {  // 5% chance to change direction
         int newTargetX, newTargetY;
         do {
             newTargetX = rand() % GRID_SIZE;

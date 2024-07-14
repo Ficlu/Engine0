@@ -20,36 +20,55 @@ void UpdateEntity(Entity* entity, Entity** allEntities, int entityCount) {
         entity->needsPathfinding = false;
     }
 
-    // Move towards target
-    float dx = (2.0f * entity->targetGridX / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE) - entity->posX;
-    float dy = 1.0f - (2.0f * entity->targetGridY / GRID_SIZE) - (1.0f / GRID_SIZE) - entity->posY;
+    // Calculate the target position in world coordinates
+    float targetPosX = (2.0f * entity->targetGridX / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
+    float targetPosY = 1.0f - (2.0f * entity->targetGridY / GRID_SIZE) - (1.0f / GRID_SIZE);
+
+    // Calculate the distance to the target
+    float dx = targetPosX - entity->posX;
+    float dy = targetPosY - entity->posY;
     float distance = sqrt(dx*dx + dy*dy);
-    if (distance > entity->speed) {
-        dx = (dx / distance) * entity->speed;
-        dy = (dy / distance) * entity->speed;
+
+    // If we're close enough to the target, snap to it
+    if (distance < 0.001f) {
+        entity->posX = targetPosX;
+        entity->posY = targetPosY;
+        entity->gridX = entity->targetGridX;
+        entity->gridY = entity->targetGridY;
+
+        if (entity->isPlayer) {
+            printf("Player reached target (%d, %d)\n", entity->gridX, entity->gridY);
+        }
+
+        // Request new pathfinding if we've reached our target
+        entity->needsPathfinding = true;
+        return;
     }
 
-    // Check for collisions with other entities and unwalkable tiles
-    bool canMove = true;
-    float newX = entity->posX + dx;
-    float newY = entity->posY + dy;
+    // Calculate movement for this frame
+    float moveDistance = fmin(entity->speed, distance);
+    float moveX = (dx / distance) * moveDistance;
+    float moveY = (dy / distance) * moveDistance;
+
+    // Calculate new position
+    float newX = entity->posX + moveX;
+    float newY = entity->posY + moveY;
+
+    // Convert new position to grid coordinates
     int newGridX = (int)((newX + 1.0f) * GRID_SIZE / 2);
     int newGridY = (int)((1.0f - newY) * GRID_SIZE / 2);
 
     // Check if the new position is walkable
-    if (!isWalkable(newGridX, newGridY)) {
-        canMove = false;
-    }
+    bool canMove = isWalkable(newGridX, newGridY);
 
     // Check for collisions with other entities
-    for (int i = 0; i < entityCount; i++) {
-        if (allEntities[i] != entity) {
-            float otherX = allEntities[i]->posX;
-            float otherY = allEntities[i]->posY;
-            
-            if (fabs(newX - otherX) < TILE_SIZE && fabs(newY - otherY) < TILE_SIZE) {
-                canMove = false;
-                break;
+    if (canMove) {
+        for (int i = 0; i < entityCount; i++) {
+            if (allEntities[i] != entity) {
+                if (newGridX == allEntities[i]->gridX && newGridY == allEntities[i]->gridY) {
+                    canMove = false;
+                    break;
+                }
             }
         }
     }
@@ -59,12 +78,17 @@ void UpdateEntity(Entity* entity, Entity** allEntities, int entityCount) {
         entity->posY = newY;
         entity->gridX = newGridX;
         entity->gridY = newGridY;
+        if (entity->isPlayer) {
+            printf("Player moved to: (%f, %f) Grid: (%d, %d)\n", entity->posX, entity->posY, entity->gridX, entity->gridY);
+        }
     } else {
         // If the entity can't move, request a new path
         entity->needsPathfinding = true;
+        if (entity->isPlayer) {
+            printf("Player couldn't move, requesting new path\n");
+        }
     }
 }
-
 /*Attempts to find a path from the entities current position to it's target position by retrieving
 the current and target positions from the entity, checking their walkability, finding a path between them
 and moves the entity but updating it's coordinates to progress on a path, if such a path is available
@@ -79,7 +103,9 @@ void updateEntityPath(Entity* entity) {
 
     // Ensure start and goal are within bounds and walkable
     if (!isWalkable(startX, startY) || !isWalkable(goalX, goalY)) {
-        printf("Start or goal is not walkable. Start: (%d, %d), Goal: (%d, %d)\n", startX, startY, goalX, goalY);
+        if (entity->isPlayer) {
+            printf("Player: Start or goal is not walkable. Start: (%d, %d), Goal: (%d, %d)\n", startX, startY, goalX, goalY);
+        }
         return;
     }
 
@@ -98,26 +124,23 @@ void updateEntityPath(Entity* entity) {
             current = current->parent;
         }
 
-        Node* next = &path[goalY * GRID_SIZE + goalX];
-        while (next->parent && (next->parent->x != startX || next->parent->y != startY)) {
-            next = next->parent;
+        if (entity->isPlayer) {
+            printf("Player: Path found. Length: %d\n", entity->pathLength);
         }
 
-        if (next && next != &path[goalY * GRID_SIZE + goalX]) {
-            // Add a small random offset to prevent getting stuck on grid alignments
-            int offsetX = (rand() % 3) - 1;  // -1, 0, or 1
-            int offsetY = (rand() % 3) - 1;  // -1, 0, or 1
-            
-            entity->targetGridX = next->x + offsetX;
-            entity->targetGridY = next->y + offsetY;
-            // Ensure the new target is within grid bounds
-            entity->targetGridX = (entity->targetGridX < 0) ? 0 : (entity->targetGridX >= GRID_SIZE) ? GRID_SIZE - 1 : entity->targetGridX;
-            entity->targetGridY = (entity->targetGridY < 0) ? 0 : (entity->targetGridY >= GRID_SIZE) ? GRID_SIZE - 1 : entity->targetGridY;
-        } else {
-            // If no valid next step, don't change the target
-            printf("No valid next step found. Entity at (%d, %d)\n", entity->gridX, entity->gridY);
+        // Set the target to the final goal
+        entity->targetGridX = goalX;
+        entity->targetGridY = goalY;
+
+        if (entity->isPlayer) {
+            printf("Player: Moving to final goal: (%d, %d)\n", entity->targetGridX, entity->targetGridY);
         }
     } else {
-        printf("No path found from (%d, %d) to (%d, %d)\n", startX, startY, goalX, goalY);
+        if (entity->isPlayer) {
+            printf("Player: No path found from (%d, %d) to (%d, %d)\n", startX, startY, goalX, goalY);
+        }
+        // If no path is found, set the target to the current position
+        entity->targetGridX = startX;
+        entity->targetGridY = startY;
     }
 }

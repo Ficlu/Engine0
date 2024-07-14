@@ -184,19 +184,20 @@ void HandleInput() {
                 int gridX = mouseX / (WINDOW_WIDTH / GRID_SIZE);
                 int gridY = mouseY / (WINDOW_HEIGHT / GRID_SIZE);
 
-                // Ensure the clicked tile is within the grid bounds
-                if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE) {
+                // Ensure the clicked tile is within the grid bounds and walkable
+                if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE && isWalkable(gridX, gridY)) {
                     player.entity.targetGridX = gridX;
                     player.entity.targetGridY = gridY;
                     player.entity.needsPathfinding = true;
 
-                    printf("Tile Clicked: gridX = %d, gridY = %d\n", gridX, gridY);
+                    printf("Player target set: gridX = %d, gridY = %d\n", gridX, gridY);
+                } else {
+                    printf("Invalid target: gridX = %d, gridY = %d (not walkable or out of bounds)\n", gridX, gridY);
                 }
             }
         }
     }
 }
-
 void UpdateGameLogic() {
     Entity* allEntities[MAX_ENEMIES + 1];
     allEntities[0] = &player.entity;
