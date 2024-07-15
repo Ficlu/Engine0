@@ -1,9 +1,12 @@
+// entity.h
 #ifndef ENTITY_H
 #define ENTITY_H
 
 #include "grid.h"
-#include "pathfinding.h"
 #include <stdbool.h>
+
+// Forward declaration
+struct Node;
 
 typedef struct {
     int gridX;
@@ -16,7 +19,7 @@ typedef struct {
     int finalGoalX;
     int finalGoalY;
     bool needsPathfinding;
-    Node* cachedPath;
+    struct Node* cachedPath;  // Use the forward-declared struct
     int cachedPathLength;
     int currentPathIndex;
     bool isPlayer;

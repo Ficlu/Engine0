@@ -2,7 +2,6 @@
 #define PATHFINDING_H
 
 #include "grid.h"
-#include "entity.h"
 #include <stdbool.h>
 
 typedef struct Node {
