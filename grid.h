@@ -13,6 +13,7 @@ typedef struct {
 extern Tile grid[GRID_SIZE][GRID_SIZE];
 
 bool isValid(int x, int y);
+bool isFullyWalkable(int x, int y);
 bool isWalkable(int x, int y);
 
 #endif // GRID_H

@@ -191,8 +191,8 @@ Node* findPath(int startX, int startY, int goalX, int goalY) {
             int newX = current.x + dx[i];
             int newY = current.y + dy[i];
 
-            // Skip if the neighbor is out of bounds, not walkable, or already in the closed list
-            if (!isValid(newX, newY) || !isWalkable(newX, newY) || closedList[newY][newX]) {
+            // Skip if the neighbor is out of bounds, not fully walkable, or already in the closed list
+            if (!isValid(newX, newY) || !isFullyWalkable(newX, newY) || closedList[newY][newX]) {
                 continue;
             }
 

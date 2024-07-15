@@ -25,6 +25,9 @@ typedef struct {
     bool isPlayer;
 } Entity;
 
+// New function declaration
+void findNearestWalkableTile(float posX, float posY, int* nearestX, int* nearestY);
+
 void UpdateEntity(Entity* entity, Entity** allEntities, int entityCount);
 void updateEntityPath(Entity* entity);
 
