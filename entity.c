@@ -54,19 +54,28 @@ void UpdateEntity(Entity* entity, Entity** allEntities, int entityCount) {
         printf("Distance to target: %f\n", distance);
     }
 
-    // If very close to target, snap to it (or to the nearest walkable tile)
-    if (distance < 0.001f) {
+    // If very close to target, interpolate to it
+    if (distance < 0.005f) {
         int snapX, snapY;
         findNearestWalkableTile(targetPosX, targetPosY, &snapX, &snapY);
         
-        entity->posX = (2.0f * snapX / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
-        entity->posY = 1.0f - (2.0f * snapY / GRID_SIZE) - (1.0f / GRID_SIZE);
-        entity->gridX = snapX;
-        entity->gridY = snapY;
-        entity->needsPathfinding = true;
+        float snapPosX = (2.0f * snapX / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
+        float snapPosY = 1.0f - (2.0f * snapY / GRID_SIZE) - (1.0f / GRID_SIZE);
+        
+        // Interpolate position
+        float t = 0.005f; // Adjust this value to control the speed of interpolation
+        entity->posX = entity->posX * (1 - t) + snapPosX * t;
+        entity->posY = entity->posY * (1 - t) + snapPosY * t;
+        
+        // Update grid position when very close to the snapped position
+        if (fabs(entity->posX - snapPosX) < 0.001f && fabs(entity->posY - snapPosY) < 0.001f) {
+            entity->gridX = snapX;
+            entity->gridY = snapY;
+            entity->needsPathfinding = true;
+        }
         
         if (entity->isPlayer) {
-            printf("Player snapped to (%d, %d)\n", entity->gridX, entity->gridY);
+            printf("Player interpolating to (%d, %d)\n", snapX, snapY);
         }
         return;
     }
@@ -90,7 +99,7 @@ void UpdateEntity(Entity* entity, Entity** allEntities, int entityCount) {
         newY = targetPosY;
     }
 
-        bool canMove = true;
+    bool canMove = true;
     float entityHalfSize = TILE_SIZE / 2.0f;
 
     // Check only the center and the direction of movement
@@ -111,31 +120,13 @@ void UpdateEntity(Entity* entity, Entity** allEntities, int entityCount) {
             break;
         }
     }
-    if (canMove) {
-        for (int i = 0; i < entityCount; i++) {
-            if (allEntities[i] != entity) {
-                float otherX = allEntities[i]->posX;
-                float otherY = allEntities[i]->posY;
-                float distX = fabs(newX - otherX);
-                float distY = fabs(newY - otherY);
-                
-                if (distX < TILE_SIZE && distY < TILE_SIZE) {
-                    canMove = false;
-                    if (entity->isPlayer) {
-                        printf("Player collision with entity at (%f, %f)\n", otherX, otherY);
-                    }
-                    break;
-                }
-            }
-        }
-    }
 
     if (canMove) {
         entity->posX = newX;
         entity->posY = newY;
         
         int newGridX = (int)((newX + 1.0f) * GRID_SIZE / 2);
-        int newGridY = (int)((1.0f - newY) * GRID_SIZE / 2);
+        int newGridY = (int)((newY - 1.0f) * GRID_SIZE / 2);
         
         if (newGridX != entity->gridX || newGridY != entity->gridY) {
             if (isWalkable(newGridX, newGridY)) {
@@ -163,6 +154,7 @@ void UpdateEntity(Entity* entity, Entity** allEntities, int entityCount) {
         }
     }
 }
+
 void updateEntityPath(Entity* entity) {
     int startX = entity->gridX;
     int startY = entity->gridY;

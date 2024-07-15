@@ -85,16 +85,17 @@ GLuint createShaderProgram() {
 
 void createGridVertices(float** vertices, int* vertexCount, int width, int height, int cellSize) {
     int size = (width < height) ? width : height;  // Use the smaller dimension
-    int numLines = (size / cellSize + 1) * 2;  // Vertical + Horizontal lines
-    *vertexCount = numLines * 4;  // Each line has 2 points, each point has 2 coordinates
-    *vertices = (float*)malloc(*vertexCount * sizeof(float));
+    int numCells = size / cellSize;
+    int numLines = (numCells + 1) * 2;  // Vertical + Horizontal lines
+    *vertexCount = numLines * 2;  // Each line has 2 points
+    *vertices = (float*)malloc(*vertexCount * 2 * sizeof(float));  // 2 floats per point (x, y)
 
     int index = 0;
-    int numCells = size / cellSize;
+    float step = 2.0f / numCells;  // Step size in NDC
 
     // Create vertical lines
     for (int i = 0; i <= numCells; i++) {
-        float x = (float)i / numCells * 2.0f - 1.0f;  // Map to [-1, 1] range
+        float x = i * step - 1.0f;
         (*vertices)[index++] = x;
         (*vertices)[index++] = -1.0f;
         (*vertices)[index++] = x;
@@ -103,13 +104,14 @@ void createGridVertices(float** vertices, int* vertexCount, int width, int heigh
 
     // Create horizontal lines
     for (int j = 0; j <= numCells; j++) {
-        float y = (float)j / numCells * 2.0f - 1.0f;  // Map to [-1, 1] range
+        float y = j * step - 1.0f;
         (*vertices)[index++] = -1.0f;
         (*vertices)[index++] = y;
         (*vertices)[index++] = 1.0f;
         (*vertices)[index++] = y;
     }
 }
+
 GLuint createGridVAO(float* vertices, int vertexCount) {
     GLuint VAO, VBO;
     glGenVertexArrays(1, &VAO);
@@ -117,7 +119,7 @@ GLuint createGridVAO(float* vertices, int vertexCount) {
 
     glBindVertexArray(VAO);
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, vertexCount * sizeof(float), vertices, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, vertexCount * 2 * sizeof(float), vertices, GL_STATIC_DRAW);
 
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);

@@ -1,4 +1,3 @@
-// gameloop.c
 #include "gameloop.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,7 +22,7 @@ GLuint squareVAO;
 GLuint squareVBO;
 int vertexCount;
 GLuint colorUniform;
-
+#define MAX_ENTITIES 1000
 Player player;
 Enemy enemies[MAX_ENEMIES];
 
@@ -200,17 +199,17 @@ void HandleInput() {
 }
 
 void UpdateGameLogic() {
-    Entity* allEntities[MAX_ENEMIES + 1];
+    Entity* allEntities[MAX_ENTITIES];
     allEntities[0] = &player.entity;
     for (int i = 0; i < MAX_ENEMIES; i++) {
         allEntities[i + 1] = &enemies[i].entity;
     }
 
-    UpdatePlayer(&player, allEntities, MAX_ENEMIES + 1);
+    UpdatePlayer(&player, allEntities, MAX_ENTITIES);
 
     // Update enemies
     for (int i = 0; i < MAX_ENEMIES; i++) {
-        UpdateEnemy(&enemies[i], allEntities, MAX_ENEMIES + 1);
+        UpdateEnemy(&enemies[i], allEntities, MAX_ENTITIES);
     }
 }
 
@@ -248,17 +247,16 @@ void Render() {
     // Render grid
     glUniform4f(colorUniform, 1.0f, 1.0f, 1.0f, 1.0f);  // White for grid lines
     glBindVertexArray(gridVAO);
-    glDrawArrays(GL_LINES, 0, vertexCount / 2);
-
+    glDrawArrays(GL_LINES, 0, vertexCount);  // vertexCount should be the total number of points
     // Render paths (new code)
     glUniform4f(colorUniform, 1.0f, 1.0f, 0.0f, 0.5f);  // Semi-transparent yellow for paths
     glBindVertexArray(squareVAO);
     
     // Render player path
-if (player.entity.cachedPath) {
-    for (int i = 0; i < player.entity.cachedPathLength; i++) {
-        float pathX = (2.0f * player.entity.cachedPath[i].x / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
-        float pathY = 1.0f - (2.0f * player.entity.cachedPath[i].y / GRID_SIZE) - (1.0f / GRID_SIZE);
+    if (player.entity.cachedPath) {
+        for (int i = 0; i < player.entity.cachedPathLength; i++) {
+            float pathX = (2.0f * player.entity.cachedPath[i].x / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
+            float pathY = 1.0f - (2.0f * player.entity.cachedPath[i].y / GRID_SIZE) - (1.0f / GRID_SIZE);
             float pathVertices[] = {
                 pathX - TILE_SIZE / 4, pathY - TILE_SIZE / 4,
                 pathX + TILE_SIZE / 4, pathY - TILE_SIZE / 4,
@@ -302,11 +300,11 @@ if (player.entity.cachedPath) {
         glDrawArrays(GL_QUADS, 0, 4);
 
         // Render enemy path (new code)
-if (enemies[i].entity.cachedPath) {
-    for (int j = 0; j < enemies[i].entity.cachedPathLength; j++) {
-        float pathX = (2.0f * enemies[i].entity.cachedPath[j].x / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
-        float pathY = 1.0f - (2.0f * enemies[i].entity.cachedPath[j].y / GRID_SIZE) - (1.0f / GRID_SIZE);
-            float pathVertices[] = {
+        if (enemies[i].entity.cachedPath) {
+            for (int j = 0; j < enemies[i].entity.cachedPathLength; j++) {
+                float pathX = (2.0f * enemies[i].entity.cachedPath[j].x / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
+                float pathY = 1.0f - (2.0f * enemies[i].entity.cachedPath[j].y / GRID_SIZE) - (1.0f / GRID_SIZE);
+                float pathVertices[] = {
                     pathX - TILE_SIZE / 4, pathY - TILE_SIZE / 4,
                     pathX + TILE_SIZE / 4, pathY - TILE_SIZE / 4,
                     pathX + TILE_SIZE / 4, pathY + TILE_SIZE / 4,
@@ -324,23 +322,26 @@ if (enemies[i].entity.cachedPath) {
 
     SDL_GL_SwapWindow(window);
 }
+
 int PhysicsLoop(void* arg) {
     (void)arg;
     while (atomic_load(&isRunning)) {
         Uint32 startTime = SDL_GetTicks();
         
-        Entity* allEntities[MAX_ENEMIES + 1];
+        Entity** allEntities = (Entity**)malloc(sizeof(Entity*) * (MAX_ENEMIES + 1));
         allEntities[0] = &player.entity;
         for (int i = 0; i < MAX_ENEMIES; i++) {
             allEntities[i + 1] = &enemies[i].entity;
         }
 
-        UpdateEntity(&player.entity, allEntities, MAX_ENEMIES + 1);
+        UpdateEntity(&player.entity, allEntities, MAX_ENTITIES);
 
         // Update enemies
         for (int i = 0; i < MAX_ENEMIES; i++) {
-            UpdateEntity(&enemies[i].entity, allEntities, MAX_ENEMIES + 1);
+            UpdateEntity(&enemies[i].entity, allEntities, MAX_ENTITIES);
         }
+
+        free(allEntities);
 
         int interval = 8 - (SDL_GetTicks() - startTime);
         if (interval > 0) {

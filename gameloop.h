@@ -14,7 +14,7 @@
 #define WINDOW_HEIGHT 800
 #define GRID_SIZE 20
 #define TILE_SIZE (2.0f / GRID_SIZE)
-#define MAX_ENEMIES 3
+#define MAX_ENEMIES 5
 #define MOVE_SPEED 0.005f
 #define GAME_LOGIC_INTERVAL_MS 600
 #define FRAME_TIME_MS 24

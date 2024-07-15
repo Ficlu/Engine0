@@ -3,7 +3,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
-
+#include <stdbool.h>
 void InitEnemy(Enemy* enemy, int startGridX, int startGridY, float speed) {
     enemy->entity.gridX = startGridX;
     enemy->entity.gridY = startGridY;
@@ -39,11 +39,13 @@ void MovementAI(Enemy* enemy) {
         
         // Choose a new random target
         int newTargetX, newTargetY;
+       
+        if(rand() > 0.3){
         do {
             newTargetX = rand() % GRID_SIZE;
             newTargetY = rand() % GRID_SIZE;
         } while (!isWalkable(newTargetX, newTargetY));
-
+        }
         enemy->entity.finalGoalX = newTargetX;
         enemy->entity.finalGoalY = newTargetY;
         enemy->entity.needsPathfinding = true;
