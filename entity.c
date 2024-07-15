@@ -170,21 +170,10 @@ void updateEntityPath(Entity* entity) {
     int goalY = entity->finalGoalY;
 
     if (startX == goalX && startY == goalY) {
-        if (entity->isPlayer) {
-            printf("Player already at final goal (%d, %d)\n", startX, startY);
-        }
         entity->targetGridX = startX;
         entity->targetGridY = startY;
         entity->needsPathfinding = false;
         return;
-    }
-
-    // Check if the goal is walkable, if not, find the nearest walkable tile
-    if (!isWalkable(goalX, goalY)) {
-        findNearestWalkableTile(goalX, goalY, &goalX, &goalY);
-        if (entity->isPlayer) {
-            printf("Player: Goal adjusted to nearest walkable tile (%d, %d)\n", goalX, goalY);
-        }
     }
 
     Node* path = findPath(startX, startY, goalX, goalY);
@@ -194,41 +183,38 @@ void updateEntityPath(Entity* entity) {
         }
         entity->cachedPath = path;
         entity->cachedPathLength = 0;
-        entity->currentPathIndex = 0;
 
-        // Count path length and print path
+        // Reconstruct and store the path
         Node* current = &path[goalY * GRID_SIZE + goalX];
-        printf("Path: ");
         while (current) {
             entity->cachedPathLength++;
-            printf("(%d, %d) ", current->x, current->y);
             current = current->parent;
         }
-        printf("\n");
+
+        // Allocate memory for the path
+        entity->cachedPath = (Node*)malloc(sizeof(Node) * entity->cachedPathLength);
+
+        // Store the path in reverse order (from start to goal)
+        current = &path[goalY * GRID_SIZE + goalX];
+        for (int i = entity->cachedPathLength - 1; i >= 0; i--) {
+            entity->cachedPath[i] = *current;
+            current = current->parent;
+        }
+
+        entity->currentPathIndex = 0;
+
+        // Set the next target
+        if (entity->cachedPathLength > 1) {
+            entity->targetGridX = entity->cachedPath[1].x;
+            entity->targetGridY = entity->cachedPath[1].y;
+        } else {
+            entity->targetGridX = entity->cachedPath[0].x;
+            entity->targetGridY = entity->cachedPath[0].y;
+        }
 
         if (entity->isPlayer) {
-            printf("Player: Path found. Length: %d\n", entity->cachedPathLength);
-        }
-
-        // Find the next step in the path
-        Node* next = &path[goalY * GRID_SIZE + goalX];
-        while (next->parent && next->parent->parent) {
-            next = next->parent;
-        }
-
-        if (next && (next->x != startX || next->y != startY)) {
-            entity->targetGridX = next->x;
-            entity->targetGridY = next->y;
-            
-            if (entity->isPlayer) {
-                printf("Player: Next step in path: (%d, %d)\n", entity->targetGridX, entity->targetGridY);
-            }
-        } else {
-            entity->targetGridX = startX;
-            entity->targetGridY = startY;
-            if (entity->isPlayer) {
-                printf("Player: No valid next step found. Player at (%d, %d)\n", entity->gridX, entity->gridY);
-            }
+            printf("Player: Path found. Length: %d, Next step: (%d, %d)\n", 
+                   entity->cachedPathLength, entity->targetGridX, entity->targetGridY);
         }
     } else {
         if (entity->isPlayer) {

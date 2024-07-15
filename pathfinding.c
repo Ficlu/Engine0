@@ -144,71 +144,54 @@ bool lineOfSight(int x0, int y0, int x1, int y1) {
 /*Implements a search algorithm to pathfind from the tile at the start coords 
 to the tile at the goal coords */
 Node* findPath(int startX, int startY, int goalX, int goalY) {
-    // Create a priority queue to store the open list of nodes to be explored
     PriorityQueue* openList = createPriorityQueue(GRID_SIZE * GRID_SIZE);
-    // Create a closed list to keep track of explored nodes
     bool closedList[GRID_SIZE][GRID_SIZE] = {false};
-    // Allocate memory for the nodes representing the grid
     Node* nodes = (Node*)malloc(sizeof(Node) * GRID_SIZE * GRID_SIZE);
 
-    // Initialize all nodes with default values
-    for (int i = 0; i < GRID_SIZE; i++) {
-        for (int j = 0; j < GRID_SIZE; j++) {
-            nodes[i * GRID_SIZE + j] = (Node){j, i, INFINITY, INFINITY, INFINITY, NULL};
+    for (int y = 0; y < GRID_SIZE; y++) {
+        for (int x = 0; x < GRID_SIZE; x++) {
+            nodes[y * GRID_SIZE + x] = (Node){x, y, INFINITY, INFINITY, INFINITY, NULL};
         }
     }
 
-    // Initialize the start node with appropriate g, h, and f values
     Node* startNode = &nodes[startY * GRID_SIZE + startX];
     startNode->g = 0;
     startNode->h = heuristic(startX, startY, goalX, goalY);
     startNode->f = startNode->g + startNode->h;
 
-    // Push the start node into the priority queue
     push(openList, *startNode);
 
-    // Direction vectors for 8 possible movements (up, down, left, right, and diagonals)
     int dx[] = {-1, 0, 1, 0, -1, -1, 1, 1};
     int dy[] = {0, -1, 0, 1, -1, 1, -1, 1};
 
-    // Main loop to process nodes in the priority queue
     while (openList->size > 0) {
-        // Pop the node with the lowest f value from the priority queue
         Node current = pop(openList);
 
-        // If the goal is reached, return the path
         if (current.x == goalX && current.y == goalY) {
             free(openList->nodes);
             free(openList);
             return nodes;
         }
 
-        // Mark the current node as visited by adding it to the closed list
         closedList[current.y][current.x] = true;
 
-        // Explore all 8 possible neighbors
         for (int i = 0; i < 8; i++) {
             int newX = current.x + dx[i];
             int newY = current.y + dy[i];
 
-            // Skip if the neighbor is out of bounds, not fully walkable, or already in the closed list
-            if (!isValid(newX, newY) || !isFullyWalkable(newX, newY) || closedList[newY][newX]) {
+            if (!isValid(newX, newY) || !isWalkable(newX, newY) || closedList[newY][newX]) {
                 continue;
             }
 
-            // Get the neighbor node from the nodes array
-            Node* neighbor = &nodes[newY * GRID_SIZE + newX];
-            // Calculate the new g cost for the neighbor
-            float newG = current.g + ((i < 4) ? 1.0f : 1.414f);  // Use 1.414 (sqrt(2)) for diagonal moves
+            float newG = current.g + ((i < 4) ? 1.0f : 1.414f);
 
-            // If the new g cost is lower, update the neighbor's costs and parent
+            Node* neighbor = &nodes[newY * GRID_SIZE + newX];
             if (newG < neighbor->g) {
                 neighbor->parent = &nodes[current.y * GRID_SIZE + current.x];
                 neighbor->g = newG;
                 neighbor->h = heuristic(newX, newY, goalX, goalY);
                 neighbor->f = neighbor->g + neighbor->h;
 
-                // If the neighbor is not in the open list, add it
                 if (!inPriorityQueue(openList, *neighbor)) {
                     push(openList, *neighbor);
                 }
@@ -216,7 +199,6 @@ Node* findPath(int startX, int startY, int goalX, int goalY) {
         }
     }
 
-    // Free memory if no path is found
     free(openList->nodes);
     free(openList);
     return NULL;  // No path found
