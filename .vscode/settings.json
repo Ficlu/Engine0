@@ -15,6 +15,7 @@
         "math.h": "c",
         "pathfinding.h": "c",
         "assert.h": "c",
-        "gameloop.h": "c"
+        "gameloop.h": "c",
+        "immintrin.h": "c"
     }
 }

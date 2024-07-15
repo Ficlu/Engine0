@@ -11,7 +11,7 @@ bin/gameloop.exe: $(OBJS)
 gameloop.o: gameloop.c gameloop.h rendering.h player.h entity.h enemy.h grid.h pathfinding.h
 	$(CC) $(CFLAGS) -c gameloop.c
 
-rendering.o: rendering.c rendering.h
+rendering.o: rendering.c rendering.h 
 	$(CC) $(CFLAGS) -c rendering.c
 
 clean:
@@ -23,7 +23,7 @@ TEST_OBJS = test_enemy.o enemy.o entity.o grid.o pathfinding.o player.o
 test: $(TEST_OBJS)
 	$(CC) -o bin/test_enemy $^ $(LDFLAGS) -lm
 
-test_enemy.o: test_enemy.c enemy.h entity.h grid.h pathfinding.h player.h
+test_enemy.o: test_enemy.c enemy.h entity.h grid.h pathfinding.h player.h imintrin.h
 	$(CC) $(CFLAGS) -c test_enemy.c
 
 clean_tests:

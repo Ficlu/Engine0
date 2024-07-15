@@ -5,6 +5,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <immintrin.h>
 
 int sgn(float x) {
     return (x > 0) - (x < 0);
@@ -154,6 +155,7 @@ void UpdateEntity(Entity* entity, Entity** allEntities, int entityCount) {
         }
     }
 }
+
 
 void updateEntityPath(Entity* entity) {
     int startX = entity->gridX;

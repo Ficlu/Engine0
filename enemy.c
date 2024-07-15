@@ -37,21 +37,27 @@ void MovementAI(Enemy* enemy) {
         enemy->entity.gridY == enemy->entity.targetGridY ||
         enemy->entity.needsPathfinding) {
         
-        // Choose a new random target
-        int newTargetX, newTargetY;
-       
-        if(rand() > 0.3){
-        do {
-            newTargetX = rand() % GRID_SIZE;
-            newTargetY = rand() % GRID_SIZE;
-        } while (!isWalkable(newTargetX, newTargetY));
+        // Only change path with a 30% chance
+        if (rand() % 100 < 30) {
+            // Choose a new random target
+            int newTargetX, newTargetY;
+            do {
+                newTargetX = rand() % GRID_SIZE;
+                newTargetY = rand() % GRID_SIZE;
+            } while (!isWalkable(newTargetX, newTargetY));
+
+            enemy->entity.finalGoalX = newTargetX;
+            enemy->entity.finalGoalY = newTargetY;
+            enemy->entity.needsPathfinding = true;
+            printf("Enemy at (%d, %d) set new target: (%d, %d)\n", 
+                   enemy->entity.gridX, enemy->entity.gridY, 
+                   enemy->entity.finalGoalX, enemy->entity.finalGoalY);
+        } else {
+            // If not changing path, just set the current position as the target
+            enemy->entity.finalGoalX = enemy->entity.gridX;
+            enemy->entity.finalGoalY = enemy->entity.gridY;
+            enemy->entity.needsPathfinding = false;
         }
-        enemy->entity.finalGoalX = newTargetX;
-        enemy->entity.finalGoalY = newTargetY;
-        enemy->entity.needsPathfinding = true;
-        printf("Enemy at (%d, %d) set new target: (%d, %d)\n", 
-               enemy->entity.gridX, enemy->entity.gridY, 
-               enemy->entity.finalGoalX, enemy->entity.finalGoalY);
     }
 }
 
