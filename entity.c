@@ -92,7 +92,7 @@ void UpdateEntity(Entity* entity, Entity** allEntities, int entityCount) {
     float newX = entity->posX + moveX;
     float newY = entity->posY + moveY;
 
-    // Check if we've reached or passed the target
+        // Check if we've reached or passed the target
     if ((dx > 0 && newX >= targetPosX) || (dx < 0 && newX <= targetPosX)) {
         newX = targetPosX;
     }
@@ -101,7 +101,7 @@ void UpdateEntity(Entity* entity, Entity** allEntities, int entityCount) {
     }
 
     bool canMove = true;
-    float entityHalfSize = TILE_SIZE / 2.0f;
+    float entityHalfSize = 2.0f / GRID_SIZE / 2.0f;  // Update TILE_SIZE calculation
 
     // Check only the center and the direction of movement
     int checkPoints[2][2] = {{0, 0}, {(int)sgn(moveX), (int)sgn(moveY)}};

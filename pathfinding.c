@@ -145,7 +145,10 @@ bool lineOfSight(int x0, int y0, int x1, int y1) {
 to the tile at the goal coords */
 Node* findPath(int startX, int startY, int goalX, int goalY) {
     PriorityQueue* openList = createPriorityQueue(GRID_SIZE * GRID_SIZE);
-    bool closedList[GRID_SIZE][GRID_SIZE] = {false};
+    bool** closedList = (bool**)malloc(sizeof(bool*) * GRID_SIZE);
+    for (int i = 0; i < GRID_SIZE; i++) {
+        closedList[i] = (bool*)calloc(GRID_SIZE, sizeof(bool));
+    }
     Node* nodes = (Node*)malloc(sizeof(Node) * GRID_SIZE * GRID_SIZE);
 
     for (int y = 0; y < GRID_SIZE; y++) {
@@ -168,6 +171,10 @@ Node* findPath(int startX, int startY, int goalX, int goalY) {
         Node current = pop(openList);
 
         if (current.x == goalX && current.y == goalY) {
+            for (int i = 0; i < GRID_SIZE; i++) {
+                free(closedList[i]);
+            }
+            free(closedList);
             free(openList->nodes);
             free(openList);
             return nodes;
@@ -199,6 +206,10 @@ Node* findPath(int startX, int startY, int goalX, int goalY) {
         }
     }
 
+    for (int i = 0; i < GRID_SIZE; i++) {
+        free(closedList[i]);
+    }
+    free(closedList);
     free(openList->nodes);
     free(openList);
     return NULL;  // No path found

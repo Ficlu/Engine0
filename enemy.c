@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+
 void InitEnemy(Enemy* enemy, int startGridX, int startGridY, float speed) {
     enemy->entity.gridX = startGridX;
     enemy->entity.gridY = startGridY;
@@ -28,7 +29,7 @@ void InitEnemy(Enemy* enemy, int startGridX, int startGridY, float speed) {
         enemy->entity.posY = 1.0f - (2.0f * enemy->entity.gridY / GRID_SIZE) - (1.0f / GRID_SIZE);
     }
 
-    printf("Enemy initialized at (%d, %d)\n", enemy->entity.gridX, enemy->entity.gridY);
+printf("Enemy initialized at (%d, %d)\n", enemy->entity.gridX, enemy->entity.gridY);
 }
 
 void MovementAI(Enemy* enemy) {
@@ -68,5 +69,12 @@ void UpdateEnemy(Enemy* enemy, Entity** allEntities, int entityCount) {
     // If the enemy has finished its current path, trigger a new target selection
     if (enemy->entity.currentPathIndex >= enemy->entity.cachedPathLength) {
         enemy->entity.needsPathfinding = true;
+    }
+}
+
+void CleanupEnemy(Enemy* enemy) {
+    if (enemy->entity.cachedPath) {
+        free(enemy->entity.cachedPath);
+        enemy->entity.cachedPath = NULL;
     }
 }

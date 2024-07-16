@@ -6,6 +6,7 @@
 #include <GL/glew.h>
 #include <SDL2/SDL_opengl.h>
 #include <stdatomic.h>
+#include <time.h>
 #include "rendering.h"
 #include "player.h"
 #include "enemy.h"
@@ -22,7 +23,7 @@ GLuint squareVAO;
 GLuint squareVBO;
 int vertexCount;
 GLuint colorUniform;
-#define MAX_ENTITIES 1000
+#define MAX_ENTITIES 100
 Player player;
 Enemy enemies[MAX_ENEMIES];
 
@@ -56,8 +57,14 @@ void GameLoop() {
     CleanUp();
 }
 
+void setGridSize(int size) {
+    initializeGrid(size);
+}
+
 void Initialize() {
     printf("Initializing...\n");
+
+    setGridSize(40); // Set the grid size at the beginning of initialization
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_EVENTS) < 0) {
         printf("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
@@ -130,25 +137,12 @@ void Initialize() {
     glBindVertexArray(0);
     printf("Square VAO and VBO created.\n");
 
-    // Initialize grid with some unwalkable tiles
-    for (int y = 0; y < GRID_SIZE; y++) {
-        for (int x = 0; x < GRID_SIZE; x++) {
-            grid[y][x].walkable = (rand() % 10 < 8);  // 80% chance of being walkable
-        }
-    }
-
-    // Ensure there's at least one walkable path across the grid
-    for (int x = 0; x < GRID_SIZE; x++) {
-        grid[GRID_SIZE / 2][x].walkable = true;
-    }
-    printf("Grid initialized.\n");
-
     // Initialize player on a walkable tile
     int playerGridX, playerGridY;
     do {
         playerGridX = rand() % GRID_SIZE;
         playerGridY = rand() % GRID_SIZE;
-    } while (!grid[playerGridY][playerGridX].walkable);
+    } while (!isWalkable(playerGridX, playerGridY));
 
     InitPlayer(&player, playerGridX, playerGridY, MOVE_SPEED);
     printf("Player initialized at (%d, %d).\n", playerGridX, playerGridY);
@@ -159,7 +153,7 @@ void Initialize() {
         do {
             enemyGridX = rand() % GRID_SIZE;
             enemyGridY = rand() % GRID_SIZE;
-        } while (!grid[enemyGridY][enemyGridX].walkable || 
+        } while (!isWalkable(enemyGridX, enemyGridY) || 
                  (enemyGridX == playerGridX && enemyGridY == playerGridY));
 
         InitEnemy(&enemies[i], enemyGridX, enemyGridY, MOVE_SPEED * 0.5f);
@@ -225,7 +219,7 @@ void Render() {
             float posX = (2.0f * x / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
             float posY = 1.0f - (2.0f * y / GRID_SIZE) - (1.0f / GRID_SIZE);
 
-            if (!grid[y][x].walkable) {
+            if (!isWalkable(x, y)) {
                 glUniform4f(colorUniform, 0.7f, 0.2f, 0.2f, 1.0f);  // Red for unwalkable
             } else {
                 glUniform4f(colorUniform, 0.2f, 0.7f, 0.2f, 1.0f);  // Green for walkable
@@ -248,7 +242,8 @@ void Render() {
     glUniform4f(colorUniform, 1.0f, 1.0f, 1.0f, 1.0f);  // White for grid lines
     glBindVertexArray(gridVAO);
     glDrawArrays(GL_LINES, 0, vertexCount);  // vertexCount should be the total number of points
-    // Render paths (new code)
+    
+    // Render paths
     glUniform4f(colorUniform, 1.0f, 1.0f, 0.0f, 0.5f);  // Semi-transparent yellow for paths
     glBindVertexArray(squareVAO);
     
@@ -299,11 +294,11 @@ void Render() {
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(enemyVertices), enemyVertices);
         glDrawArrays(GL_QUADS, 0, 4);
 
-        // Render enemy path (new code)
+        // Render enemy path
         if (enemies[i].entity.cachedPath) {
             for (int j = 0; j < enemies[i].entity.cachedPathLength; j++) {
                 float pathX = (2.0f * enemies[i].entity.cachedPath[j].x / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
-                float pathY = 1.0f - (2.0f * enemies[i].entity.cachedPath[j].y / GRID_SIZE) - (1.0f / GRID_SIZE);
+float pathY = 1.0f - (2.0f * enemies[i].entity.cachedPath[j].y / GRID_SIZE) - (1.0f / GRID_SIZE);
                 float pathVertices[] = {
                     pathX - TILE_SIZE / 4, pathY - TILE_SIZE / 4,
                     pathX + TILE_SIZE / 4, pathY - TILE_SIZE / 4,
@@ -372,6 +367,8 @@ void CleanUp() {
     if (window) {
         SDL_DestroyWindow(window);
     }
+    cleanupGrid();
+
     SDL_Quit();
     printf("Cleanup complete.\n");
 }
@@ -379,8 +376,12 @@ void CleanUp() {
 int main(int argc, char* argv[]) {
     (void)argc;
     (void)argv;
+
+    srand(time(NULL));  // Initialize random seed
+
     printf("Starting GameLoop...\n");
     GameLoop();
     printf("GameLoop ended.\n");
+
     return 0;
 }
