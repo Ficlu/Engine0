@@ -220,9 +220,11 @@ void Render() {
             float posY = 1.0f - (2.0f * y / GRID_SIZE) - (1.0f / GRID_SIZE);
 
             if (!isWalkable(x, y)) {
-                glUniform4f(colorUniform, 0.7f, 0.2f, 0.2f, 1.0f);  // Red for unwalkable
+                // Color for unwalkable tiles (Red)
+                glUniform4f(colorUniform, 0.7f, 0.2f, 0.2f, 0.2f);  // Modify this line
             } else {
-                glUniform4f(colorUniform, 0.2f, 0.7f, 0.2f, 1.0f);  // Green for walkable
+                // Color for walkable tiles (Green)
+                glUniform4f(colorUniform, 0.2f, 0.7f, 0.2f, 0.2f);  // Modify this line
             }
 
             float tileVertices[] = {
@@ -244,7 +246,6 @@ void Render() {
     glDrawArrays(GL_LINES, 0, vertexCount);  // vertexCount should be the total number of points
     
     // Render paths
-    glUniform4f(colorUniform, 1.0f, 1.0f, 0.0f, 0.5f);  // Semi-transparent yellow for paths
     glBindVertexArray(squareVAO);
     
     // Render player path
@@ -258,13 +259,14 @@ void Render() {
                 pathX + TILE_SIZE / 4, pathY + TILE_SIZE / 4,
                 pathX - TILE_SIZE / 4, pathY + TILE_SIZE / 4
             };
+            glUniform4f(colorUniform, 1.0f, 1.0f, 0.0f, 0.7f);  // Semi-transparent yellow for player path
             glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(pathVertices), pathVertices);
             glDrawArrays(GL_QUADS, 0, 4);
         }
     }
 
     // Render player
-    glUniform4f(colorUniform, 0.0f, 0.0f, 1.0f, 1.0f);  // Blue for player
+    glUniform4f(colorUniform, 0.1f, 0.1f, 1.0f, 0.6f);  // Blue for player
     float playerPosX = player.entity.posX;
     float playerPosY = player.entity.posY;
     float playerVertices[] = {
@@ -280,7 +282,6 @@ void Render() {
     glDrawArrays(GL_QUADS, 0, 4);
 
     // Render enemies
-    glUniform4f(colorUniform, 1.0f, 0.0f, 0.0f, 1.0f);  // Red for enemies
     for (int i = 0; i < MAX_ENEMIES; i++) {
         float enemyPosX = enemies[i].entity.posX;
         float enemyPosY = enemies[i].entity.posY;
@@ -291,6 +292,7 @@ void Render() {
             enemyPosX - TILE_SIZE / 2, enemyPosY + TILE_SIZE / 2
         };
 
+        glUniform4f(colorUniform, 1.0f, 0.0f, 0.0f, 0.6f);  // Red for enemies
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(enemyVertices), enemyVertices);
         glDrawArrays(GL_QUADS, 0, 4);
 
@@ -298,17 +300,17 @@ void Render() {
         if (enemies[i].entity.cachedPath) {
             for (int j = 0; j < enemies[i].entity.cachedPathLength; j++) {
                 float pathX = (2.0f * enemies[i].entity.cachedPath[j].x / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
-float pathY = 1.0f - (2.0f * enemies[i].entity.cachedPath[j].y / GRID_SIZE) - (1.0f / GRID_SIZE);
+                float pathY = 1.0f - (2.0f * enemies[i].entity.cachedPath[j].y / GRID_SIZE) - (1.0f / GRID_SIZE);
                 float pathVertices[] = {
                     pathX - TILE_SIZE / 4, pathY - TILE_SIZE / 4,
                     pathX + TILE_SIZE / 4, pathY - TILE_SIZE / 4,
                     pathX + TILE_SIZE / 4, pathY + TILE_SIZE / 4,
                     pathX - TILE_SIZE / 4, pathY + TILE_SIZE / 4
                 };
+                glUniform4f(colorUniform, enemies[i].pathColor.r, enemies[i].pathColor.g, enemies[i].pathColor.b, 0.4f);  // Use enemy's random color
                 glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(pathVertices), pathVertices);
                 glDrawArrays(GL_QUADS, 0, 4);
             }
-            glUniform4f(colorUniform, 1.0f, 0.0f, 0.0f, 1.0f);  // Red for enemies (reset color)
         }
     }
 

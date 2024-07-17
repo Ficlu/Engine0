@@ -5,8 +5,12 @@
 #include "entity.h"
 
 typedef struct {
+    float r, g, b;
+} Color;
+
+typedef struct {
     Entity entity;
-    // Add any enemy-specific fields here
+    Color pathColor; // Add this line
 } Enemy;
 
 void InitEnemy(Enemy* enemy, int startGridX, int startGridY, float speed);

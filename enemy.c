@@ -5,6 +5,13 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
+#include "enemy.h"
+#include "gameloop.h"
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdbool.h>
+
 void InitEnemy(Enemy* enemy, int startGridX, int startGridY, float speed) {
     enemy->entity.gridX = startGridX;
     enemy->entity.gridY = startGridY;
@@ -29,7 +36,13 @@ void InitEnemy(Enemy* enemy, int startGridX, int startGridY, float speed) {
         enemy->entity.posY = 1.0f - (2.0f * enemy->entity.gridY / GRID_SIZE) - (1.0f / GRID_SIZE);
     }
 
-printf("Enemy initialized at (%d, %d)\n", enemy->entity.gridX, enemy->entity.gridY);
+    // Initialize random color for the enemy path
+    enemy->pathColor.r = (float)rand() / RAND_MAX;
+    enemy->pathColor.g = (float)rand() / RAND_MAX;
+    enemy->pathColor.b = (float)rand() / RAND_MAX;
+
+    printf("Enemy initialized at (%d, %d) with path color (%f, %f, %f)\n", 
+           enemy->entity.gridX, enemy->entity.gridY, enemy->pathColor.r, enemy->pathColor.g, enemy->pathColor.b);
 }
 
 void MovementAI(Enemy* enemy) {
