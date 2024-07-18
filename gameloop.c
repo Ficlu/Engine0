@@ -27,6 +27,89 @@ GLuint colorUniform;
 Player player;
 Enemy enemies[MAX_ENEMIES];
 
+
+// Simple noise function
+float noise(int x, int y) {
+    int n = x + y * 57;
+    n = (n << 13) ^ n;
+    return (1.0f - ((n * (n * n * 15731 + 789221) + 1376312589) & 0x7fffffff) / 1073741824.0f);
+}
+
+// Simple smoothed noise
+float smoothNoise(int x, int y) {
+    float corners = (noise(x-1, y-1) + noise(x+1, y-1) + noise(x-1, y+1) + noise(x+1, y+1)) / 16.0f;
+    float sides = (noise(x-1, y) + noise(x+1, y) + noise(x, y-1) + noise(x, y+1)) / 8.0f;
+    float center = noise(x, y) / 4.0f;
+    return corners + sides + center;
+}
+
+// Interpolated noise
+float interpolatedNoise(float x, float y) {
+    int intX = (int)x;
+    float fracX = x - intX;
+    int intY = (int)y;
+    float fracY = y - intY;
+
+    float v1 = smoothNoise(intX, intY);
+    float v2 = smoothNoise(intX + 1, intY);
+    float v3 = smoothNoise(intX, intY + 1);
+    float v4 = smoothNoise(intX + 1, intY + 1);
+
+    float i1 = v1 * (1 - fracX) + v2 * fracX;
+    float i2 = v3 * (1 - fracX) + v4 * fracX;
+
+    return i1 * (1 - fracY) + i2 * fracY;
+}
+
+// Perlin noise
+float perlinNoise(float x, float y, float persistence, int octaves) {
+    float total = 0;
+    float frequency = 1;
+    float amplitude = 1;
+    float maxValue = 0;
+
+    for(int i = 0; i < octaves; i++) {
+        total += interpolatedNoise(x * frequency, y * frequency) * amplitude;
+        maxValue += amplitude;
+        amplitude *= persistence;
+        frequency *= 2;
+    }
+
+    return total / maxValue;
+}
+
+void generateTerrain() {
+    for (int y = 0; y < GRID_SIZE; y++) {
+        for (int x = 0; x < GRID_SIZE; x++) {
+            float biomeValue = perlinNoise(x * 0.1f, y * 0.1f, 0.5f, 4);
+            float heightValue = perlinNoise(x * 0.2f, y * 0.2f, 0.5f, 4);
+
+            // Determine biome
+            BiomeType biome;
+            if (biomeValue < 0.2f) biome = BIOME_OCEAN;
+            else if (biomeValue < 0.3f) biome = BIOME_BEACH;
+            else if (biomeValue < 0.5f) biome = BIOME_PLAINS;
+            else if (biomeValue < 0.7f) biome = BIOME_FOREST;
+            else if (biomeValue < 0.8f) biome = BIOME_DESERT;
+            else biome = BIOME_MOUNTAINS;
+
+            grid[y][x].biomeType = biome;
+
+            // Determine terrain type based on biome and height
+            if (heightValue > biomeData[biome].heightThresholds[0]) {
+                grid[y][x].terrainType = biomeData[biome].terrainTypes[0];
+            } else if (heightValue > biomeData[biome].heightThresholds[1]) {
+                grid[y][x].terrainType = biomeData[biome].terrainTypes[1];
+            } else {
+                grid[y][x].terrainType = biomeData[biome].terrainTypes[2];
+            }
+
+            // Set walkability
+            grid[y][x].isWalkable = (grid[y][x].terrainType != TERRAIN_WATER);
+        }
+    }
+}
+
 void GameLoop() {
     Initialize();
     printf("Entering main game loop.\n");
@@ -57,14 +140,11 @@ void GameLoop() {
     CleanUp();
 }
 
-void setGridSize(int size) {
-    initializeGrid(size);
-}
-
 void Initialize() {
     printf("Initializing...\n");
 
     setGridSize(40); // Set the grid size at the beginning of initialization
+    generateTerrain(); // Generate the Minecraft-style terrain
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_EVENTS) < 0) {
         printf("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
@@ -142,7 +222,7 @@ void Initialize() {
     do {
         playerGridX = rand() % GRID_SIZE;
         playerGridY = rand() % GRID_SIZE;
-    } while (!isWalkable(playerGridX, playerGridY));
+    } while (!grid[playerGridY][playerGridX].isWalkable);
 
     InitPlayer(&player, playerGridX, playerGridY, MOVE_SPEED);
     printf("Player initialized at (%d, %d).\n", playerGridX, playerGridY);
@@ -153,7 +233,7 @@ void Initialize() {
         do {
             enemyGridX = rand() % GRID_SIZE;
             enemyGridY = rand() % GRID_SIZE;
-        } while (!isWalkable(enemyGridX, enemyGridY) || 
+        } while (!grid[enemyGridY][enemyGridX].isWalkable || 
                  (enemyGridX == playerGridX && enemyGridY == playerGridY));
 
         InitEnemy(&enemies[i], enemyGridX, enemyGridY, MOVE_SPEED * 0.5f);
@@ -178,7 +258,7 @@ void HandleInput() {
                 int gridY = mouseY / (WINDOW_HEIGHT / GRID_SIZE);
 
                 // Ensure the clicked tile is within the grid bounds and walkable
-                if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE && isWalkable(gridX, gridY)) {
+                if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE && grid[gridY][gridX].isWalkable) {
                     player.entity.finalGoalX = gridX;
                     player.entity.finalGoalY = gridY;
                     player.entity.targetGridX = player.entity.gridX;  // Start from current position
@@ -219,12 +299,22 @@ void Render() {
             float posX = (2.0f * x / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
             float posY = 1.0f - (2.0f * y / GRID_SIZE) - (1.0f / GRID_SIZE);
 
-            if (!isWalkable(x, y)) {
-                // Color for unwalkable tiles (Red)
-                glUniform4f(colorUniform, 0.7f, 0.2f, 0.2f, 0.2f);  // Modify this line
-            } else {
-                // Color for walkable tiles (Green)
-                glUniform4f(colorUniform, 0.2f, 0.7f, 0.2f, 0.2f);  // Modify this line
+            switch (grid[y][x].terrainType) {
+                case TERRAIN_WATER:
+                    glUniform4f(colorUniform, 0.0f, 0.0f, 0.8f, 1.0f);
+                    break;
+                case TERRAIN_SAND:
+                    glUniform4f(colorUniform, 0.9f, 0.9f, 0.5f, 1.0f);
+                    break;
+                case TERRAIN_GRASS:
+                    glUniform4f(colorUniform, 0.0f, 0.8f, 0.0f, 1.0f);
+                    break;
+                case TERRAIN_DIRT:
+                    glUniform4f(colorUniform, 0.5f, 0.35f, 0.05f, 1.0f);
+                    break;
+                case TERRAIN_STONE:
+                    glUniform4f(colorUniform, 0.5f, 0.5f, 0.5f, 1.0f);
+                    break;
             }
 
             float tileVertices[] = {
@@ -273,7 +363,7 @@ void Render() {
         playerPosX - TILE_SIZE / 2, playerPosY - TILE_SIZE / 2,
         playerPosX + TILE_SIZE / 2, playerPosY - TILE_SIZE / 2,
         playerPosX + TILE_SIZE / 2, playerPosY + TILE_SIZE / 2,
-        playerPosX - TILE_SIZE / 2, playerPosY + TILE_SIZE / 2
+playerPosX - TILE_SIZE / 2, playerPosY + TILE_SIZE / 2
     };
 
     glBindVertexArray(squareVAO);

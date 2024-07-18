@@ -27,5 +27,5 @@ void UpdateGameLogic();
 void Render();
 int PhysicsLoop(void* arg);
 void CleanUp();
-
+void generateTerrain();
 #endif // GAMELOOP_H

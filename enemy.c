@@ -47,9 +47,9 @@ void InitEnemy(Enemy* enemy, int startGridX, int startGridY, float speed) {
 
 void MovementAI(Enemy* enemy) {
     // Check if the enemy has reached its current target or needs a new target
-    if (enemy->entity.gridX == enemy->entity.targetGridX && 
-        enemy->entity.gridY == enemy->entity.targetGridY ||
-        enemy->entity.needsPathfinding) {
+if ((enemy->entity.gridX == enemy->entity.targetGridX &&
+     enemy->entity.gridY == enemy->entity.targetGridY) ||
+    enemy->entity.needsPathfinding) {
         
         // Only change path with a 30% chance
         if (rand() % 100 < 30) {
