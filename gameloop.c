@@ -13,7 +13,7 @@
 #include "grid.h"
 #include "entity.h"
 #include "pathfinding.h"
-
+#define UNWALKABLE_PROBABILITY 0.04f  // 10% chance for a tile to be unwalkable
 atomic_bool isRunning = true;
 SDL_Window* window = NULL;
 SDL_GLContext mainContext;
@@ -32,7 +32,7 @@ Enemy enemies[MAX_ENEMIES];
 float noise(int x, int y) {
     int n = x + y * 57;
     n = (n << 13) ^ n;
-    return (1.0f - ((n * (n * n * 15731 + 789221) + 1376312589) & 0x7fffffff) / 1073741824.0f);
+    return (1.0f - ((n * (n * n * 15731 + 789221) + 1376312589 + rand()) & 0x7fffffff) / 1073741824.0f);
 }
 
 // Simple smoothed noise
@@ -79,10 +79,17 @@ float perlinNoise(float x, float y, float persistence, int octaves) {
 }
 
 void generateTerrain() {
+    float randomOffset = ((float)rand() / RAND_MAX) * 0.2f - 0.1f;  // Random value between -0.1 and 0.1
+
+    // First pass: generate basic terrain
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
-            float biomeValue = perlinNoise(x * 0.1f, y * 0.1f, 0.5f, 4);
-            float heightValue = perlinNoise(x * 0.2f, y * 0.2f, 0.5f, 4);
+            float biomeValue = perlinNoise(x * 0.1f, y * 0.1f, 0.5f, 4) + randomOffset;
+            float heightValue = perlinNoise(x * 0.2f, y * 0.2f, 0.5f, 4) + randomOffset;
+
+            // Clamp values to [0, 1] range
+            biomeValue = biomeValue < 0 ? 0 : (biomeValue > 1 ? 1 : biomeValue);
+            heightValue = heightValue < 0 ? 0 : (heightValue > 1 ? 1 : heightValue);
 
             // Determine biome
             BiomeType biome;
@@ -104,18 +111,41 @@ void generateTerrain() {
                 grid[y][x].terrainType = biomeData[biome].terrainTypes[2];
             }
 
-            // Set walkability
+            // Set initial walkability
             grid[y][x].isWalkable = (grid[y][x].terrainType != TERRAIN_WATER);
         }
     }
-}
 
+    // Second pass: randomly make some tiles unwalkable and update their terrain type
+    for (int y = 0; y < GRID_SIZE; y++) {
+        for (int x = 0; x < GRID_SIZE; x++) {
+            if (grid[y][x].isWalkable && ((float)rand() / RAND_MAX) < UNWALKABLE_PROBABILITY) {
+                grid[y][x].isWalkable = false;
+                grid[y][x].terrainType = TERRAIN_UNWALKABLE;
+            }
+        }
+    }
+
+    // Ensure the center of the map is walkable for player spawn
+    int centerX = GRID_SIZE / 2;
+    int centerY = GRID_SIZE / 2;
+    for (int y = centerY - 1; y <= centerY + 1; y++) {
+        for (int x = centerX - 1; x <= centerX + 1; x++) {
+            if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
+                grid[y][x].isWalkable = true;
+                if (grid[y][x].terrainType == TERRAIN_WATER || grid[y][x].terrainType == TERRAIN_UNWALKABLE) {
+                    grid[y][x].terrainType = TERRAIN_GRASS;
+                }
+            }
+        }
+    }
+}
 void GameLoop() {
     Initialize();
     printf("Entering main game loop.\n");
 
     SDL_Thread* physicsThread = SDL_CreateThread(PhysicsLoop, "PhysicsThread", NULL);
-
+    srand((unsigned int)time(NULL));
     Uint32 lastLogicTick = SDL_GetTicks();
     Uint32 lastRenderTick = SDL_GetTicks();
 
@@ -315,6 +345,9 @@ void Render() {
                 case TERRAIN_STONE:
                     glUniform4f(colorUniform, 0.5f, 0.5f, 0.5f, 1.0f);
                     break;
+                case TERRAIN_UNWALKABLE:
+                    glUniform4f(colorUniform, 0.3f, 0.3f, 0.3f, 1.0f);  // Dark gray for unwalkable tiles
+                    break;
             }
 
             float tileVertices[] = {
@@ -363,7 +396,7 @@ void Render() {
         playerPosX - TILE_SIZE / 2, playerPosY - TILE_SIZE / 2,
         playerPosX + TILE_SIZE / 2, playerPosY - TILE_SIZE / 2,
         playerPosX + TILE_SIZE / 2, playerPosY + TILE_SIZE / 2,
-playerPosX - TILE_SIZE / 2, playerPosY + TILE_SIZE / 2
+        playerPosX - TILE_SIZE / 2, playerPosY + TILE_SIZE / 2
     };
 
     glBindVertexArray(squareVAO);

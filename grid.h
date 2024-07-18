@@ -10,7 +10,8 @@ typedef enum {
     TERRAIN_SAND,
     TERRAIN_GRASS,
     TERRAIN_DIRT,
-    TERRAIN_STONE
+    TERRAIN_STONE,
+    TERRAIN_UNWALKABLE  // New terrain type for unwalkable tiles
 } TerrainType;
 
 typedef enum {
