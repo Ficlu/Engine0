@@ -56,7 +56,7 @@ void UpdateEntity(Entity* entity, Entity** allEntities, int entityCount) {
     }
 
     // If very close to target, interpolate to it
-    if (distance < 0.005f) {
+    if (distance < 0.002f) {
         int snapX, snapY;
         findNearestWalkableTile(targetPosX, targetPosY, &snapX, &snapY);
         
@@ -64,7 +64,7 @@ void UpdateEntity(Entity* entity, Entity** allEntities, int entityCount) {
         float snapPosY = 1.0f - (2.0f * snapY / GRID_SIZE) - (1.0f / GRID_SIZE);
         
         // Interpolate position
-        float t = 0.005f; // Adjust this value to control the speed of interpolation
+        float t = 0.008f; // Adjust this value to control the speed of interpolation
         entity->posX = entity->posX * (1 - t) + snapPosX * t;
         entity->posY = entity->posY * (1 - t) + snapPosY * t;
         
