@@ -5,8 +5,11 @@
 
 typedef struct {
     Entity entity;
-    float cameraOffsetX;
-    float cameraOffsetY;
+    float cameraTargetX;
+    float cameraTargetY;
+    float cameraCurrentX;
+    float cameraCurrentY;
+    float cameraSpeed;
 } Player;
 
 void InitPlayer(Player* player, int startGridX, int startGridY, float speed);

@@ -20,15 +20,24 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
     player->entity.currentPathIndex = 0;
     player->entity.isPlayer = true;
 
+    // Initialize camera position to player position
+    player->cameraTargetX = player->entity.posX;
+    player->cameraTargetY = player->entity.posY;
+    player->cameraCurrentX = player->entity.posX;
+    player->cameraCurrentY = player->entity.posY;
+    player->cameraSpeed = 0.1f; // Adjust this value to change camera responsiveness
+
     // Ensure the player starts on a walkable tile
     while (!isWalkable(player->entity.gridX, player->entity.gridY)) {
         player->entity.gridX = rand() % GRID_SIZE;
         player->entity.gridY = rand() % GRID_SIZE;
         player->entity.posX = (2.0f * player->entity.gridX / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
         player->entity.posY = 1.0f - (2.0f * player->entity.gridY / GRID_SIZE) - (1.0f / GRID_SIZE);
+        player->cameraTargetX = player->entity.posX;
+        player->cameraTargetY = player->entity.posY;
+        player->cameraCurrentX = player->entity.posX;
+        player->cameraCurrentY = player->entity.posY;
     }
-    player->cameraOffsetX = player->entity.posX;
-    player->cameraOffsetY = player->entity.posY;
 
     printf("Player initialized at (%d, %d)\n", player->entity.gridX, player->entity.gridY);
 }
@@ -36,12 +45,22 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
 void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
     UpdateEntity(&player->entity, allEntities, entityCount);
 
-    // Smoothly update camera offset
-    float lerpFactor = 0.1f; // Adjust this factor to change the smoothness
-    player->cameraOffsetX = lerp(player->cameraOffsetX, player->entity.posX, lerpFactor);
-    player->cameraOffsetY = lerp(player->cameraOffsetY, player->entity.posY, lerpFactor);
-}
+    // Update camera target position
+    player->cameraTargetX = player->entity.posX;
+    player->cameraTargetY = player->entity.posY;
 
+    // Move camera towards target position
+    float dx = player->cameraTargetX - player->cameraCurrentX;
+    float dy = player->cameraTargetY - player->cameraCurrentY;
+    float distance = sqrtf(dx * dx + dy * dy);
+
+    if (distance > 0.001f) {
+        float moveX = dx * player->cameraSpeed;
+        float moveY = dy * player->cameraSpeed;
+        player->cameraCurrentX += moveX;
+        player->cameraCurrentY += moveY;
+    }
+}
 void CleanupPlayer(Player* player) {
     if (player->entity.cachedPath) {
         free(player->entity.cachedPath);

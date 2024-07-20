@@ -14,7 +14,7 @@
 #include "entity.h"
 #include "pathfinding.h"
 
-#define UNWALKABLE_PROBABILITY 0.04f  // 10% chance for a tile to be unwalkable
+#define UNWALKABLE_PROBABILITY 0.04f
 
 atomic_bool isRunning = true;
 SDL_Window* window = NULL;
@@ -30,14 +30,8 @@ GLuint colorUniform;
 Player player;
 Enemy enemies[MAX_ENEMIES];
 
-// Function declarations
 void setGridSize(int size);
 void generateTerrain();
-
-// Lerp function for smooth camera movement
-float lerp(float a, float b, float t) {
-    return a + t * (b - a);
-}
 
 void GameLoop() {
     Initialize();
@@ -62,7 +56,7 @@ void GameLoop() {
             lastRenderTick = currentTick;
         }
 
-        SDL_Delay(1); // minimal delay to yield CPU
+        SDL_Delay(1);
     }
 
     SDL_WaitThread(physicsThread, NULL);
@@ -184,7 +178,7 @@ void Initialize() {
 
 void HandleInput() {
     SDL_Event event;
-    float zoomFactor = 3.0f; // Define the zoom factor
+    float zoomFactor = 3.0f;
     
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_QUIT) {
@@ -194,23 +188,19 @@ void HandleInput() {
                 int mouseX, mouseY;
                 SDL_GetMouseState(&mouseX, &mouseY);
 
-                // Convert screen coordinates to normalized device coordinates (NDC)
                 float ndcX = (2.0f * mouseX / WINDOW_WIDTH - 1.0f) / zoomFactor;
                 float ndcY = (1.0f - 2.0f * mouseY / WINDOW_HEIGHT) / zoomFactor;
 
-                // Adjust for camera offset
-                float worldX = ndcX + player.cameraOffsetX;
-                float worldY = ndcY + player.cameraOffsetY;
+                float worldX = ndcX + player.cameraCurrentX;
+                float worldY = ndcY + player.cameraCurrentY;
 
-                // Convert NDC to grid coordinates
                 int gridX = (int)((worldX + 1.0f) * GRID_SIZE / 2);
                 int gridY = (int)((1.0f - worldY) * GRID_SIZE / 2);
 
-                // Ensure the clicked tile is within the grid bounds and walkable
                 if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE && grid[gridY][gridX].isWalkable) {
                     player.entity.finalGoalX = gridX;
                     player.entity.finalGoalY = gridY;
-                    player.entity.targetGridX = player.entity.gridX;  // Start from current position
+                    player.entity.targetGridX = player.entity.gridX;
                     player.entity.targetGridY = player.entity.gridY;
                     player.entity.needsPathfinding = true;
 
@@ -230,7 +220,6 @@ void UpdateGameLogic() {
 
     UpdatePlayer(&player, allEntities, MAX_ENTITIES);
 
-    // Update enemies
     for (int i = 0; i < MAX_ENEMIES; i++) {
         UpdateEnemy(&enemies[i], allEntities, MAX_ENTITIES);
     }
@@ -244,12 +233,10 @@ void Render() {
     glBindTexture(GL_TEXTURE_2D, textureAtlas);
     glUniform1i(textureUniform, 0);
 
-    // Apply camera offset and zoom
-    float cameraOffsetX = player.cameraOffsetX;
-    float cameraOffsetY = player.cameraOffsetY;
+    float cameraOffsetX = player.cameraCurrentX;
+    float cameraOffsetY = player.cameraCurrentY;
     float zoomFactor = 3.0f;
 
-    // Render tiles
     glBindVertexArray(squareVAO);
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
@@ -344,8 +331,8 @@ int PhysicsLoop(void* arg) {
         }
 
         UpdateEntity(&player.entity, allEntities, MAX_ENTITIES);
+        UpdatePlayer(&player, allEntities, MAX_ENTITIES);
 
-        // Update enemies
         for (int i = 0; i < MAX_ENEMIES; i++) {
             UpdateEntity(&enemies[i].entity, allEntities, MAX_ENTITIES);
         }
