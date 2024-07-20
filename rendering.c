@@ -189,8 +189,9 @@ GLuint loadBMP(const char* filePath) {
     unsigned int width = *(int*)&(header[0x12]);
     unsigned int height = *(int*)&(header[0x16]);
 
-    if (imageSize == 0) imageSize = width * height * 3; // 3 : one byte for each Red, Green and Blue component
-    if (dataPos == 0) dataPos = 54; // BMP header is done that way
+    // Some BMP files are misformatted, guess missing information
+    if (imageSize == 0) imageSize = width * height * 3;
+    if (dataPos == 0) dataPos = 54;
 
     // Create buffer
     unsigned char* data = (unsigned char*)malloc(imageSize);
@@ -205,20 +206,20 @@ GLuint loadBMP(const char* filePath) {
     GLuint textureID;
     glGenTextures(1, &textureID);
 
-    // "Bind" the newly created texture: all future texture functions will modify this texture
+    // "Bind" the newly created texture
     glBindTexture(GL_TEXTURE_2D, textureID);
 
     // Give the image to OpenGL
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_BGR, GL_UNSIGNED_BYTE, data);
+
     free(data);
 
-    // Trilinear filtering
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
-    glGenerateMipmap(GL_TEXTURE_2D);
+    // Set texture parameters
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    printf("Texture loaded successfully: %s\n", filePath);
+    printf("Texture loaded successfully: %s (Width: %d, Height: %d)\n", filePath, width, height);
     return textureID;
 }

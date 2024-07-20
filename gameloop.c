@@ -176,7 +176,6 @@ void Initialize() {
 
     printf("Initialization complete.\n");
 }
-
 void HandleInput() {
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
@@ -221,6 +220,7 @@ void UpdateGameLogic() {
     }
 }
 
+
 void Render() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -238,20 +238,29 @@ void Render() {
 
             float texX = 0.0f;
             float texY = 0.0f;
-            float texWidth = 0.5f;  // Assuming 2 sprites horizontally in the atlas
-            float texHeight = 1.0f; // Assuming 1 sprite vertically in the atlas
+            float texWidth = 0.5f;  // 512 / 1024
+            float texHeight = 1.0f / 3.0f;  // 512 / 1536
 
-            // Choose texture based on terrain type
             switch (grid[y][x].terrainType) {
                 case TERRAIN_GRASS:
+                    texX = 0.5f;
+                    texY = 1.0f / 3.0f;
+                    break;
+                case TERRAIN_SAND:
                     texX = 0.0f;
+                    texY = 2.0f / 3.0f;
                     break;
                 case TERRAIN_WATER:
                     texX = 0.5f;
+                    texY = 2.0f / 3.0f;
                     break;
-                // Add more cases for other terrain types
+                case TERRAIN_STONE:
+                    texX = 0.5f;
+                    texY = 0.0f;
+                    break;
                 default:
-                    texX = 0.0f;  // Default to grass
+                    texX = 0.5f;
+                    texY = 1.0f / 3.0f;  // Default to grass
             }
 
             float vertices[] = {
@@ -267,48 +276,42 @@ void Render() {
         }
     }
 
-    // Render grid
-    glUniform4f(colorUniform, 1.0f, 1.0f, 1.0f, 1.0f);  // White for grid lines
-    glBindVertexArray(gridVAO);
-    glDrawArrays(GL_LINES, 0, vertexCount);
-    
-    // Render player
-    glBindVertexArray(squareVAO);
-    glUniform4f(colorUniform, 0.1f, 0.1f, 1.0f, 0.6f);  // Blue for player
-    float playerPosX = player.entity.posX;
-    float playerPosY = player.entity.posY;
-    float playerVertices[] = {
-        playerPosX - TILE_SIZE/2, playerPosY - TILE_SIZE/2, 0.0f, 1.0f,
-        playerPosX + TILE_SIZE/2, playerPosY - TILE_SIZE/2, 0.5f, 1.0f,
-        playerPosX + TILE_SIZE/2, playerPosY + TILE_SIZE/2, 0.5f, 0.0f,
-        playerPosX - TILE_SIZE/2, playerPosY + TILE_SIZE/2, 0.0f, 0.0f
-    };
-
-    glBindBuffer(GL_ARRAY_BUFFER, squareVBO);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(playerVertices), playerVertices);
-    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-
-    // Render enemies (similar to player rendering)
+    // Render enemies
+    float enemyTexX = 0.0f;
+    float enemyTexY = 1.0f / 3.0f;
+    float enemyTexWidth = 0.5f;
+    float enemyTexHeight = 1.0f / 3.0f;
     for (int i = 0; i < MAX_ENEMIES; i++) {
-        glUniform4f(colorUniform, 1.0f, 0.0f, 0.0f, 0.6f);  // Red for enemies
-        float enemyPosX = enemies[i].entity.posX;
-        float enemyPosY = enemies[i].entity.posY;
         float enemyVertices[] = {
-            enemyPosX - TILE_SIZE/2, enemyPosY - TILE_SIZE/2, 0.5f, 1.0f,
-            enemyPosX + TILE_SIZE/2, enemyPosY - TILE_SIZE/2, 1.0f, 1.0f,
-            enemyPosX + TILE_SIZE/2, enemyPosY + TILE_SIZE/2, 1.0f, 0.0f,
-            enemyPosX - TILE_SIZE/2, enemyPosY + TILE_SIZE/2, 0.5f, 0.0f
+            enemies[i].entity.posX - TILE_SIZE/2, enemies[i].entity.posY - TILE_SIZE/2, enemyTexX, enemyTexY + enemyTexHeight,
+            enemies[i].entity.posX + TILE_SIZE/2, enemies[i].entity.posY - TILE_SIZE/2, enemyTexX + enemyTexWidth, enemyTexY + enemyTexHeight,
+            enemies[i].entity.posX + TILE_SIZE/2, enemies[i].entity.posY + TILE_SIZE/2, enemyTexX + enemyTexWidth, enemyTexY,
+            enemies[i].entity.posX - TILE_SIZE/2, enemies[i].entity.posY + TILE_SIZE/2, enemyTexX, enemyTexY
         };
-
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(enemyVertices), enemyVertices);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     }
+
+    // Render player
+    float playerTexX = 0.0f;
+    float playerTexY = 0.0f;
+    float playerTexWidth = 0.5f;
+    float playerTexHeight = 1.0f / 3.0f;
+    float playerVertices[] = {
+        player.entity.posX - TILE_SIZE/2, player.entity.posY - TILE_SIZE/2, playerTexX, playerTexY + playerTexHeight,
+        player.entity.posX + TILE_SIZE/2, player.entity.posY - TILE_SIZE/2, playerTexX + playerTexWidth, playerTexY + playerTexHeight,
+        player.entity.posX + TILE_SIZE/2, player.entity.posY + TILE_SIZE/2, playerTexX + playerTexWidth, playerTexY,
+        player.entity.posX - TILE_SIZE/2, player.entity.posY + TILE_SIZE/2, playerTexX, playerTexY
+    };
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(playerVertices), playerVertices);
+    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 
     SDL_GL_SwapWindow(window);
 }
+
 int PhysicsLoop(void* arg) {
     (void)arg;
     while (atomic_load(&isRunning)) {
