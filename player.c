@@ -27,11 +27,17 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
         player->entity.posX = (2.0f * player->entity.gridX / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
         player->entity.posY = 1.0f - (2.0f * player->entity.gridY / GRID_SIZE) - (1.0f / GRID_SIZE);
     }
+player->cameraOffsetX = 0.0f;
+    player->cameraOffsetY = 0.0f;
 
     printf("Player initialized at (%d, %d)\n", player->entity.gridX, player->entity.gridY);
 }
 void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
     UpdateEntity(&player->entity, allEntities, entityCount);
+
+    // Update camera offset
+    player->cameraOffsetX = player->entity.posX;
+    player->cameraOffsetY = player->entity.posY;
 }
 
 void CleanupPlayer(Player* player) {

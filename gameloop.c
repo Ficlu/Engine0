@@ -229,12 +229,16 @@ void Render() {
     glBindTexture(GL_TEXTURE_2D, textureAtlas);
     glUniform1i(textureUniform, 0);
 
+    // Apply camera offset
+    float cameraOffsetX = player.cameraOffsetX;
+    float cameraOffsetY = player.cameraOffsetY;
+
     // Render tiles
     glBindVertexArray(squareVAO);
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
-            float posX = (2.0f * x / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
-            float posY = 1.0f - (2.0f * y / GRID_SIZE) - (1.0f / GRID_SIZE);
+            float posX = (2.0f * x / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE) - cameraOffsetX;
+            float posY = 1.0f - (2.0f * y / GRID_SIZE) - (1.0f / GRID_SIZE) - cameraOffsetY;
 
             float texX = 0.0f;
             float texY = 0.0f;
@@ -283,10 +287,10 @@ void Render() {
     float enemyTexHeight = 1.0f / 3.0f;
     for (int i = 0; i < MAX_ENEMIES; i++) {
         float enemyVertices[] = {
-            enemies[i].entity.posX - TILE_SIZE/2, enemies[i].entity.posY - TILE_SIZE/2, enemyTexX, enemyTexY + enemyTexHeight,
-            enemies[i].entity.posX + TILE_SIZE/2, enemies[i].entity.posY - TILE_SIZE/2, enemyTexX + enemyTexWidth, enemyTexY + enemyTexHeight,
-            enemies[i].entity.posX + TILE_SIZE/2, enemies[i].entity.posY + TILE_SIZE/2, enemyTexX + enemyTexWidth, enemyTexY,
-            enemies[i].entity.posX - TILE_SIZE/2, enemies[i].entity.posY + TILE_SIZE/2, enemyTexX, enemyTexY
+            enemies[i].entity.posX - TILE_SIZE/2 - cameraOffsetX, enemies[i].entity.posY - TILE_SIZE/2 - cameraOffsetY, enemyTexX, enemyTexY + enemyTexHeight,
+            enemies[i].entity.posX + TILE_SIZE/2 - cameraOffsetX, enemies[i].entity.posY - TILE_SIZE/2 - cameraOffsetY, enemyTexX + enemyTexWidth, enemyTexY + enemyTexHeight,
+            enemies[i].entity.posX + TILE_SIZE/2 - cameraOffsetX, enemies[i].entity.posY + TILE_SIZE/2 - cameraOffsetY, enemyTexX + enemyTexWidth, enemyTexY,
+            enemies[i].entity.posX - TILE_SIZE/2 - cameraOffsetX, enemies[i].entity.posY + TILE_SIZE/2 - cameraOffsetY, enemyTexX, enemyTexY
         };
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(enemyVertices), enemyVertices);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
@@ -298,10 +302,10 @@ void Render() {
     float playerTexWidth = 0.5f;
     float playerTexHeight = 1.0f / 3.0f;
     float playerVertices[] = {
-        player.entity.posX - TILE_SIZE/2, player.entity.posY - TILE_SIZE/2, playerTexX, playerTexY + playerTexHeight,
-        player.entity.posX + TILE_SIZE/2, player.entity.posY - TILE_SIZE/2, playerTexX + playerTexWidth, playerTexY + playerTexHeight,
-        player.entity.posX + TILE_SIZE/2, player.entity.posY + TILE_SIZE/2, playerTexX + playerTexWidth, playerTexY,
-        player.entity.posX - TILE_SIZE/2, player.entity.posY + TILE_SIZE/2, playerTexX, playerTexY
+        -TILE_SIZE/2, -TILE_SIZE/2, playerTexX, playerTexY + playerTexHeight,
+        TILE_SIZE/2, -TILE_SIZE/2, playerTexX + playerTexWidth, playerTexY + playerTexHeight,
+        TILE_SIZE/2, TILE_SIZE/2, playerTexX + playerTexWidth, playerTexY,
+        -TILE_SIZE/2, TILE_SIZE/2, playerTexX, playerTexY
     };
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(playerVertices), playerVertices);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);

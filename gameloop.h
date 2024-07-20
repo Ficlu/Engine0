@@ -16,7 +16,7 @@
 #define MOVE_SPEED 0.005f
 #define GAME_LOGIC_INTERVAL_MS 600
 #define FRAME_TIME_MS 24
-
+#define CAMERA_ZOOM 4.00f  
 #define TILE_SIZE (2.0f / GRID_SIZE)
 
 void setGridSize(int size);

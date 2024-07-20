@@ -4,8 +4,12 @@
 
 #include "entity.h"
 
+
+// player.h
 typedef struct {
     Entity entity;
+    float cameraOffsetX;
+    float cameraOffsetY;
 } Player;
 
 void InitPlayer(Player* player, int startGridX, int startGridY, float speed);
