@@ -45,21 +45,22 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
 void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
     UpdateEntity(&player->entity, allEntities, entityCount);
 
-    // Update camera target position
-    player->cameraTargetX = player->entity.posX;
-    player->cameraTargetY = player->entity.posY;
+    // Calculate look-ahead based on player's movement
+    float dx = player->entity.posX - player->cameraCurrentX;
+    float dy = player->entity.posY - player->cameraCurrentY;
+    float lookAheadFactor = 0.5f; // Reduced from 2.0f
 
-    // Move camera towards target position
-    float dx = player->cameraTargetX - player->cameraCurrentX;
-    float dy = player->cameraTargetY - player->cameraCurrentY;
-    float distance = sqrtf(dx * dx + dy * dy);
+    player->lookAheadX = dx * lookAheadFactor;
+    player->lookAheadY = dy * lookAheadFactor;
 
-    if (distance > 0.001f) {
-        float moveX = dx * player->cameraSpeed;
-        float moveY = dy * player->cameraSpeed;
-        player->cameraCurrentX += moveX;
-        player->cameraCurrentY += moveY;
-    }
+    // Update camera target position with look-ahead
+    player->cameraTargetX = player->entity.posX + player->lookAheadX;
+    player->cameraTargetY = player->entity.posY + player->lookAheadY;
+
+    // Move camera towards target position with smoother smoothing
+    float smoothFactor = 0.05f; // Reduced from 0.1f
+    player->cameraCurrentX += (player->cameraTargetX - player->cameraCurrentX) * smoothFactor;
+    player->cameraCurrentY += (player->cameraTargetY - player->cameraCurrentY) * smoothFactor;
 }
 void CleanupPlayer(Player* player) {
     if (player->entity.cachedPath) {

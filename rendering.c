@@ -43,7 +43,11 @@ const char* fragmentShaderSource = "#version 330 core\n"
 "out vec4 FragColor;\n"
 "uniform sampler2D textureAtlas;\n"
 "void main() {\n"
-"    FragColor = texture(textureAtlas, TexCoord);\n"
+"    vec4 texColor = texture(textureAtlas, TexCoord);\n"
+"    if(texColor.rgb == vec3(0.0, 0.0, 0.0)) {\n"
+"        discard;\n"
+"    }\n"
+"    FragColor = texColor;\n"
 "}\n";
 
 GLuint createShader(GLenum type, const char* source) {

@@ -10,6 +10,8 @@ typedef struct {
     float cameraCurrentX;
     float cameraCurrentY;
     float cameraSpeed;
+    float lookAheadX;
+    float lookAheadY;
 } Player;
 
 void InitPlayer(Player* player, int startGridX, int startGridY, float speed);
