@@ -1,4 +1,3 @@
-// gameloop.c
 #include "gameloop.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,6 +33,11 @@ Enemy enemies[MAX_ENEMIES];
 // Function declarations
 void setGridSize(int size);
 void generateTerrain();
+
+// Lerp function for smooth camera movement
+float lerp(float a, float b, float t) {
+    return a + t * (b - a);
+}
 
 void GameLoop() {
     Initialize();
@@ -177,6 +181,7 @@ void Initialize() {
 
     printf("Initialization complete.\n");
 }
+
 void HandleInput() {
     SDL_Event event;
     float zoomFactor = 3.0f; // Define the zoom factor
@@ -216,7 +221,6 @@ void HandleInput() {
     }
 }
 
-
 void UpdateGameLogic() {
     Entity* allEntities[MAX_ENTITIES];
     allEntities[0] = &player.entity;
@@ -231,7 +235,6 @@ void UpdateGameLogic() {
         UpdateEnemy(&enemies[i], allEntities, MAX_ENTITIES);
     }
 }
-
 
 void Render() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -255,29 +258,29 @@ void Render() {
 
             float texX = 0.0f;
             float texY = 0.0f;
-            float texWidth = 0.5f;  // 512 / 1024
-            float texHeight = 1.0f / 3.0f;  // 512 / 1536
+            float texWidth = 128.0f / 384.0f;
+            float texHeight = 128.0f / 256.0f;
 
             switch (grid[y][x].terrainType) {
                 case TERRAIN_GRASS:
-                    texX = 0.5f;
-                    texY = 1.0f / 3.0f;
+                    texX = 256.0f / 384.0f;
+                    texY = 128.0f / 256.0f;
                     break;
                 case TERRAIN_SAND:
-                    texX = 0.0f;
-                    texY = 2.0f / 3.0f;
+                    texX = 128.0f / 384.0f;
+                    texY = 128.0f / 256.0f;
                     break;
                 case TERRAIN_WATER:
-                    texX = 0.5f;
-                    texY = 2.0f / 3.0f;
+                    texX = 256.0f / 384.0f;
+                    texY = 0.0f;
                     break;
                 case TERRAIN_STONE:
-                    texX = 0.5f;
+                    texX = 128.0f / 384.0f;
                     texY = 0.0f;
                     break;
                 default:
-                    texX = 0.5f;
-                    texY = 1.0f / 3.0f;  // Default to grass
+                    texX = 0.0f / 384.0f;
+                    texY = 128.0f / 256.0f;
             }
 
             float vertices[] = {
@@ -295,9 +298,9 @@ void Render() {
 
     // Render enemies
     float enemyTexX = 0.0f;
-    float enemyTexY = 1.0f / 3.0f;
-    float enemyTexWidth = 0.5f;
-    float enemyTexHeight = 1.0f / 3.0f;
+    float enemyTexY = 0.0f;
+    float enemyTexWidth = 128.0f / 384.0f;
+    float enemyTexHeight = 128.0f / 256.0f;
     for (int i = 0; i < MAX_ENEMIES; i++) {
         float enemyVertices[] = {
             (enemies[i].entity.posX - TILE_SIZE/2 - cameraOffsetX) * zoomFactor, (enemies[i].entity.posY - TILE_SIZE/2 - cameraOffsetY) * zoomFactor, enemyTexX, enemyTexY + enemyTexHeight,
@@ -312,8 +315,8 @@ void Render() {
     // Render player
     float playerTexX = 0.0f;
     float playerTexY = 0.0f;
-    float playerTexWidth = 0.5f;
-    float playerTexHeight = 1.0f / 3.0f;
+    float playerTexWidth = 128.0f / 384.0f;
+    float playerTexHeight = 128.0f / 256.0f;
     float playerVertices[] = {
         (-TILE_SIZE/2) * zoomFactor, (-TILE_SIZE/2) * zoomFactor, playerTexX, playerTexY + playerTexHeight,
         (TILE_SIZE/2) * zoomFactor, (-TILE_SIZE/2) * zoomFactor, playerTexX + playerTexWidth, playerTexY + playerTexHeight,
@@ -328,7 +331,6 @@ void Render() {
 
     SDL_GL_SwapWindow(window);
 }
-
 
 int PhysicsLoop(void* arg) {
     (void)arg;

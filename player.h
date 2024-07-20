@@ -1,11 +1,8 @@
-// player.h
 #ifndef PLAYER_H
 #define PLAYER_H
 
 #include "entity.h"
 
-
-// player.h
 typedef struct {
     Entity entity;
     float cameraOffsetX;

@@ -19,6 +19,9 @@
 #define CAMERA_ZOOM 4.00f  
 #define TILE_SIZE (2.0f / GRID_SIZE)
 
+// Lerp function declaration
+float lerp(float a, float b, float t);
+
 void setGridSize(int size);
 void GameLoop();
 void Initialize();
@@ -28,4 +31,5 @@ void Render();
 int PhysicsLoop(void* arg);
 void CleanUp();
 void generateTerrain();
+
 #endif // GAMELOOP_H
