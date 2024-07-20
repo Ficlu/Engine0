@@ -1,8 +1,13 @@
+#include "rendering.h"
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
 #include <GL/glew.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
+
+GLuint textureAtlas;
+GLuint textureUniform;
 
 void initRendering() {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
@@ -26,18 +31,19 @@ void initRendering() {
 
 const char* vertexShaderSource = "#version 330 core\n"
 "layout(location = 0) in vec2 position;\n"
-"out vec4 vertexColor;\n"
-"uniform vec4 color;\n"
+"layout(location = 1) in vec2 texCoord;\n"
+"out vec2 TexCoord;\n"
 "void main() {\n"
 "    gl_Position = vec4(position, 0.0, 1.0);\n"
-"    vertexColor = color;\n"
+"    TexCoord = texCoord;\n"
 "}\n";
 
 const char* fragmentShaderSource = "#version 330 core\n"
-"in vec4 vertexColor;\n"
+"in vec2 TexCoord;\n"
 "out vec4 FragColor;\n"
+"uniform sampler2D textureAtlas;\n"
 "void main() {\n"
-"    FragColor = vertexColor;\n"
+"    FragColor = texture(textureAtlas, TexCoord);\n"
 "}\n";
 
 GLuint createShader(GLenum type, const char* source) {
@@ -132,13 +138,14 @@ GLuint createGridVAO(float* vertices, int vertexCount) {
     return VAO;
 }
 
-GLuint createSquareVAO(float size) {
+GLuint createSquareVAO(float size, float texX, float texY, float texWidth, float texHeight) {
     float halfSize = size / 2.0f;
     float vertices[] = {
-        -halfSize, -halfSize,
-         halfSize, -halfSize,
-         halfSize,  halfSize,
-        -halfSize,  halfSize
+        // Positions       // Texture Coords
+        -halfSize, -halfSize, texX, texY + texHeight,
+         halfSize, -halfSize, texX + texWidth, texY + texHeight,
+         halfSize,  halfSize, texX + texWidth, texY,
+        -halfSize,  halfSize, texX, texY
     };
 
     GLuint VAO, VBO;
@@ -149,13 +156,69 @@ GLuint createSquareVAO(float size) {
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 
-    printf("Square VAO created successfully\n");
-
     return VAO;
+}
+
+GLuint loadBMP(const char* filePath) {
+    // Open the file
+    FILE* file = fopen(filePath, "rb");
+    if (!file) {
+        printf("Image could not be opened: %s\n", filePath);
+        return 0;
+    }
+
+    // Read the header
+    unsigned char header[54];
+    if (fread(header, 1, 54, file) != 54) {
+        printf("Not a correct BMP file: %s\n", filePath);
+        fclose(file);
+        return 0;
+    }
+
+    // Parse header information
+    unsigned int dataPos = *(int*)&(header[0x0A]);
+    unsigned int imageSize = *(int*)&(header[0x22]);
+    unsigned int width = *(int*)&(header[0x12]);
+    unsigned int height = *(int*)&(header[0x16]);
+
+    if (imageSize == 0) imageSize = width * height * 3; // 3 : one byte for each Red, Green and Blue component
+    if (dataPos == 0) dataPos = 54; // BMP header is done that way
+
+    // Create buffer
+    unsigned char* data = (unsigned char*)malloc(imageSize);
+
+    // Read the actual data from the file into the buffer
+    fread(data, 1, imageSize, file);
+
+    // Close the file
+    fclose(file);
+
+    // Create one OpenGL texture
+    GLuint textureID;
+    glGenTextures(1, &textureID);
+
+    // "Bind" the newly created texture: all future texture functions will modify this texture
+    glBindTexture(GL_TEXTURE_2D, textureID);
+
+    // Give the image to OpenGL
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_BGR, GL_UNSIGNED_BYTE, data);
+    free(data);
+
+    // Trilinear filtering
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    printf("Texture loaded successfully: %s\n", filePath);
+    return textureID;
 }

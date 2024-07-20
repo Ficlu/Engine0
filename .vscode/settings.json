@@ -16,6 +16,8 @@
         "pathfinding.h": "c",
         "assert.h": "c",
         "gameloop.h": "c",
-        "immintrin.h": "c"
+        "immintrin.h": "c",
+        "chrono": "c",
+        "xlocale": "c"
     }
 }

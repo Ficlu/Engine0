@@ -43,5 +43,6 @@ void cleanupGrid();
 bool isWalkable(int x, int y);
 void setGridSize(int size);
 bool isValid(int x, int y);
+void generateTerrain();  // Add this line
 
 #endif // GRID_H
