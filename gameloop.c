@@ -260,29 +260,29 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
 
             float texX = 0.0f;
             float texY = 0.0f;
-            float texWidth = 128.0f / 384.0f;
-            float texHeight = 128.0f / 256.0f;
+            float texWidth = 32.0f / 96.0f;  // 32px width / 96px total width
+            float texHeight = 32.0f / 64.0f; // 32px height / 64px total height
 
             switch (grid[y][x].terrainType) {
                 case TERRAIN_GRASS:
-                    texX = 256.0f / 384.0f;
-                    texY = 128.0f / 256.0f;
+                    texX = 64.0f / 96.0f;
+                    texY = 32.0f / 64.0f;
                     break;
                 case TERRAIN_SAND:
-                    texX = 128.0f / 384.0f;
-                    texY = 128.0f / 256.0f;
+                    texX = 32.0f / 96.0f;
+                    texY = 32.0f / 64.0f;
                     break;
                 case TERRAIN_WATER:
-                    texX = 256.0f / 384.0f;
+                    texX = 64.0f / 96.0f;
                     texY = 0.0f;
                     break;
                 case TERRAIN_STONE:
-                    texX = 128.0f / 384.0f;
+                    texX = 32.0f / 96.0f;
                     texY = 0.0f;
                     break;
                 default:
-                    texX = 0.0f / 384.0f;
-                    texY = 128.0f / 256.0f;
+                    texX = 0.0f / 96.0f;
+                    texY = 32.0f / 64.0f;
             }
 
             float vertices[] = {
@@ -305,8 +305,8 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     // Render enemies
     float enemyTexX = 0.0f;
     float enemyTexY = 0.0f;
-    float enemyTexWidth = 128.0f / 384.0f;
-    float enemyTexHeight = 128.0f / 256.0f;
+    float enemyTexWidth = 32.0f / 96.0f;  // 32px width / 96px total width
+    float enemyTexHeight = 32.0f / 64.0f; // 32px height / 64px total height
     for (int i = 0; i < MAX_ENEMIES; i++) {
         float enemyVertices[] = {
             (enemies[i].entity.posX - TILE_SIZE/2 - cameraOffsetX) * zoomFactor, (enemies[i].entity.posY - TILE_SIZE/2 - cameraOffsetY) * zoomFactor, enemyTexX, enemyTexY,
@@ -321,8 +321,8 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     // Render player
     float playerTexX = 0.0f;
     float playerTexY = 0.0f;
-    float playerTexWidth = 128.0f / 384.0f;
-    float playerTexHeight = 128.0f / 256.0f;
+    float playerTexWidth = 32.0f / 96.0f;  // 32px width / 96px total width
+    float playerTexHeight = 32.0f / 64.0f; // 32px height / 64px total height
     float playerVertices[] = {
         (-TILE_SIZE/2) * zoomFactor, (-TILE_SIZE/2) * zoomFactor, playerTexX, playerTexY,
         (TILE_SIZE/2) * zoomFactor, (-TILE_SIZE/2) * zoomFactor, playerTexX + playerTexWidth, playerTexY,
@@ -332,6 +332,8 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(playerVertices), playerVertices);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }
+
+
 
 
 int PhysicsLoop(void* arg) {
