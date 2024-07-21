@@ -44,7 +44,7 @@ const char* fragmentShaderSource = "#version 330 core\n"
 "uniform sampler2D textureAtlas;\n"
 "void main() {\n"
 "    vec4 texColor = texture(textureAtlas, TexCoord);\n"
-"    if(texColor.rgb == vec3(0.0, 0.0, 0.0)) {\n"
+"    if(texColor.r == 1.0 && texColor.g == 0.0 && texColor.b == 1.0) {\n"
 "        discard;\n"
 "    }\n"
 "    FragColor = texColor;\n"
@@ -143,13 +143,12 @@ GLuint createGridVAO(float* vertices, int vertexCount) {
 }
 
 GLuint createSquareVAO(float size, float texX, float texY, float texWidth, float texHeight) {
-    float halfSize = size / 2.0f;
     float vertices[] = {
         // Positions       // Texture Coords
-        -halfSize, -halfSize, texX, texY + texHeight,
-         halfSize, -halfSize, texX + texWidth, texY + texHeight,
-         halfSize,  halfSize, texX + texWidth, texY,
-        -halfSize,  halfSize, texX, texY
+        -size, -size, texX, texY + texHeight,
+         size, -size, texX + texWidth, texY + texHeight,
+         size,  size, texX + texWidth, texY,
+        -size,  size, texX, texY
     };
 
     GLuint VAO, VBO;
@@ -214,8 +213,7 @@ GLuint loadBMP(const char* filePath) {
     glBindTexture(GL_TEXTURE_2D, textureID);
 
     // Give the image to OpenGL
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_BGR, GL_UNSIGNED_BYTE, data);
-
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_BGR, GL_UNSIGNED_BYTE, data);
     free(data);
 
     // Set texture parameters
@@ -223,6 +221,7 @@ GLuint loadBMP(const char* filePath) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
 
     printf("Texture loaded successfully: %s (Width: %d, Height: %d)\n", filePath, width, height);
     return textureID;

@@ -131,10 +131,10 @@ void Initialize() {
     glBindVertexArray(squareVAO);
 
     float squareVertices[] = {
-        -TILE_SIZE / 2, -TILE_SIZE / 2, 0.0f, 0.0f,
-         TILE_SIZE / 2, -TILE_SIZE / 2, 1.0f, 0.0f,
-         TILE_SIZE / 2,  TILE_SIZE / 2, 1.0f, 1.0f,
-        -TILE_SIZE / 2,  TILE_SIZE / 2, 0.0f, 1.0f
+        -TILE_SIZE, -TILE_SIZE, 0.0f, 0.0f,
+         TILE_SIZE,  -TILE_SIZE, 1.0f, 0.0f,
+         TILE_SIZE,   TILE_SIZE, 1.0f, 1.0f,
+        -TILE_SIZE,   TILE_SIZE, 0.0f, 1.0f
     };
 
     glBindBuffer(GL_ARRAY_BUFFER, squareVBO);
@@ -259,37 +259,34 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
             float posY = (1.0f - 2.0f * y / GRID_SIZE - 1.0f / GRID_SIZE - cameraOffsetY) * zoomFactor;
 
             float texX = 0.0f;
-            float texY = 0.0f;
-            float texWidth = 32.0f / 96.0f;  // 32px width / 96px total width
-            float texHeight = 32.0f / 64.0f; // 32px height / 64px total height
+            float texY = 0.0f;  
+            float texWidth = 1.0f / 3.0f;
+            float texHeight = 1.0f / 2.0f;
 
             switch (grid[y][x].terrainType) {
-                case TERRAIN_GRASS:
-                    texX = 64.0f / 96.0f;
-                    texY = 32.0f / 64.0f;
-                    break;
                 case TERRAIN_SAND:
-                    texX = 32.0f / 96.0f;
-                    texY = 32.0f / 64.0f;
+                    texX = 0.0f / 3.0f;
+                    texY = 0.0f / 2.0f;
                     break;
                 case TERRAIN_WATER:
-                    texX = 64.0f / 96.0f;
-                    texY = 0.0f;
+                    texX = 1.0f / 3.0f;
+                    texY = 0.0f / 2.0f;
                     break;
-                case TERRAIN_STONE:
-                    texX = 32.0f / 96.0f;
-                    texY = 0.0f;
+                case TERRAIN_GRASS:
+                    texX = 2.0f / 3.0f;
+                    texY = 0.0f / 2.0f;
                     break;
                 default:
-                    texX = 0.0f / 96.0f;
-                    texY = 32.0f / 64.0f;
+                    texX = 2.0f / 3.0f;
+                    texY = 1.0f / 2.0f;
+                    break;
             }
 
             float vertices[] = {
-                posX - TILE_SIZE/2 * zoomFactor, posY - TILE_SIZE/2 * zoomFactor, texX, texY,
-                posX + TILE_SIZE/2 * zoomFactor, posY - TILE_SIZE/2 * zoomFactor, texX + texWidth, texY,
-                posX + TILE_SIZE/2 * zoomFactor, posY + TILE_SIZE/2 * zoomFactor, texX + texWidth, texY + texHeight,
-                posX - TILE_SIZE/2 * zoomFactor, posY + TILE_SIZE/2 * zoomFactor, texX, texY + texHeight
+                posX - TILE_SIZE * zoomFactor, posY - TILE_SIZE * zoomFactor, texX, texY + texHeight,
+                posX + TILE_SIZE * zoomFactor, posY - TILE_SIZE * zoomFactor, texX + texWidth, texY + texHeight,
+                posX + TILE_SIZE * zoomFactor, posY + TILE_SIZE * zoomFactor, texX + texWidth, texY,
+                posX - TILE_SIZE * zoomFactor, posY + TILE_SIZE * zoomFactor, texX, texY
             };
 
             glBindBuffer(GL_ARRAY_BUFFER, squareVBO);
@@ -298,43 +295,39 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
         }
     }
 }
-
 void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
     glBindVertexArray(squareVAO);
 
     // Render enemies
-    float enemyTexX = 0.0f;
-    float enemyTexY = 0.0f;
-    float enemyTexWidth = 32.0f / 96.0f;  // 32px width / 96px total width
-    float enemyTexHeight = 32.0f / 64.0f; // 32px height / 64px total height
+    float enemyTexX = 1.0f / 3.0f;  // Right sprite in the top row
+    float enemyTexY = 1.0 / 2.0f;
+    float enemyTexWidth = 1.0f / 3.0f;
+    float enemyTexHeight = 1.0f / 2.0f;
     for (int i = 0; i < MAX_ENEMIES; i++) {
         float enemyVertices[] = {
-            (enemies[i].entity.posX - TILE_SIZE/2 - cameraOffsetX) * zoomFactor, (enemies[i].entity.posY - TILE_SIZE/2 - cameraOffsetY) * zoomFactor, enemyTexX, enemyTexY,
-            (enemies[i].entity.posX + TILE_SIZE/2 - cameraOffsetX) * zoomFactor, (enemies[i].entity.posY - TILE_SIZE/2 - cameraOffsetY) * zoomFactor, enemyTexX + enemyTexWidth, enemyTexY,
-            (enemies[i].entity.posX + TILE_SIZE/2 - cameraOffsetX) * zoomFactor, (enemies[i].entity.posY + TILE_SIZE/2 - cameraOffsetY) * zoomFactor, enemyTexX + enemyTexWidth, enemyTexY + enemyTexHeight,
-            (enemies[i].entity.posX - TILE_SIZE/2 - cameraOffsetX) * zoomFactor, (enemies[i].entity.posY + TILE_SIZE/2 - cameraOffsetY) * zoomFactor, enemyTexX, enemyTexY + enemyTexHeight
+            (enemies[i].entity.posX - TILE_SIZE - cameraOffsetX) * zoomFactor, (enemies[i].entity.posY - TILE_SIZE - cameraOffsetY) * zoomFactor, enemyTexX, enemyTexY,
+            (enemies[i].entity.posX + TILE_SIZE - cameraOffsetX) * zoomFactor, (enemies[i].entity.posY - TILE_SIZE - cameraOffsetY) * zoomFactor, enemyTexX + enemyTexWidth, enemyTexY,
+            (enemies[i].entity.posX + TILE_SIZE - cameraOffsetX) * zoomFactor, (enemies[i].entity.posY + TILE_SIZE - cameraOffsetY) * zoomFactor, enemyTexX + enemyTexWidth, enemyTexY + enemyTexHeight,
+            (enemies[i].entity.posX - TILE_SIZE - cameraOffsetX) * zoomFactor, (enemies[i].entity.posY + TILE_SIZE - cameraOffsetY) * zoomFactor, enemyTexX, enemyTexY + enemyTexHeight
         };
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(enemyVertices), enemyVertices);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     }
 
     // Render player
-    float playerTexX = 0.0f;
-    float playerTexY = 0.0f;
-    float playerTexWidth = 32.0f / 96.0f;  // 32px width / 96px total width
-    float playerTexHeight = 32.0f / 64.0f; // 32px height / 64px total height
+    float playerTexX = 0.0f / 3.0f;  // Left sprite in the top row
+    float playerTexY = 1.0f / 2.0f;
+    float playerTexWidth = 1.0f / 3.0f;
+    float playerTexHeight = 1.0f / 2.0f;
     float playerVertices[] = {
-        (-TILE_SIZE/2) * zoomFactor, (-TILE_SIZE/2) * zoomFactor, playerTexX, playerTexY,
-        (TILE_SIZE/2) * zoomFactor, (-TILE_SIZE/2) * zoomFactor, playerTexX + playerTexWidth, playerTexY,
-        (TILE_SIZE/2) * zoomFactor, (TILE_SIZE/2) * zoomFactor, playerTexX + playerTexWidth, playerTexY + playerTexHeight,
-        (-TILE_SIZE/2) * zoomFactor, (TILE_SIZE/2) * zoomFactor, playerTexX, playerTexY + playerTexHeight
+        (-TILE_SIZE) * zoomFactor, (-TILE_SIZE) * zoomFactor, playerTexX, playerTexY,
+        (TILE_SIZE) * zoomFactor, (-TILE_SIZE) * zoomFactor, playerTexX + playerTexWidth, playerTexY,
+        (TILE_SIZE) * zoomFactor, (TILE_SIZE) * zoomFactor, playerTexX + playerTexWidth, playerTexY + playerTexHeight,
+        (-TILE_SIZE) * zoomFactor, (TILE_SIZE) * zoomFactor, playerTexX, playerTexY + playerTexHeight
     };
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(playerVertices), playerVertices);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }
-
-
-
 
 int PhysicsLoop(void* arg) {
     (void)arg;

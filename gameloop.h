@@ -17,7 +17,7 @@
 #define GAME_LOGIC_INTERVAL_MS 600
 #define FRAME_TIME_MS 24
 #define CAMERA_ZOOM 4.00f  
-#define TILE_SIZE (2.0f / GRID_SIZE)
+#define TILE_SIZE (1.0f / GRID_SIZE)
 
 // Lerp function declaration
 float lerp(float a, float b, float t);
