@@ -181,9 +181,9 @@ void Initialize() {
     printf("Initialization complete.\n");
 }
 
+// gameloop.c
 void HandleInput() {
     SDL_Event event;
-    float zoomFactor = 3.0f;
     
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_QUIT) {
@@ -193,8 +193,8 @@ void HandleInput() {
                 int mouseX, mouseY;
                 SDL_GetMouseState(&mouseX, &mouseY);
 
-                float ndcX = (2.0f * mouseX / WINDOW_WIDTH - 1.0f) / zoomFactor;
-                float ndcY = (1.0f - 2.0f * mouseY / WINDOW_HEIGHT) / zoomFactor;
+                float ndcX = (2.0f * mouseX / WINDOW_WIDTH - 1.0f) / player.zoomFactor;
+                float ndcY = (1.0f - 2.0f * mouseY / WINDOW_HEIGHT) / player.zoomFactor;
 
                 float worldX = ndcX + player.cameraCurrentX;
                 float worldY = ndcY + player.cameraCurrentY;
@@ -212,6 +212,20 @@ void HandleInput() {
                     printf("Player final goal set: gridX = %d, gridY = %d\n", gridX, gridY);
                 }
             }
+        } else if (event.type == SDL_MOUSEWHEEL) {
+            float zoomSpeed = 0.1f;
+            float minZoom = 1.0f;
+            float maxZoom = 5.0f;
+
+            if (event.wheel.y > 0) {
+                // Zoom in
+                player.zoomFactor = fminf(player.zoomFactor + zoomSpeed, maxZoom);
+            } else if (event.wheel.y < 0) {
+                // Zoom out
+                player.zoomFactor = fmaxf(player.zoomFactor - zoomSpeed, minZoom);
+            }
+
+            printf("Zoom factor: %.2f\n", player.zoomFactor);
         }
     }
 }
@@ -240,7 +254,7 @@ void Render() {
 
     float cameraOffsetX = player.cameraCurrentX;
     float cameraOffsetY = player.cameraCurrentY;
-    float zoomFactor = 3.0f;
+    float zoomFactor = player.zoomFactor;  // Use the player's zoom factor
 
     RenderTiles(cameraOffsetX, cameraOffsetY, zoomFactor);
     RenderEntities(cameraOffsetX, cameraOffsetY, zoomFactor);

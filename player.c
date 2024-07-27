@@ -18,6 +18,7 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
     player->entity.cachedPath = NULL;
     player->entity.cachedPathLength = 0;
     player->entity.currentPathIndex = 0;
+    player->zoomFactor = 3.0f;  // Initial zoom level
     player->entity.isPlayer = true;
 
     // Initialize camera position to player position

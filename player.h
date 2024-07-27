@@ -12,6 +12,7 @@ typedef struct {
     float cameraSpeed;
     float lookAheadX;
     float lookAheadY;
+    float zoomFactor;  // Add this line
 } Player;
 
 void InitPlayer(Player* player, int startGridX, int startGridY, float speed);
