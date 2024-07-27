@@ -53,6 +53,7 @@ void setGridSize(int size) {
     }
 }
 
+
 void generateTerrain() {
     float randomOffset = ((float)rand() / RAND_MAX) * 0.2f - 0.1f;  // Random value between -0.1 and 0.1
 
@@ -68,7 +69,7 @@ void generateTerrain() {
 
             // Determine biome
             BiomeType biome;
-            if (biomeValue < 0.2f) biome = BIOME_OCEAN;
+            if (biomeValue < 0.1f) biome = BIOME_OCEAN;
             else if (biomeValue < 0.3f) biome = BIOME_BEACH;
             else if (biomeValue < 0.5f) biome = BIOME_PLAINS;
             else if (biomeValue < 0.7f) biome = BIOME_FOREST;
@@ -87,17 +88,25 @@ void generateTerrain() {
             }
 
             // Set initial walkability
-            grid[y][x].isWalkable = (grid[y][x].terrainType != TERRAIN_WATER);
+            grid[y][x].isWalkable = (grid[y][x].terrainType != TERRAIN_WATER && grid[y][x].terrainType != TERRAIN_GRASS);
         }
     }
 
-    // Second pass: randomly make some tiles unwalkable and update their terrain type
-    for (int y = 0; y < GRID_SIZE; y++) {
-        for (int x = 0; x < GRID_SIZE; x++) {
-            if (grid[y][x].isWalkable && ((float)rand() / RAND_MAX) < UNWALKABLE_PROBABILITY) {
-                grid[y][x].isWalkable = false;
-                grid[y][x].terrainType = TERRAIN_UNWALKABLE;
-            }
+    // Determine the number of water tiles needed for 10% coverage
+    int totalTiles = GRID_SIZE * GRID_SIZE;
+    int targetWaterTiles = totalTiles * 0.05;
+
+    // Second pass: randomly make some tiles water
+    int waterTiles = 0;
+    while (waterTiles < targetWaterTiles) {
+        int x = rand() % GRID_SIZE;
+        int y = rand() % GRID_SIZE;
+
+        // Ensure this tile is not already water
+        if (grid[y][x].terrainType != TERRAIN_WATER) {
+            grid[y][x].terrainType = TERRAIN_WATER;
+            grid[y][x].isWalkable = false;
+            waterTiles++;
         }
     }
 
@@ -115,6 +124,7 @@ void generateTerrain() {
         }
     }
 }
+
 
 // Perlin noise functions
 float noise(int x, int y) {

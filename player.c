@@ -62,6 +62,7 @@ void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
     player->cameraCurrentX += (player->cameraTargetX - player->cameraCurrentX) * smoothFactor;
     player->cameraCurrentY += (player->cameraTargetY - player->cameraCurrentY) * smoothFactor;
 }
+
 void CleanupPlayer(Player* player) {
     if (player->entity.cachedPath) {
         free(player->entity.cachedPath);
