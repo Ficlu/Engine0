@@ -1,10 +1,4 @@
-#include "enemy.h"
-#include "gameloop.h"
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdbool.h>
-
+// enemy.c
 #include "enemy.h"
 #include "gameloop.h"
 #include <math.h>
@@ -21,7 +15,7 @@ void InitEnemy(Enemy* enemy, int startGridX, int startGridY, float speed) {
     enemy->entity.targetGridX = startGridX;
     enemy->entity.targetGridY = startGridY;
     enemy->entity.finalGoalX = startGridX;
-    enemy->entity.finalGoalY = startGridY;
+    enemy->entity.finalGoalY = startGridX;
     enemy->entity.needsPathfinding = false;
     enemy->entity.cachedPath = NULL;
     enemy->entity.cachedPathLength = 0;
@@ -46,14 +40,12 @@ void InitEnemy(Enemy* enemy, int startGridX, int startGridY, float speed) {
 }
 
 void MovementAI(Enemy* enemy) {
-    // Check if the enemy has reached its current target or needs a new target
     if ((enemy->entity.gridX == enemy->entity.targetGridX &&
          enemy->entity.gridY == enemy->entity.targetGridY) ||
         enemy->entity.needsPathfinding) {
         
         // Only change path with a 30% chance
         if (rand() % 100 < 30) {
-            // Choose a new random target
             int newTargetX, newTargetY;
             do {
                 newTargetX = rand() % GRID_SIZE;
@@ -67,7 +59,6 @@ void MovementAI(Enemy* enemy) {
                    enemy->entity.gridX, enemy->entity.gridY, 
                    enemy->entity.finalGoalX, enemy->entity.finalGoalY);
         } else {
-            // If not changing path, just set the current position as the target
             enemy->entity.finalGoalX = enemy->entity.gridX;
             enemy->entity.finalGoalY = enemy->entity.gridY;
             enemy->entity.needsPathfinding = false;
@@ -79,7 +70,6 @@ void UpdateEnemy(Enemy* enemy, Entity** allEntities, int entityCount) {
     MovementAI(enemy);
     UpdateEntity(&enemy->entity, allEntities, entityCount);
     
-    // If the enemy has finished its current path, trigger a new target selection
     if (enemy->entity.currentPathIndex >= enemy->entity.cachedPathLength) {
         enemy->entity.needsPathfinding = true;
     }

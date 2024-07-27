@@ -1,3 +1,4 @@
+// player.c
 #include "player.h"
 #include "gameloop.h"
 #include <math.h>
@@ -18,17 +19,15 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
     player->entity.cachedPath = NULL;
     player->entity.cachedPathLength = 0;
     player->entity.currentPathIndex = 0;
-    player->zoomFactor = 3.0f;  // Initial zoom level
+    player->zoomFactor = 3.0f;
     player->entity.isPlayer = true;
 
-    // Initialize camera position to player position
     player->cameraTargetX = player->entity.posX;
     player->cameraTargetY = player->entity.posY;
     player->cameraCurrentX = player->entity.posX;
     player->cameraCurrentY = player->entity.posY;
-    player->cameraSpeed = 0.1f; // Adjust this value to change camera responsiveness
+    player->cameraSpeed = 0.1f;
 
-    // Ensure the player starts on a walkable tile
     while (!isWalkable(player->entity.gridX, player->entity.gridY)) {
         player->entity.gridX = rand() % GRID_SIZE;
         player->entity.gridY = rand() % GRID_SIZE;
@@ -46,20 +45,17 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
 void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
     UpdateEntity(&player->entity, allEntities, entityCount);
 
-    // Calculate look-ahead based on player's movement
     float dx = player->entity.posX - player->cameraCurrentX;
     float dy = player->entity.posY - player->cameraCurrentY;
-    float lookAheadFactor = 0.5f; // Reduced from 2.0f
+    float lookAheadFactor = 0.5f;
 
     player->lookAheadX = dx * lookAheadFactor;
     player->lookAheadY = dy * lookAheadFactor;
 
-    // Update camera target position with look-ahead
     player->cameraTargetX = player->entity.posX + player->lookAheadX;
     player->cameraTargetY = player->entity.posY + player->lookAheadY;
 
-    // Move camera towards target position with smoother smoothing
-    float smoothFactor = 0.05f; // Reduced from 0.1f
+    float smoothFactor = 0.05f;
     player->cameraCurrentX += (player->cameraTargetX - player->cameraCurrentX) * smoothFactor;
     player->cameraCurrentY += (player->cameraTargetY - player->cameraCurrentY) * smoothFactor;
 }

@@ -1,5 +1,4 @@
 // pathfinding.c
-
 #include "pathfinding.h"
 #include "entity.h"
 #include "grid.h"
@@ -9,7 +8,7 @@
 #include <stdbool.h>
 
 #include <float.h>
-/*Initialize and allocate memory to priorityQueue*/
+
 PriorityQueue* createPriorityQueue(int capacity) {
     PriorityQueue* pq = (PriorityQueue*)malloc(sizeof(PriorityQueue));
     pq->nodes = (Node*)malloc(sizeof(Node) * capacity);
@@ -18,7 +17,6 @@ PriorityQueue* createPriorityQueue(int capacity) {
     return pq;
 }
 
-/*Checks if an input PriorityQueue has, as a member, the input node*/
 bool inPriorityQueue(PriorityQueue* pq, Node node) {
     for (int i = 0; i < pq->size; i++) {
         if (pq->nodes[i].x == node.x && pq->nodes[i].y == node.y) {
@@ -28,19 +26,12 @@ bool inPriorityQueue(PriorityQueue* pq, Node node) {
     return false;
 }
 
-/*Swaps the values of two nodes*/
 void swap(Node* a, Node* b) {
     Node temp = *a;
     *a = *b;
     *b = temp;
 }
 
-/*For the input PriorityQueue, this function takes the value of the heuristic (f-value) at the 
-input index, compares it to the f-value of the parent-node and swaps the parent and child; repeating
-the process until the pq satisfies the heap property.
-- Nodes in the min-heap are ordered by their heuristic value for the pathfinding algorithm
-- Maintains heap property--our desired ordering for the PriorityQueue
-- Used when inserting new nodes into a pq*/
 void heapifyUp(PriorityQueue* pq, int index) {
     while (index > 0) {
         int parent = (index - 1) / 2;
@@ -53,13 +44,6 @@ void heapifyUp(PriorityQueue* pq, int index) {
     }
 }
 
-/*For the input PirorityQueue, this function takes the value of the heuristic (f-value) at the 
-input index, compares it to the f-value of the child-node(s) and if either child's f-value is 
-smaller than the parent node's, swaps the parent with the smallest child; repeating the process 
-until the pq satisfies the heap property.
-- Nodes in the min-heap are ordered by their heuristic value for the pathfinding algorithm
-- Maintains heap property--our desired ordering for the PriorityQueue
-- Used when removing the root node from a pq*/
 void heapifyDown(PriorityQueue* pq, int index) {
     int smallest = index;
     int left = 2 * index + 1;
@@ -77,8 +61,6 @@ void heapifyDown(PriorityQueue* pq, int index) {
     }
 }
 
-/*Adds a new node to the priorityQueue, resizes the pq if it exceeds capacity. 
-- Calls heapifyUp function to maintain the heap property of pq*/
 void push(PriorityQueue* pq, Node node) {
     if (pq->size == pq->capacity) {
         pq->capacity *= 2;
@@ -89,8 +71,6 @@ void push(PriorityQueue* pq, Node node) {
     pq->size++;
 }
 
-/*Removes and returns the node with the smallest f-value from the priorityQueue.
-- Calls heapifyDown function to maintain heap property of pq*/
 Node pop(PriorityQueue* pq) {
     Node top = pq->nodes[0];
     pq->nodes[0] = pq->nodes[pq->size - 1];
@@ -99,15 +79,10 @@ Node pop(PriorityQueue* pq) {
     return top;
 }
 
-/*Calculates the euclidean distance between the two tiles at the input coords
-- Used in determining which candidate tiles to explore in the search algorithm.*/
 float heuristic(int x1, int y1, int x2, int y2) {
     return sqrtf((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2));
 }
 
-/*Checks if there is direct line-of-sight between the two tiles at the input coords
-- Used to detect unwalkable tiles which determine whether or not the entity needs to use 
-a search algorithm to reach it's target-tile*/
 bool lineOfSight(int x0, int y0, int x1, int y1) {
     int dx = abs(x1 - x0);
     int dy = abs(y1 - y0);
@@ -130,7 +105,6 @@ bool lineOfSight(int x0, int y0, int x1, int y1) {
             y += y_inc;
             error += dx;
         } else {
-            // Check both diagonal neighbors
             if (!isWalkable(x + x_inc, y) || !isWalkable(x, y + y_inc)) return false;
             x += x_inc;
             y += y_inc;
@@ -141,8 +115,6 @@ bool lineOfSight(int x0, int y0, int x1, int y1) {
     return true;
 }
 
-/*Implements a search algorithm to pathfind from the tile at the start coords 
-to the tile at the goal coords */
 Node* findPath(int startX, int startY, int goalX, int goalY) {
     PriorityQueue* openList = createPriorityQueue(GRID_SIZE * GRID_SIZE);
     bool** closedList = (bool**)malloc(sizeof(bool*) * GRID_SIZE);
@@ -164,7 +136,6 @@ Node* findPath(int startX, int startY, int goalX, int goalY) {
 
     push(openList, *startNode);
 
-    // Only consider orthogonal movements (no diagonals)
     int dx[] = {-1, 0, 1, 0};
     int dy[] = {0, -1, 0, 1};
 
@@ -191,7 +162,7 @@ Node* findPath(int startX, int startY, int goalX, int goalY) {
                 continue;
             }
 
-            float newG = current.g + 1.0f;  // Cost is always 1 for orthogonal movements
+            float newG = current.g + 1.0f;
 
             Node* neighbor = &nodes[newY * GRID_SIZE + newX];
             if (newG < neighbor->g) {
@@ -213,5 +184,5 @@ Node* findPath(int startX, int startY, int goalX, int goalY) {
     free(closedList);
     free(openList->nodes);
     free(openList);
-    return NULL;  // No path found
+    return NULL;
 }
