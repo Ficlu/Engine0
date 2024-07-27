@@ -94,19 +94,40 @@ void generateTerrain() {
 
     // Determine the number of water tiles needed for 10% coverage
     int totalTiles = GRID_SIZE * GRID_SIZE;
-    int targetWaterTiles = totalTiles * 0.05;
+    int targetWaterTiles = totalTiles * 0.10;
 
-    // Second pass: randomly make some tiles water
+    // Generate water clusters
     int waterTiles = 0;
     while (waterTiles < targetWaterTiles) {
-        int x = rand() % GRID_SIZE;
-        int y = rand() % GRID_SIZE;
+        // Randomly decide the size of the cluster (between 3 and 7)
+        int clusterSize = 3 + rand() % 5;
 
-        // Ensure this tile is not already water
-        if (grid[y][x].terrainType != TERRAIN_WATER) {
-            grid[y][x].terrainType = TERRAIN_WATER;
-            grid[y][x].isWalkable = false;
-            waterTiles++;
+        // Randomly choose the starting point for the cluster
+        int startX = rand() % GRID_SIZE;
+        int startY = rand() % GRID_SIZE;
+
+        for (int i = 0; i < clusterSize; i++) {
+            // Randomly offset from the starting point within a small radius
+            int offsetX = (rand() % 3) - 1; // -1, 0, or 1
+            int offsetY = (rand() % 3) - 1; // -1, 0, or 1
+
+            int x = startX + offsetX;
+            int y = startY + offsetY;
+
+            // Ensure the new coordinates are within bounds
+            if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
+                // Only convert to water if it is not already water
+                if (grid[y][x].terrainType != TERRAIN_WATER) {
+                    grid[y][x].terrainType = TERRAIN_WATER;
+                    grid[y][x].isWalkable = false;
+                    waterTiles++;
+
+                    // Stop if we have reached the target number of water tiles
+                    if (waterTiles >= targetWaterTiles) {
+                        break;
+                    }
+                }
+            }
         }
     }
 
@@ -124,7 +145,6 @@ void generateTerrain() {
         }
     }
 }
-
 
 // Perlin noise functions
 float noise(int x, int y) {

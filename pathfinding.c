@@ -164,8 +164,9 @@ Node* findPath(int startX, int startY, int goalX, int goalY) {
 
     push(openList, *startNode);
 
-    int dx[] = {-1, 0, 1, 0, -1, -1, 1, 1};
-    int dy[] = {0, -1, 0, 1, -1, 1, -1, 1};
+    // Only consider orthogonal movements (no diagonals)
+    int dx[] = {-1, 0, 1, 0};
+    int dy[] = {0, -1, 0, 1};
 
     while (openList->size > 0) {
         Node current = pop(openList);
@@ -182,7 +183,7 @@ Node* findPath(int startX, int startY, int goalX, int goalY) {
 
         closedList[current.y][current.x] = true;
 
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < 4; i++) {
             int newX = current.x + dx[i];
             int newY = current.y + dy[i];
 
@@ -190,7 +191,7 @@ Node* findPath(int startX, int startY, int goalX, int goalY) {
                 continue;
             }
 
-            float newG = current.g + ((i < 4) ? 1.0f : 1.414f);
+            float newG = current.g + 1.0f;  // Cost is always 1 for orthogonal movements
 
             Node* neighbor = &nodes[newY * GRID_SIZE + newX];
             if (newG < neighbor->g) {
