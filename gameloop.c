@@ -1,3 +1,5 @@
+// gameloop.c
+
 #include "gameloop.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,7 +17,7 @@
 #include "pathfinding.h"
 
 #define UNWALKABLE_PROBABILITY 0.04f
-
+GLuint outlineShaderProgram;
 atomic_bool isRunning = true;
 SDL_Window* window = NULL;
 SDL_GLContext mainContext;
@@ -33,10 +35,14 @@ Enemy enemies[MAX_ENEMIES];
 // Function declarations
 void setGridSize(int size);
 void generateTerrain();
-void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor);
 void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor);
 GLuint loadTexture(const char* filePath);  // New texture loading function
 
+/*
+ * GameLoop
+ *
+ * Main game loop function that handles initialization, rendering, and game logic updates.
+ */
 void GameLoop() {
     Initialize();
     printf("Entering main game loop.\n");
@@ -67,6 +73,11 @@ void GameLoop() {
     CleanUp();
 }
 
+/*
+ * Initialize
+ *
+ * Initializes SDL, OpenGL, game objects, and other resources needed for the game.
+ */
 void Initialize() {
     printf("Initializing...\n");
 
@@ -105,11 +116,12 @@ void Initialize() {
     printf("GLEW initialized.\n");
 
     shaderProgram = createShaderProgram();
-    if (!shaderProgram) {
-        printf("Failed to create shader program\n");
+    outlineShaderProgram = createOutlineShaderProgram();
+    if (!shaderProgram || !outlineShaderProgram) {
+        printf("Failed to create shader programs\n");
         exit(1);
     }
-    printf("Shader program created.\n");
+    printf("Shader programs created.\n");
 
     colorUniform = glGetUniformLocation(shaderProgram, "color");
     textureUniform = glGetUniformLocation(shaderProgram, "textureAtlas");
@@ -132,9 +144,9 @@ void Initialize() {
 
     float squareVertices[] = {
         -TILE_SIZE, -TILE_SIZE, 0.0f, 0.0f,
-         TILE_SIZE,  -TILE_SIZE, 1.0f, 0.0f,
-         TILE_SIZE,   TILE_SIZE, 1.0f, 1.0f,
-        -TILE_SIZE,   TILE_SIZE, 0.0f, 1.0f
+         TILE_SIZE, -TILE_SIZE, 1.0f, 0.0f,
+         TILE_SIZE,  TILE_SIZE, 1.0f, 1.0f,
+        -TILE_SIZE,  TILE_SIZE, 0.0f, 1.0f
     };
 
     glBindBuffer(GL_ARRAY_BUFFER, squareVBO);
@@ -147,6 +159,28 @@ void Initialize() {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
     printf("Square VAO and VBO created.\n");
+
+    // Create outline VAO
+    float outlineVertices[] = {
+        -1.0f, -1.0f,
+         1.0f, -1.0f,
+         1.0f,  1.0f,
+        -1.0f,  1.0f
+    };
+
+    glGenVertexArrays(1, &outlineVAO);
+    GLuint outlineVBO;
+    glGenBuffers(1, &outlineVBO);
+
+    glBindVertexArray(outlineVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, outlineVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(outlineVertices), outlineVertices, GL_STATIC_DRAW);
+
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
 
     // Load texture atlas
     textureAtlas = loadBMP("texture_atlas.bmp");
@@ -181,7 +215,46 @@ void Initialize() {
     printf("Initialization complete.\n");
 }
 
-// gameloop.c
+
+
+void CleanUp() {
+    printf("Cleaning up...\n");
+    if (gridVAO) {
+        glDeleteVertexArrays(1, &gridVAO);
+    }
+    if (squareVAO) {
+        glDeleteVertexArrays(1, &squareVAO);
+    }
+    if (outlineVAO) {
+        glDeleteVertexArrays(1, &outlineVAO);
+    }
+    if (squareVBO) {
+        glDeleteBuffers(1, &squareVBO);
+    }
+    if (shaderProgram) {
+        glDeleteProgram(shaderProgram);
+    }
+    if (outlineShaderProgram) {
+        glDeleteProgram(outlineShaderProgram);
+    }
+
+    if (mainContext) {
+        SDL_GL_DeleteContext(mainContext);
+    }
+    if (window) {
+        SDL_DestroyWindow(window);
+    }
+    cleanupGrid();
+
+    SDL_Quit();
+    printf("Cleanup complete.\n");
+}
+
+/*
+ * HandleInput
+ *
+ * Processes input events such as mouse clicks and keyboard input.
+ */
 void HandleInput() {
     SDL_Event event;
     
@@ -230,6 +303,11 @@ void HandleInput() {
     }
 }
 
+/*
+ * UpdateGameLogic
+ *
+ * Updates the game logic including player and enemy states.
+ */
 void UpdateGameLogic() {
     Entity* allEntities[MAX_ENTITIES];
     allEntities[0] = &player.entity;
@@ -244,6 +322,11 @@ void UpdateGameLogic() {
     }
 }
 
+/*
+ * Render
+ *
+ * Renders the game world including tiles and entities.
+ */
 void Render() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -265,8 +348,19 @@ void Render() {
     SDL_GL_SwapWindow(window);
 }
 
+/*
+ * RenderTiles
+ *
+ * Renders the terrain tiles of the game world.
+ *
+ * @param[in] cameraOffsetX The horizontal camera offset
+ * @param[in] cameraOffsetY The vertical camera offset
+ * @param[in] zoomFactor The zoom factor applied to the view
+ */
 void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
+    glUseProgram(shaderProgram);
     glBindVertexArray(squareVAO);
+
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
             float posX = (2.0f * x / GRID_SIZE - 1.0f + 1.0f / GRID_SIZE - cameraOffsetX) * zoomFactor;
@@ -306,9 +400,42 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
             glBindBuffer(GL_ARRAY_BUFFER, squareVBO);
             glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
             glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+            // Draw outline for player's final target tile
+            if (x == player.entity.finalGoalX && y == player.entity.finalGoalY) {
+                glUseProgram(outlineShaderProgram);
+                glBindVertexArray(outlineVAO);
+
+                GLint outlineColorUniform = glGetUniformLocation(outlineShaderProgram, "outlineColor");
+                glUniform3f(outlineColorUniform, 1.0f, 1.0f, 0.0f); // Yellow outline
+
+                float outlineScale = 1.05f; // Slightly larger than the tile
+                float outlineVertices[] = {
+                    posX - TILE_SIZE * zoomFactor * outlineScale, posY - TILE_SIZE * zoomFactor * outlineScale,
+                    posX + TILE_SIZE * zoomFactor * outlineScale, posY - TILE_SIZE * zoomFactor * outlineScale,
+                    posX + TILE_SIZE * zoomFactor * outlineScale, posY + TILE_SIZE * zoomFactor * outlineScale,
+                    posX - TILE_SIZE * zoomFactor * outlineScale, posY + TILE_SIZE * zoomFactor * outlineScale
+                };
+
+                glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(outlineVertices), outlineVertices);
+                glDrawArrays(GL_LINE_LOOP, 0, 4);
+
+                glUseProgram(shaderProgram);
+                glBindVertexArray(squareVAO);
+            }
         }
     }
 }
+
+/*
+ * RenderEntities
+ *
+ * Renders the entities (player and enemies) in the game world.
+ *
+ * @param[in] cameraOffsetX The horizontal camera offset
+ * @param[in] cameraOffsetY The vertical camera offset
+ * @param[in] zoomFactor The zoom factor applied to the view
+ */
 void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
     glBindVertexArray(squareVAO);
 
@@ -343,6 +470,14 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }
 
+/*
+ * PhysicsLoop
+ *
+ * Runs the physics simulation and updates entities at a fixed interval.
+ *
+ * @param[in] arg Argument passed to the thread (unused)
+ * @return int Return value (always 0)
+ */
 int PhysicsLoop(void* arg) {
     (void)arg;
     while (atomic_load(&isRunning)) {
@@ -371,33 +506,17 @@ int PhysicsLoop(void* arg) {
     return 0;
 }
 
-void CleanUp() {
-    printf("Cleaning up...\n");
-    if (gridVAO) {
-        glDeleteVertexArrays(1, &gridVAO);
-    }
-    if (squareVAO) {
-        glDeleteVertexArrays(1, &squareVAO);
-    }
-    if (squareVBO) {
-        glDeleteBuffers(1, &squareVBO);
-    }
-    if (shaderProgram) {
-        glDeleteProgram(shaderProgram);
-    }
 
-    if (mainContext) {
-        SDL_GL_DeleteContext(mainContext);
-    }
-    if (window) {
-        SDL_DestroyWindow(window);
-    }
-    cleanupGrid();
 
-    SDL_Quit();
-    printf("Cleanup complete.\n");
-}
-
+/*
+ * main
+ *
+ * Entry point for the application. Initializes the random seed and starts the game loop.
+ *
+ * @param[in] argc Number of command-line arguments
+ * @param[in] argv Array of command-line arguments
+ * @return int Exit status
+ */
 int main(int argc, char* argv[]) {
     (void)argc;
     (void)argv;

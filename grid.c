@@ -1,3 +1,5 @@
+// grid.c
+
 #include "grid.h"
 #include <stdlib.h>
 #include <stdio.h>
@@ -21,6 +23,13 @@ float smoothNoise(int x, int y);
 float interpolatedNoise(float x, float y);
 float perlinNoise(float x, float y, float persistence, int octaves);
 
+/*
+ * initializeGrid
+ *
+ * Initializes the grid with default terrain and biome types.
+ *
+ * @param[in] size The size of the grid to initialize
+ */
 void initializeGrid(int size) {
     for (int y = 0; y < size; y++) {
         for (int x = 0; x < size; x++) {
@@ -31,10 +40,24 @@ void initializeGrid(int size) {
     }
 }
 
+/*
+ * cleanupGrid
+ *
+ * Cleans up resources allocated for the grid. (Currently does nothing)
+ */
 void cleanupGrid() {
     // Nothing to clean up for now
 }
 
+/*
+ * isWalkable
+ *
+ * Checks if a given grid cell is walkable.
+ *
+ * @param[in] x The x-coordinate of the grid cell
+ * @param[in] y The y-coordinate of the grid cell
+ * @return bool True if the cell is walkable, false otherwise
+ */
 bool isWalkable(int x, int y) {
     if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) {
         return false;
@@ -42,10 +65,26 @@ bool isWalkable(int x, int y) {
     return grid[y][x].isWalkable;
 }
 
+/*
+ * isValid
+ *
+ * Checks if a given grid cell is within valid grid bounds.
+ *
+ * @param[in] x The x-coordinate of the grid cell
+ * @param[in] y The y-coordinate of the grid cell
+ * @return bool True if the cell is within bounds, false otherwise
+ */
 bool isValid(int x, int y) {
     return x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE;
 }
 
+/*
+ * setGridSize
+ *
+ * Sets the grid size. (Currently does nothing as the grid size is fixed)
+ *
+ * @param[in] size The desired grid size
+ */
 void setGridSize(int size) {
     // We're using a fixed size grid for now, so this function doesn't do much
     if (size != GRID_SIZE) {
@@ -53,7 +92,11 @@ void setGridSize(int size) {
     }
 }
 
-
+/*
+ * generateTerrain
+ *
+ * Generates the terrain for the grid using Perlin noise and biome data.
+ */
 void generateTerrain() {
     float randomOffset = ((float)rand() / RAND_MAX) * 0.2f - 0.1f;  // Random value between -0.1 and 0.1
 
@@ -147,12 +190,31 @@ void generateTerrain() {
 }
 
 // Perlin noise functions
+
+/*
+ * noise
+ *
+ * Generates a noise value for a given coordinate.
+ *
+ * @param[in] x The x-coordinate
+ * @param[in] y The y-coordinate
+ * @return float The noise value
+ */
 float noise(int x, int y) {
     int n = x + y * 57;
     n = (n << 13) ^ n;
     return (1.0f - ((n * (n * n * 15731 + 789221) + 1376312589 + rand()) & 0x7fffffff) / 1073741824.0f);
 }
 
+/*
+ * smoothNoise
+ *
+ * Generates a smoothed noise value for a given coordinate.
+ *
+ * @param[in] x The x-coordinate
+ * @param[in] y The y-coordinate
+ * @return float The smoothed noise value
+ */
 float smoothNoise(int x, int y) {
     float corners = (noise(x-1, y-1) + noise(x+1, y-1) + noise(x-1, y+1) + noise(x+1, y+1)) / 16.0f;
     float sides = (noise(x-1, y) + noise(x+1, y) + noise(x, y-1) + noise(x, y+1)) / 8.0f;
@@ -160,6 +222,15 @@ float smoothNoise(int x, int y) {
     return corners + sides + center;
 }
 
+/*
+ * interpolatedNoise
+ *
+ * Generates an interpolated noise value for a given coordinate.
+ *
+ * @param[in] x The x-coordinate
+ * @param[in] y The y-coordinate
+ * @return float The interpolated noise value
+ */
 float interpolatedNoise(float x, float y) {
     int intX = (int)x;
     float fracX = x - intX;
@@ -177,6 +248,17 @@ float interpolatedNoise(float x, float y) {
     return i1 * (1 - fracY) + i2 * fracY;
 }
 
+/*
+ * perlinNoise
+ *
+ * Generates Perlin noise for a given coordinate using multiple octaves.
+ *
+ * @param[in] x The x-coordinate
+ * @param[in] y The y-coordinate
+ * @param[in] persistence The persistence value
+ * @param[in] octaves The number of octaves
+ * @return float The Perlin noise value
+ */
 float perlinNoise(float x, float y, float persistence, int octaves) {
     float total = 0;
     float frequency = 1;

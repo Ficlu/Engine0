@@ -1,4 +1,5 @@
 // pathfinding.c
+
 #include "pathfinding.h"
 #include "entity.h"
 #include "grid.h"
@@ -6,9 +7,16 @@
 #include <stdlib.h>
 #include <math.h>
 #include <stdbool.h>
-
 #include <float.h>
 
+/*
+ * createPriorityQueue
+ *
+ * Creates a priority queue with the given capacity.
+ *
+ * @param[in] capacity The capacity of the priority queue
+ * @return PriorityQueue* Pointer to the created priority queue
+ */
 PriorityQueue* createPriorityQueue(int capacity) {
     PriorityQueue* pq = (PriorityQueue*)malloc(sizeof(PriorityQueue));
     pq->nodes = (Node*)malloc(sizeof(Node) * capacity);
@@ -17,6 +25,15 @@ PriorityQueue* createPriorityQueue(int capacity) {
     return pq;
 }
 
+/*
+ * inPriorityQueue
+ *
+ * Checks if a node is in the priority queue.
+ *
+ * @param[in] pq Pointer to the priority queue
+ * @param[in] node The node to check
+ * @return bool True if the node is in the priority queue, false otherwise
+ */
 bool inPriorityQueue(PriorityQueue* pq, Node node) {
     for (int i = 0; i < pq->size; i++) {
         if (pq->nodes[i].x == node.x && pq->nodes[i].y == node.y) {
@@ -26,12 +43,28 @@ bool inPriorityQueue(PriorityQueue* pq, Node node) {
     return false;
 }
 
+/*
+ * swap
+ *
+ * Swaps two nodes.
+ *
+ * @param[in,out] a Pointer to the first node
+ * @param[in,out] b Pointer to the second node
+ */
 void swap(Node* a, Node* b) {
     Node temp = *a;
     *a = *b;
     *b = temp;
 }
 
+/*
+ * heapifyUp
+ *
+ * Maintains the heap property by moving a node up the heap.
+ *
+ * @param[in] pq Pointer to the priority queue
+ * @param[in] index The index of the node to move up
+ */
 void heapifyUp(PriorityQueue* pq, int index) {
     while (index > 0) {
         int parent = (index - 1) / 2;
@@ -44,6 +77,14 @@ void heapifyUp(PriorityQueue* pq, int index) {
     }
 }
 
+/*
+ * heapifyDown
+ *
+ * Maintains the heap property by moving a node down the heap.
+ *
+ * @param[in] pq Pointer to the priority queue
+ * @param[in] index The index of the node to move down
+ */
 void heapifyDown(PriorityQueue* pq, int index) {
     int smallest = index;
     int left = 2 * index + 1;
@@ -61,6 +102,14 @@ void heapifyDown(PriorityQueue* pq, int index) {
     }
 }
 
+/*
+ * push
+ *
+ * Adds a node to the priority queue.
+ *
+ * @param[in,out] pq Pointer to the priority queue
+ * @param[in] node The node to add
+ */
 void push(PriorityQueue* pq, Node node) {
     if (pq->size == pq->capacity) {
         pq->capacity *= 2;
@@ -71,6 +120,14 @@ void push(PriorityQueue* pq, Node node) {
     pq->size++;
 }
 
+/*
+ * pop
+ *
+ * Removes and returns the node with the highest priority (lowest f value).
+ *
+ * @param[in,out] pq Pointer to the priority queue
+ * @return Node The node with the highest priority
+ */
 Node pop(PriorityQueue* pq) {
     Node top = pq->nodes[0];
     pq->nodes[0] = pq->nodes[pq->size - 1];
@@ -79,10 +136,32 @@ Node pop(PriorityQueue* pq) {
     return top;
 }
 
+/*
+ * heuristic
+ *
+ * Calculates the heuristic distance between two points.
+ *
+ * @param[in] x1 The x-coordinate of the first point
+ * @param[in] y1 The y-coordinate of the first point
+ * @param[in] x2 The x-coordinate of the second point
+ * @param[in] y2 The y-coordinate of the second point
+ * @return float The heuristic distance between the points
+ */
 float heuristic(int x1, int y1, int x2, int y2) {
     return sqrtf((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2));
 }
 
+/*
+ * lineOfSight
+ *
+ * Checks if there is a clear line of sight between two points.
+ *
+ * @param[in] x0 The x-coordinate of the starting point
+ * @param[in] y0 The y-coordinate of the starting point
+ * @param[in] x1 The x-coordinate of the ending point
+ * @param[in] y1 The y-coordinate of the ending point
+ * @return bool True if there is a clear line of sight, false otherwise
+ */
 bool lineOfSight(int x0, int y0, int x1, int y1) {
     int dx = abs(x1 - x0);
     int dy = abs(y1 - y0);
@@ -115,6 +194,17 @@ bool lineOfSight(int x0, int y0, int x1, int y1) {
     return true;
 }
 
+/*
+ * findPath
+ *
+ * Finds a path from the start position to the goal position using the A* algorithm.
+ *
+ * @param[in] startX The x-coordinate of the start position
+ * @param[in] startY The y-coordinate of the start position
+ * @param[in] goalX The x-coordinate of the goal position
+ * @param[in] goalY The y-coordinate of the goal position
+ * @return Node* Pointer to the array of nodes representing the path, or NULL if no path is found
+ */
 Node* findPath(int startX, int startY, int goalX, int goalY) {
     PriorityQueue* openList = createPriorityQueue(GRID_SIZE * GRID_SIZE);
     bool** closedList = (bool**)malloc(sizeof(bool*) * GRID_SIZE);

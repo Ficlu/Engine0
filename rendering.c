@@ -1,3 +1,5 @@
+// rendering.c
+
 #include "rendering.h"
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
@@ -9,6 +11,11 @@
 GLuint textureAtlas;
 GLuint textureUniform;
 
+/*
+ * initRendering
+ *
+ * Initializes SDL and OpenGL for rendering.
+ */
 void initRendering() {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         printf("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
@@ -50,6 +57,73 @@ const char* fragmentShaderSource = "#version 330 core\n"
 "    FragColor = texColor;\n"
 "}\n";
 
+const char* outlineVertexShaderSource = "#version 330 core\n"
+"layout(location = 0) in vec2 position;\n"
+"void main() {\n"
+"    gl_Position = vec4(position, 0.0, 1.0);\n"
+"}\n";
+
+const char* outlineFragmentShaderSource = "#version 330 core\n"
+"out vec4 FragColor;\n"
+"uniform vec3 outlineColor;\n"
+"void main() {\n"
+"    FragColor = vec4(outlineColor, 1.0);\n"
+"}\n";
+
+GLuint createOutlineShaderProgram() {
+    GLuint vertexShader = createShader(GL_VERTEX_SHADER, outlineVertexShaderSource);
+    GLuint fragmentShader = createShader(GL_FRAGMENT_SHADER, outlineFragmentShaderSource);
+
+    GLuint shaderProgram = glCreateProgram();
+    glAttachShader(shaderProgram, vertexShader);
+    glAttachShader(shaderProgram, fragmentShader);
+    glLinkProgram(shaderProgram);
+
+    int success;
+    char infoLog[512];
+    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
+    if (!success) {
+        glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
+        printf("ERROR::PROGRAM::LINKING_FAILED\n%s\n", infoLog);
+    } else {
+        printf("Outline shader program linked successfully\n");
+    }
+
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+
+    return shaderProgram;
+}
+
+GLuint outlineVAO, outlineVBO;
+
+void initializeOutlineVAO() {
+    glGenVertexArrays(1, &outlineVAO);
+    glGenBuffers(1, &outlineVBO);
+
+    glBindVertexArray(outlineVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, outlineVBO);
+
+    // Allocate buffer space (we'll update the data later)
+    glBufferData(GL_ARRAY_BUFFER, 8 * sizeof(float), NULL, GL_DYNAMIC_DRAW);
+
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    printf("Outline VAO initialized\n");
+}
+/*
+ * createShader
+ *
+ * Creates a shader of the given type with the specified source code.
+ *
+ * @param[in] type The type of shader to create (GL_VERTEX_SHADER or GL_FRAGMENT_SHADER)
+ * @param[in] source The source code of the shader
+ * @return GLuint The created shader ID
+ */
 GLuint createShader(GLenum type, const char* source) {
     GLuint shader = glCreateShader(type);
     glShaderSource(shader, 1, &source, NULL);
@@ -68,6 +142,13 @@ GLuint createShader(GLenum type, const char* source) {
     return shader;
 }
 
+/*
+ * createShaderProgram
+ *
+ * Creates a shader program by linking a vertex shader and a fragment shader.
+ *
+ * @return GLuint The created shader program ID
+ */
 GLuint createShaderProgram() {
     GLuint vertexShader = createShader(GL_VERTEX_SHADER, vertexShaderSource);
     GLuint fragmentShader = createShader(GL_FRAGMENT_SHADER, fragmentShaderSource);
@@ -93,6 +174,17 @@ GLuint createShaderProgram() {
     return shaderProgram;
 }
 
+/*
+ * createGridVertices
+ *
+ * Creates the vertices for a grid.
+ *
+ * @param[out] vertices Pointer to the array of vertices
+ * @param[out] vertexCount Pointer to the number of vertices
+ * @param[in] width The width of the grid area
+ * @param[in] height The height of the grid area
+ * @param[in] cellSize The size of each cell in the grid
+ */
 void createGridVertices(float** vertices, int* vertexCount, int width, int height, int cellSize) {
     int size = (width < height) ? width : height;  // Use the smaller dimension
     int numCells = size / cellSize;
@@ -122,6 +214,15 @@ void createGridVertices(float** vertices, int* vertexCount, int width, int heigh
     }
 }
 
+/*
+ * createGridVAO
+ *
+ * Creates a Vertex Array Object (VAO) for the grid.
+ *
+ * @param[in] vertices Pointer to the array of vertices
+ * @param[in] vertexCount The number of vertices
+ * @return GLuint The created VAO ID
+ */
 GLuint createGridVAO(float* vertices, int vertexCount) {
     GLuint VAO, VBO;
     glGenVertexArrays(1, &VAO);
@@ -142,6 +243,18 @@ GLuint createGridVAO(float* vertices, int vertexCount) {
     return VAO;
 }
 
+/*
+ * createSquareVAO
+ *
+ * Creates a Vertex Array Object (VAO) for a textured square.
+ *
+ * @param[in] size The size of the square
+ * @param[in] texX The x-coordinate of the texture's starting point
+ * @param[in] texY The y-coordinate of the texture's starting point
+ * @param[in] texWidth The width of the texture section
+ * @param[in] texHeight The height of the texture section
+ * @return GLuint The created VAO ID
+ */
 GLuint createSquareVAO(float size, float texX, float texY, float texWidth, float texHeight) {
     float vertices[] = {
         // Positions       // Texture Coords
@@ -170,6 +283,14 @@ GLuint createSquareVAO(float size, float texX, float texY, float texWidth, float
     return VAO;
 }
 
+/*
+ * loadBMP
+ *
+ * Loads a BMP image and creates an OpenGL texture from it.
+ *
+ * @param[in] filePath The file path of the BMP image
+ * @return GLuint The created texture ID
+ */
 GLuint loadBMP(const char* filePath) {
     // Open the file
     FILE* file = fopen(filePath, "rb");
@@ -221,7 +342,6 @@ GLuint loadBMP(const char* filePath) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
 
     printf("Texture loaded successfully: %s (Width: %d, Height: %d)\n", filePath, width, height);
     return textureID;

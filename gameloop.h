@@ -18,7 +18,7 @@
 #define FRAME_TIME_MS 24
 #define CAMERA_ZOOM 4.00f  
 #define TILE_SIZE (1.0f / GRID_SIZE)
-
+extern GLuint outlineVAO;
 // Lerp function declaration
 float lerp(float a, float b, float t);
 
@@ -30,6 +30,7 @@ void UpdateGameLogic();
 void Render();
 int PhysicsLoop(void* arg);
 void CleanUp();
+void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor);
 void generateTerrain();
 
 #endif // GAMELOOP_H

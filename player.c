@@ -1,10 +1,25 @@
 // player.c
+
 #include "player.h"
 #include "gameloop.h"
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 
+/*
+ * InitPlayer
+ *
+ * Initializes a player entity with given starting position and speed.
+ *
+ * @param[out] player Pointer to the Player structure to initialize
+ * @param[in] startGridX Starting X position on the grid
+ * @param[in] startGridY Starting Y position on the grid
+ * @param[in] speed Movement speed of the player
+ *
+ * @pre player is a valid pointer to a Player structure
+ * @pre startGridX and startGridY are within valid grid bounds
+ * @pre speed is a positive float value
+ */
 void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
     player->entity.gridX = startGridX;
     player->entity.gridY = startGridY;
@@ -28,20 +43,30 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
     player->cameraCurrentY = player->entity.posY;
     player->cameraSpeed = 0.1f;
 
-    while (!isWalkable(player->entity.gridX, player->entity.gridY)) {
-        player->entity.gridX = rand() % GRID_SIZE;
-        player->entity.gridY = rand() % GRID_SIZE;
-        player->entity.posX = (2.0f * player->entity.gridX / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
-        player->entity.posY = 1.0f - (2.0f * player->entity.gridY / GRID_SIZE) - (1.0f / GRID_SIZE);
-        player->cameraTargetX = player->entity.posX;
-        player->cameraTargetY = player->entity.posY;
-        player->cameraCurrentX = player->entity.posX;
-        player->cameraCurrentY = player->entity.posY;
-    }
+    findNearestWalkableTile(player->entity.posX, player->entity.posY, &player->entity.gridX, &player->entity.gridY);
+    player->entity.posX = (2.0f * player->entity.gridX / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
+    player->entity.posY = 1.0f - (2.0f * player->entity.gridY / GRID_SIZE) - (1.0f / GRID_SIZE);
+    player->cameraTargetX = player->entity.posX;
+    player->cameraTargetY = player->entity.posY;
+    player->cameraCurrentX = player->entity.posX;
+    player->cameraCurrentY = player->entity.posY;
 
     printf("Player initialized at (%d, %d)\n", player->entity.gridX, player->entity.gridY);
 }
 
+/*
+ * UpdatePlayer
+ *
+ * Updates the player's state, including position and camera.
+ *
+ * @param[in,out] player Pointer to the Player structure to update
+ * @param[in] allEntities Array of pointers to all entities in the game
+ * @param[in] entityCount Number of entities in the allEntities array
+ *
+ * @pre player is a valid pointer to a Player structure
+ * @pre allEntities is a valid array of Entity pointers
+ * @pre entityCount is a positive integer
+ */
 void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
     UpdateEntity(&player->entity, allEntities, entityCount);
 
@@ -60,6 +85,15 @@ void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
     player->cameraCurrentY += (player->cameraTargetY - player->cameraCurrentY) * smoothFactor;
 }
 
+/*
+ * CleanupPlayer
+ *
+ * Frees any dynamically allocated memory associated with the player.
+ *
+ * @param[in,out] player Pointer to the Player structure to clean up
+ *
+ * @pre player is a valid pointer to a Player structure
+ */
 void CleanupPlayer(Player* player) {
     if (player->entity.cachedPath) {
         free(player->entity.cachedPath);
