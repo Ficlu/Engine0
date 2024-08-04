@@ -5,7 +5,7 @@ LDFLAGS = -Lsrc/lib -lmingw32 -Isrc/include/cglm/include -lSDL2main -lSDL2 -lSDL
 
 OBJS = gameloop.o rendering.o player.o enemy.o grid.o pathfinding.o entity.o
 
-bin/gameloop.exe: $(OBJS)
+gameloop.exe: $(OBJS)
 	$(CC) -o $@ $(OBJS) $(LDFLAGS)
 
 gameloop.o: gameloop.c gameloop.h rendering.h player.h entity.h enemy.h grid.h pathfinding.h
