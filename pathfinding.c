@@ -229,17 +229,14 @@ Node* findPath(int startX, int startY, int goalX, int goalY) {
     int dx[] = {-1, 0, 1, 0};
     int dy[] = {0, -1, 0, 1};
 
+    bool pathFound = false;
+
     while (openList->size > 0) {
         Node current = pop(openList);
 
         if (current.x == goalX && current.y == goalY) {
-            for (int i = 0; i < GRID_SIZE; i++) {
-                free(closedList[i]);
-            }
-            free(closedList);
-            free(openList->nodes);
-            free(openList);
-            return nodes;
+            pathFound = true;
+            break;
         }
 
         closedList[current.y][current.x] = true;
@@ -268,11 +265,18 @@ Node* findPath(int startX, int startY, int goalX, int goalY) {
         }
     }
 
+    // Clean up
     for (int i = 0; i < GRID_SIZE; i++) {
         free(closedList[i]);
     }
     free(closedList);
     free(openList->nodes);
     free(openList);
-    return NULL;
+
+    if (!pathFound) {
+        free(nodes);
+        return NULL;
+    }
+
+    return nodes;
 }

@@ -162,6 +162,7 @@ void updateEntityPath(Entity* entity) {
             entity->targetGridX = entity->cachedPath[0].x;
             entity->targetGridY = entity->cachedPath[0].y;
         }
+            free(path);
     } else {
         int dx = goalX - startX;
         int dy = goalY - startY;
