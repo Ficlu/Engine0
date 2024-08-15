@@ -1,8 +1,10 @@
 # Ignore Visual Studio Code settings
 .vscode/
 
-# Ignore executable files
-*.exe
-
+*.py
+*.pyc
+*.venv
+test.exe
+testc.exe
 # Ignore object files
 *.o

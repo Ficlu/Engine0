@@ -49,16 +49,16 @@ void UpdateEntity(Entity* entity, Entity** allEntities, int entityCount) {
 
     updateEntityPath(entity);
 
-    float targetPosX = (2.0f * entity->targetGridX / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
-    float targetPosY = 1.0f - (2.0f * entity->targetGridY / GRID_SIZE) - (1.0f / GRID_SIZE);
+    float targetScreenX, targetScreenY;
+    WorldToScreenCoords(entity->targetGridX, entity->targetGridY, 0, 0, 1, &targetScreenX, &targetScreenY);
 
-    float dx = targetPosX - entity->posX;
-    float dy = targetPosY - entity->posY;
+    float dx = targetScreenX - entity->posX;
+    float dy = targetScreenY - entity->posY;
     float distance = sqrt(dx*dx + dy*dy);
 
     if (distance < 0.001f) {
-        entity->posX = targetPosX;
-        entity->posY = targetPosY;
+        entity->posX = targetScreenX;
+        entity->posY = targetScreenY;
         entity->gridX = entity->targetGridX;
         entity->gridY = entity->targetGridY;
         entity->needsPathfinding = true;
@@ -72,15 +72,13 @@ void UpdateEntity(Entity* entity, Entity** allEntities, int entityCount) {
     float newX = entity->posX + moveX;
     float newY = entity->posY + moveY;
 
-    int currentGridX = entity->gridX;
-    int currentGridY = entity->gridY;
     int newGridX = (int)((newX + 1.0f) * GRID_SIZE / 2);
     int newGridY = (int)((1.0f - newY) * GRID_SIZE / 2);
 
     bool canMove = true;
 
-    if (newGridX != currentGridX && newGridY != currentGridY) {
-        if (!isWalkable(newGridX, currentGridY) && !isWalkable(currentGridX, newGridY)) {
+    if (newGridX != entity->gridX && newGridY != entity->gridY) {
+        if (!isWalkable(newGridX, entity->gridY) && !isWalkable(entity->gridX, newGridY)) {
             canMove = false;
         }
     }

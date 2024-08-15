@@ -21,7 +21,7 @@
 extern GLuint outlineVAO;
 // Lerp function declaration
 float lerp(float a, float b, float t);
-
+void WorldToScreenCoords(int gridX, int gridY, float cameraOffsetX, float cameraOffsetY, float zoomFactor, float* screenX, float* screenY);
 void setGridSize(int size);
 void GameLoop();
 void Initialize();

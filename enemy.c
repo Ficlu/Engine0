@@ -29,9 +29,7 @@
  * @pre speed is a positive float value
  */
 void InitEnemy(Enemy* enemy, int startGridX, int startGridY, float speed) {
-    /* CERT C DCL38-C: Use the correct syntax when declaring a flexible array member */
     if (enemy == NULL) {
-        /* CERT C ERR07-C: Prefer functions that support error checking over equivalent functions that don't */
         fprintf(stderr, "Error: enemy pointer is NULL in InitEnemy\n");
         return;
     }
@@ -39,8 +37,7 @@ void InitEnemy(Enemy* enemy, int startGridX, int startGridY, float speed) {
     enemy->entity.gridX = startGridX;
     enemy->entity.gridY = startGridY;
     enemy->entity.speed = speed;
-    enemy->entity.posX = (2.0f * startGridX / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
-    enemy->entity.posY = 1.0f - (2.0f * startGridY / GRID_SIZE) - (1.0f / GRID_SIZE);
+    WorldToScreenCoords(startGridX, startGridY, 0, 0, 1, &enemy->entity.posX, &enemy->entity.posY);
     enemy->entity.targetGridX = startGridX;
     enemy->entity.targetGridY = startGridX;
     enemy->entity.finalGoalX = startGridX;
@@ -51,14 +48,9 @@ void InitEnemy(Enemy* enemy, int startGridX, int startGridY, float speed) {
     enemy->entity.currentPathIndex = 0;
     enemy->entity.isPlayer = false;
 
-    /* Ensure the enemy starts on a walkable tile */
     findNearestWalkableTile(enemy->entity.posX, enemy->entity.posY, &enemy->entity.gridX, &enemy->entity.gridY);
-    enemy->entity.posX = (2.0f * enemy->entity.gridX / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
-    enemy->entity.posY = 1.0f - (2.0f * enemy->entity.gridY / GRID_SIZE) - (1.0f / GRID_SIZE);
+    WorldToScreenCoords(enemy->entity.gridX, enemy->entity.gridY, 0, 0, 1, &enemy->entity.posX, &enemy->entity.posY);
 
-    /* Initialize random color for the enemy path */
-    /* CERT C MSC30-C: Do not use the rand() function for generating pseudorandom numbers */
-    /* Note: Consider using a more robust PRNG for production code */
     enemy->pathColor.r = (float)rand() / RAND_MAX;
     enemy->pathColor.g = (float)rand() / RAND_MAX;
     enemy->pathColor.b = (float)rand() / RAND_MAX;

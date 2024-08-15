@@ -38,6 +38,11 @@ void generateTerrain();
 void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor);
 GLuint loadTexture(const char* filePath);  // New texture loading function
 
+void WorldToScreenCoords(int gridX, int gridY, float cameraOffsetX, float cameraOffsetY, float zoomFactor, float* screenX, float* screenY) {
+    *screenX = (2.0f * gridX / GRID_SIZE - 1.0f + 1.0f / GRID_SIZE - cameraOffsetX) * zoomFactor;
+    *screenY = (1.0f - 2.0f * gridY / GRID_SIZE - 1.0f / GRID_SIZE - cameraOffsetY) * zoomFactor;
+}
+
 /*
  * GameLoop
  *
@@ -363,8 +368,8 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
 
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
-            float posX = (2.0f * x / GRID_SIZE - 1.0f + 1.0f / GRID_SIZE - cameraOffsetX) * zoomFactor;
-            float posY = (1.0f - 2.0f * y / GRID_SIZE - 1.0f / GRID_SIZE - cameraOffsetY) * zoomFactor;
+            float posX, posY;
+            WorldToScreenCoords(x, y, cameraOffsetX, cameraOffsetY, zoomFactor, &posX, &posY);
 
             float texX = 0.0f;
             float texY = 0.0f;  
@@ -469,7 +474,6 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(playerVertices), playerVertices);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }
-
 /*
  * PhysicsLoop
  *

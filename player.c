@@ -24,8 +24,7 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
     player->entity.gridX = startGridX;
     player->entity.gridY = startGridY;
     player->entity.speed = speed;
-    player->entity.posX = (2.0f * startGridX / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
-    player->entity.posY = 1.0f - (2.0f * startGridY / GRID_SIZE) - (1.0f / GRID_SIZE);
+    WorldToScreenCoords(startGridX, startGridY, 0, 0, 1, &player->entity.posX, &player->entity.posY);
     player->entity.targetGridX = startGridX;
     player->entity.targetGridY = startGridY;
     player->entity.finalGoalX = startGridX;
@@ -44,8 +43,7 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
     player->cameraSpeed = 0.1f;
 
     findNearestWalkableTile(player->entity.posX, player->entity.posY, &player->entity.gridX, &player->entity.gridY);
-    player->entity.posX = (2.0f * player->entity.gridX / GRID_SIZE) - 1.0f + (1.0f / GRID_SIZE);
-    player->entity.posY = 1.0f - (2.0f * player->entity.gridY / GRID_SIZE) - (1.0f / GRID_SIZE);
+    WorldToScreenCoords(player->entity.gridX, player->entity.gridY, 0, 0, 1, &player->entity.posX, &player->entity.posY);
     player->cameraTargetX = player->entity.posX;
     player->cameraTargetY = player->entity.posY;
     player->cameraCurrentX = player->entity.posX;
@@ -53,7 +51,6 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
 
     printf("Player initialized at (%d, %d)\n", player->entity.gridX, player->entity.gridY);
 }
-
 /*
  * UpdatePlayer
  *
