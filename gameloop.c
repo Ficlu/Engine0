@@ -38,6 +38,14 @@ void generateTerrain();
 void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor);
 GLuint loadTexture(const char* filePath);  // New texture loading function
 
+bool isPointVisible(float x, float y, float playerX, float playerY, float zoomFactor) {
+    float minZoom = 2.0f;
+    float visibleRadius = minZoom / zoomFactor;
+    float dx = x - playerX;
+    float dy = y - playerY;
+    return (dx * dx + dy * dy) <= (visibleRadius * visibleRadius);
+}
+
 void WorldToScreenCoords(int gridX, int gridY, float cameraOffsetX, float cameraOffsetY, float zoomFactor, float* screenX, float* screenY) {
     *screenX = (2.0f * gridX / GRID_SIZE - 1.0f + 1.0f / GRID_SIZE - cameraOffsetX) * zoomFactor;
     *screenY = (1.0f - 2.0f * gridY / GRID_SIZE - 1.0f / GRID_SIZE - cameraOffsetY) * zoomFactor;
@@ -292,7 +300,7 @@ void HandleInput() {
             }
         } else if (event.type == SDL_MOUSEWHEEL) {
             float zoomSpeed = 0.1f;
-            float minZoom = 1.0f;
+            float minZoom = 2.0f;
             float maxZoom = 5.0f;
 
             if (event.wheel.y > 0) {
@@ -366,8 +374,24 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
     glUseProgram(shaderProgram);
     glBindVertexArray(squareVAO);
 
+    float playerWorldX = player.entity.posX;
+    float playerWorldY = player.entity.posY;
+
+    int renderedTiles = 0;
+    int culledTiles = 0;
+
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
+            float worldX, worldY;
+            WorldToScreenCoords(x, y, 0, 0, 1, &worldX, &worldY);
+
+            if (!isPointVisible(worldX, worldY, playerWorldX, playerWorldY, zoomFactor)) {
+                culledTiles++;
+                continue;  // Skip rendering this tile
+            }
+
+            renderedTiles++;
+
             float posX, posY;
             WorldToScreenCoords(x, y, cameraOffsetX, cameraOffsetY, zoomFactor, &posX, &posY);
 
@@ -430,6 +454,8 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
             }
         }
     }
+
+    printf("Tiles rendered: %d, Tiles culled: %d\n", renderedTiles, culledTiles);
 }
 
 /*
@@ -444,24 +470,47 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
 void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
     glBindVertexArray(squareVAO);
 
+    float playerWorldX = player.entity.posX;
+    float playerWorldY = player.entity.posY;
+
+    int renderedEntities = 0;
+    int culledEntities = 0;
+    int totalEntities = 0;
+
     // Render enemies
-    float enemyTexX = 1.0f / 3.0f;  // Right sprite in the top row
+    float enemyTexX = 1.0f / 3.0f;
     float enemyTexY = 1.0 / 2.0f;
     float enemyTexWidth = 1.0f / 3.0f;
     float enemyTexHeight = 1.0f / 2.0f;
-    for (int i = 0; i < MAX_ENEMIES; i++) {
+    for (int i = 0; i < MAX_ENEMIES && i < sizeof(enemies)/sizeof(enemies[0]); i++) {
+        totalEntities++;
+        float enemyWorldX = enemies[i].entity.posX;
+        float enemyWorldY = enemies[i].entity.posY;
+        
+        if (!isPointVisible(enemyWorldX, enemyWorldY, playerWorldX, playerWorldY, zoomFactor)) {
+            culledEntities++;
+            continue;  // Skip rendering this enemy
+        }
+
+        renderedEntities++;
+
+        float screenX = (enemyWorldX - cameraOffsetX) * zoomFactor;
+        float screenY = (enemyWorldY - cameraOffsetY) * zoomFactor;
+
         float enemyVertices[] = {
-            (enemies[i].entity.posX - TILE_SIZE - cameraOffsetX) * zoomFactor, (enemies[i].entity.posY - TILE_SIZE - cameraOffsetY) * zoomFactor, enemyTexX, enemyTexY,
-            (enemies[i].entity.posX + TILE_SIZE - cameraOffsetX) * zoomFactor, (enemies[i].entity.posY - TILE_SIZE - cameraOffsetY) * zoomFactor, enemyTexX + enemyTexWidth, enemyTexY,
-            (enemies[i].entity.posX + TILE_SIZE - cameraOffsetX) * zoomFactor, (enemies[i].entity.posY + TILE_SIZE - cameraOffsetY) * zoomFactor, enemyTexX + enemyTexWidth, enemyTexY + enemyTexHeight,
-            (enemies[i].entity.posX - TILE_SIZE - cameraOffsetX) * zoomFactor, (enemies[i].entity.posY + TILE_SIZE - cameraOffsetY) * zoomFactor, enemyTexX, enemyTexY + enemyTexHeight
+            screenX - TILE_SIZE * zoomFactor, screenY - TILE_SIZE * zoomFactor, enemyTexX, enemyTexY,
+            screenX + TILE_SIZE * zoomFactor, screenY - TILE_SIZE * zoomFactor, enemyTexX + enemyTexWidth, enemyTexY,
+            screenX + TILE_SIZE * zoomFactor, screenY + TILE_SIZE * zoomFactor, enemyTexX + enemyTexWidth, enemyTexY + enemyTexHeight,
+            screenX - TILE_SIZE * zoomFactor, screenY + TILE_SIZE * zoomFactor, enemyTexX, enemyTexY + enemyTexHeight
         };
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(enemyVertices), enemyVertices);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     }
 
-    // Render player
-    float playerTexX = 0.0f / 3.0f;  // Left sprite in the top row
+    // Render player (always visible)
+    totalEntities++;
+    renderedEntities++;
+    float playerTexX = 0.0f / 3.0f;
     float playerTexY = 1.0f / 2.0f;
     float playerTexWidth = 1.0f / 3.0f;
     float playerTexHeight = 1.0f / 2.0f;
@@ -473,7 +522,19 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     };
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(playerVertices), playerVertices);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+    printf("Entities rendered: %d, Entities culled: %d, Total entities: %d\n", 
+           renderedEntities, culledEntities, totalEntities);
+
+    if (totalEntities != 126) {
+        printf("WARNING: Unexpected total entity count: %d (expected 126)\n", totalEntities);
+    }
+    if (renderedEntities + culledEntities != totalEntities) {
+        printf("WARNING: Entity count mismatch! Rendered + Culled = %d, Total = %d\n", 
+               renderedEntities + culledEntities, totalEntities);
+    }
 }
+
 /*
  * PhysicsLoop
  *
