@@ -15,7 +15,7 @@ typedef struct {
     int size;
     int capacity;
 } PriorityQueue;
-
+void destroyPriorityQueue(PriorityQueue* pq);
 PriorityQueue* createPriorityQueue(int capacity);
 bool inPriorityQueue(PriorityQueue* pq, Node node);
 void swap(Node* a, Node* b);
@@ -26,6 +26,6 @@ Node pop(PriorityQueue* pq);
 
 float heuristic(int x1, int y1, int x2, int y2);
 bool lineOfSight(int x0, int y0, int x1, int y1);
-Node* findPath(int startX, int startY, int goalX, int goalY);
+Node* findPath(int startX, int startY, int goalX, int goalY, int* pathLength);
 
 #endif // PATHFINDING_H

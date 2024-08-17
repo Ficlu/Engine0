@@ -3,30 +3,29 @@
 
 #include "grid.h"
 #include <stdbool.h>
+#include <stdatomic.h>
 
 // Forward declaration
 struct Node;
 
 typedef struct {
-    int gridX;
-    int gridY;
-    float posX;
-    float posY;
+    atomic_int gridX;
+    atomic_int gridY;
+    _Atomic float posX;
+    _Atomic float posY;
     float speed;
-    int targetGridX;
-    int targetGridY;
-    int finalGoalX;
-    int finalGoalY;
-    bool needsPathfinding;
-    struct Node* cachedPath;  // Use the forward-declared struct
+    atomic_int targetGridX;
+    atomic_int targetGridY;
+    atomic_int finalGoalX;
+    atomic_int finalGoalY;
+    atomic_bool needsPathfinding;
+    struct Node* cachedPath;
     int cachedPathLength;
     int currentPathIndex;
     bool isPlayer;
 } Entity;
 
-// New function declaration
 void findNearestWalkableTile(float posX, float posY, int* nearestX, int* nearestY);
-
 void UpdateEntity(Entity* entity, Entity** allEntities, int entityCount);
 void updateEntityPath(Entity* entity);
 

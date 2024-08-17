@@ -8,7 +8,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 
-GLuint textureAtlas;
+GLuint textureAtlas = 0;
 GLuint textureUniform;
 
 /*

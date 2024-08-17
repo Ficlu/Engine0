@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <immintrin.h>
+#include <stdatomic.h>
 
 /*
  * sgn
@@ -49,19 +50,26 @@ void UpdateEntity(Entity* entity, Entity** allEntities, int entityCount) {
 
     updateEntityPath(entity);
 
-    float targetScreenX, targetScreenY;
-    WorldToScreenCoords(entity->targetGridX, entity->targetGridY, 0, 0, 1, &targetScreenX, &targetScreenY);
+    int currentGridX = atomic_load(&entity->gridX);
+    int currentGridY = atomic_load(&entity->gridY);
+    float currentPosX = entity->posX;  // Direct read for _Atomic float
+    float currentPosY = entity->posY;  // Direct read for _Atomic float
+    int currentTargetGridX = atomic_load(&entity->targetGridX);
+    int currentTargetGridY = atomic_load(&entity->targetGridY);
 
-    float dx = targetScreenX - entity->posX;
-    float dy = targetScreenY - entity->posY;
+    float targetScreenX, targetScreenY;
+    WorldToScreenCoords(currentTargetGridX, currentTargetGridY, 0, 0, 1, &targetScreenX, &targetScreenY);
+
+    float dx = targetScreenX - currentPosX;
+    float dy = targetScreenY - currentPosY;
     float distance = sqrt(dx*dx + dy*dy);
 
     if (distance < 0.001f) {
-        entity->posX = targetScreenX;
-        entity->posY = targetScreenY;
-        entity->gridX = entity->targetGridX;
-        entity->gridY = entity->targetGridY;
-        entity->needsPathfinding = true;
+        entity->posX = targetScreenX;  // Direct write for _Atomic float
+        entity->posY = targetScreenY;  // Direct write for _Atomic float
+        atomic_store(&entity->gridX, currentTargetGridX);
+        atomic_store(&entity->gridY, currentTargetGridY);
+        atomic_store(&entity->needsPathfinding, true);
         return;
     }
 
@@ -69,16 +77,16 @@ void UpdateEntity(Entity* entity, Entity** allEntities, int entityCount) {
     float moveX = (dx / distance) * moveDistance;
     float moveY = (dy / distance) * moveDistance;
 
-    float newX = entity->posX + moveX;
-    float newY = entity->posY + moveY;
+    float newX = currentPosX + moveX;
+    float newY = currentPosY + moveY;
 
     int newGridX = (int)((newX + 1.0f) * GRID_SIZE / 2);
     int newGridY = (int)((1.0f - newY) * GRID_SIZE / 2);
 
     bool canMove = true;
 
-    if (newGridX != entity->gridX && newGridY != entity->gridY) {
-        if (!isWalkable(newGridX, entity->gridY) && !isWalkable(entity->gridX, newGridY)) {
+    if (newGridX != currentGridX && newGridY != currentGridY) {
+        if (!isWalkable(newGridX, currentGridY) && !isWalkable(currentGridX, newGridY)) {
             canMove = false;
         }
     }
@@ -88,12 +96,12 @@ void UpdateEntity(Entity* entity, Entity** allEntities, int entityCount) {
     }
 
     if (canMove) {
-        entity->posX = newX;
-        entity->posY = newY;
-        entity->gridX = newGridX;
-        entity->gridY = newGridY;
+        entity->posX = newX;  // Direct write for _Atomic float
+        entity->posY = newY;  // Direct write for _Atomic float
+        atomic_store(&entity->gridX, newGridX);
+        atomic_store(&entity->gridY, newGridY);
     } else {
-        entity->needsPathfinding = true;
+        atomic_store(&entity->needsPathfinding, true);
     }
 }
 
@@ -112,74 +120,60 @@ void updateEntityPath(Entity* entity) {
         return;
     }
 
-    int startX = entity->gridX;
-    int startY = entity->gridY;
-    int goalX = entity->finalGoalX;
-    int goalY = entity->finalGoalY;
+    int startX = atomic_load(&entity->gridX);
+    int startY = atomic_load(&entity->gridY);
+    int goalX = atomic_load(&entity->finalGoalX);
+    int goalY = atomic_load(&entity->finalGoalY);
 
     if (startX == goalX && startY == goalY) {
-        entity->targetGridX = startX;
-        entity->targetGridY = startY;
-        entity->needsPathfinding = false;
+        atomic_store(&entity->targetGridX, startX);
+        atomic_store(&entity->targetGridY, startY);
+        atomic_store(&entity->needsPathfinding, false);
         return;
     }
 
-    Node* path = findPath(startX, startY, goalX, goalY);
+    int pathLength;
+    Node* path = findPath(startX, startY, goalX, goalY, &pathLength);
     if (path) {
+        // Free the old cached path
         if (entity->cachedPath) {
             free(entity->cachedPath);
         }
+
         entity->cachedPath = path;
-        entity->cachedPathLength = 0;
-
-        Node* current = &path[goalY * GRID_SIZE + goalX];
-        while (current) {
-            entity->cachedPathLength++;
-            current = current->parent;
-        }
-
-        /* CERT C ARR01-C: Do not apply the sizeof operator to a pointer when taking the size of an array */
-        entity->cachedPath = (Node*)malloc(sizeof(Node) * entity->cachedPathLength);
-        if (entity->cachedPath == NULL) {
-            fprintf(stderr, "Error: Failed to allocate memory for cached path\n");
-            return;
-        }
-
-        current = &path[goalY * GRID_SIZE + goalX];
-        for (int i = entity->cachedPathLength - 1; i >= 0; i--) {
-            entity->cachedPath[i] = *current;
-            current = current->parent;
-        }
-
+        entity->cachedPathLength = pathLength;
         entity->currentPathIndex = 0;
 
-        if (entity->cachedPathLength > 1) {
-            entity->targetGridX = entity->cachedPath[1].x;
-            entity->targetGridY = entity->cachedPath[1].y;
+        if (pathLength > 1) {
+            atomic_store(&entity->targetGridX, entity->cachedPath[1].x);
+            atomic_store(&entity->targetGridY, entity->cachedPath[1].y);
         } else {
-            entity->targetGridX = entity->cachedPath[0].x;
-            entity->targetGridY = entity->cachedPath[0].y;
+            atomic_store(&entity->targetGridX, entity->cachedPath[0].x);
+            atomic_store(&entity->targetGridY, entity->cachedPath[0].y);
         }
-            free(path);
     } else {
+        if (entity->cachedPath) {
+            free(entity->cachedPath);
+            entity->cachedPath = NULL;
+        }
+        // If no path is found, move towards the goal
         int dx = goalX - startX;
         int dy = goalY - startY;
         if (abs(dx) > abs(dy)) {
-            entity->targetGridX = startX + (dx > 0 ? 1 : -1);
-            entity->targetGridY = startY;
+            atomic_store(&entity->targetGridX, startX + (dx > 0 ? 1 : -1));
+            atomic_store(&entity->targetGridY, startY);
         } else {
-            entity->targetGridX = startX;
-            entity->targetGridY = startY + (dy > 0 ? 1 : -1);
+            atomic_store(&entity->targetGridX, startX);
+            atomic_store(&entity->targetGridY, startY + (dy > 0 ? 1 : -1));
         }
-        if (!isWalkable(entity->targetGridX, entity->targetGridY)) {
-            entity->targetGridX = startX;
-            entity->targetGridY = startY;
+        if (!isWalkable(atomic_load(&entity->targetGridX), atomic_load(&entity->targetGridY))) {
+            atomic_store(&entity->targetGridX, startX);
+            atomic_store(&entity->targetGridY, startY);
         }
     }
 
-    entity->needsPathfinding = false;
+    atomic_store(&entity->needsPathfinding, false);
 }
-
 /*
  * findNearestWalkableTile
  *

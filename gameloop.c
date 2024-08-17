@@ -28,7 +28,7 @@ GLuint squareVBO;
 int vertexCount;
 GLuint colorUniform;
 
-#define MAX_ENTITIES 100
+Entity* allEntities[MAX_ENTITIES];
 Player player;
 Enemy enemies[MAX_ENEMIES];
 
@@ -173,28 +173,6 @@ void Initialize() {
     glBindVertexArray(0);
     printf("Square VAO and VBO created.\n");
 
-    // Create outline VAO
-    float outlineVertices[] = {
-        -1.0f, -1.0f,
-         1.0f, -1.0f,
-         1.0f,  1.0f,
-        -1.0f,  1.0f
-    };
-
-    glGenVertexArrays(1, &outlineVAO);
-    GLuint outlineVBO;
-    glGenBuffers(1, &outlineVBO);
-
-    glBindVertexArray(outlineVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, outlineVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(outlineVertices), outlineVertices, GL_STATIC_DRAW);
-
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
-
     // Load texture atlas
     textureAtlas = loadBMP("texture_atlas.bmp");
     if (!textureAtlas) {
@@ -212,7 +190,8 @@ void Initialize() {
     InitPlayer(&player, playerGridX, playerGridY, MOVE_SPEED);
     printf("Player initialized at (%d, %d).\n", playerGridX, playerGridY);
 
-    // Initialize enemies on walkable tiles
+    // Initialize enemies on walkable tiles and set up allEntities
+    allEntities[0] = &player.entity;
     for (int i = 0; i < MAX_ENEMIES; i++) {
         int enemyGridX, enemyGridY;
         do {
@@ -222,16 +201,30 @@ void Initialize() {
                  (enemyGridX == playerGridX && enemyGridY == playerGridY));
 
         InitEnemy(&enemies[i], enemyGridX, enemyGridY, MOVE_SPEED * 0.5f);
+        allEntities[i + 1] = &enemies[i].entity;
         printf("Enemy %d initialized at (%d, %d).\n", i, enemyGridX, enemyGridY);
     }
 
     printf("Initialization complete.\n");
 }
 
+void CleanupEntities() {
+    for (int i = 0; i < MAX_ENTITIES; i++) {
+        if (allEntities[i]) {
+            if (i == 0) {  // The player is always at index 0
+                CleanupPlayer(&player);
+            } else {  // Enemies are from index 1 to MAX_ENEMIES
+                CleanupEnemy(&enemies[i - 1]);
+            }
+        }
+    }
+}
 
 
 void CleanUp() {
     printf("Cleaning up...\n");
+    CleanupEntities();
+
     if (gridVAO) {
         glDeleteVertexArrays(1, &gridVAO);
     }
@@ -250,7 +243,10 @@ void CleanUp() {
     if (outlineShaderProgram) {
         glDeleteProgram(outlineShaderProgram);
     }
-
+    if (textureAtlas) {
+        glDeleteTextures(1, &textureAtlas);
+        textureAtlas = 0;  // Reset to 0 after deleting
+    }
     if (mainContext) {
         SDL_GL_DeleteContext(mainContext);
     }
@@ -262,7 +258,6 @@ void CleanUp() {
     SDL_Quit();
     printf("Cleanup complete.\n");
 }
-
 /*
  * HandleInput
  *
@@ -322,12 +317,6 @@ void HandleInput() {
  * Updates the game logic including player and enemy states.
  */
 void UpdateGameLogic() {
-    Entity* allEntities[MAX_ENTITIES];
-    allEntities[0] = &player.entity;
-    for (int i = 0; i < MAX_ENEMIES; i++) {
-        allEntities[i + 1] = &enemies[i].entity;
-    }
-
     UpdatePlayer(&player, allEntities, MAX_ENTITIES);
 
     for (int i = 0; i < MAX_ENEMIES; i++) {
@@ -475,15 +464,13 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
 
     int renderedEntities = 0;
     int culledEntities = 0;
-    int totalEntities = 0;
 
     // Render enemies
     float enemyTexX = 1.0f / 3.0f;
     float enemyTexY = 1.0 / 2.0f;
     float enemyTexWidth = 1.0f / 3.0f;
     float enemyTexHeight = 1.0f / 2.0f;
-    for (int i = 0; i < MAX_ENEMIES && i < sizeof(enemies)/sizeof(enemies[0]); i++) {
-        totalEntities++;
+    for (int i = 0; i < MAX_ENEMIES; i++) {
         float enemyWorldX = enemies[i].entity.posX;
         float enemyWorldY = enemies[i].entity.posY;
         
@@ -508,7 +495,6 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     }
 
     // Render player (always visible)
-    totalEntities++;
     renderedEntities++;
     float playerTexX = 0.0f / 3.0f;
     float playerTexY = 1.0f / 2.0f;
@@ -523,16 +509,11 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(playerVertices), playerVertices);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-    printf("Entities rendered: %d, Entities culled: %d, Total entities: %d\n", 
-           renderedEntities, culledEntities, totalEntities);
+    printf("Entities rendered: %d, Entities culled: %d\n", 
+           renderedEntities, culledEntities );
 
-    if (totalEntities != 126) {
-        printf("WARNING: Unexpected total entity count: %d (expected 126)\n", totalEntities);
-    }
-    if (renderedEntities + culledEntities != totalEntities) {
-        printf("WARNING: Entity count mismatch! Rendered + Culled = %d, Total = %d\n", 
-               renderedEntities + culledEntities, totalEntities);
-    }
+
+
 }
 
 /*
@@ -548,20 +529,12 @@ int PhysicsLoop(void* arg) {
     while (atomic_load(&isRunning)) {
         Uint32 startTime = SDL_GetTicks();
         
-        Entity** allEntities = (Entity**)malloc(sizeof(Entity*) * (MAX_ENEMIES + 1));
-        allEntities[0] = &player.entity;
-        for (int i = 0; i < MAX_ENEMIES; i++) {
-            allEntities[i + 1] = &enemies[i].entity;
-        }
-
         UpdateEntity(&player.entity, allEntities, MAX_ENTITIES);
         UpdatePlayer(&player, allEntities, MAX_ENTITIES);
 
         for (int i = 0; i < MAX_ENEMIES; i++) {
             UpdateEntity(&enemies[i].entity, allEntities, MAX_ENTITIES);
         }
-
-        free(allEntities);
 
         int interval = 8 - (SDL_GetTicks() - startTime);
         if (interval > 0) {

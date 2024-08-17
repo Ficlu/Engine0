@@ -193,6 +193,13 @@ bool lineOfSight(int x0, int y0, int x1, int y1) {
     }
     return true;
 }
+void destroyPriorityQueue(PriorityQueue* pq) {
+    if (pq) {
+        free(pq->nodes);
+        free(pq);
+    }
+}
+
 
 /*
  * findPath
@@ -205,13 +212,27 @@ bool lineOfSight(int x0, int y0, int x1, int y1) {
  * @param[in] goalY The y-coordinate of the goal position
  * @return Node* Pointer to the array of nodes representing the path, or NULL if no path is found
  */
-Node* findPath(int startX, int startY, int goalX, int goalY) {
+Node* findPath(int startX, int startY, int goalX, int goalY, int* pathLength) {
     PriorityQueue* openList = createPriorityQueue(GRID_SIZE * GRID_SIZE);
     bool** closedList = (bool**)malloc(sizeof(bool*) * GRID_SIZE);
     for (int i = 0; i < GRID_SIZE; i++) {
         closedList[i] = (bool*)calloc(GRID_SIZE, sizeof(bool));
     }
     Node* nodes = (Node*)malloc(sizeof(Node) * GRID_SIZE * GRID_SIZE);
+
+    if (!openList || !closedList || !nodes) {
+        // Handle memory allocation failure
+        if (openList) destroyPriorityQueue(openList);
+        if (closedList) {
+            for (int i = 0; i < GRID_SIZE; i++) {
+                if (closedList[i]) free(closedList[i]);
+            }
+            free(closedList);
+        }
+        if (nodes) free(nodes);
+        *pathLength = 0;
+        return NULL;
+    }
 
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
@@ -230,12 +251,14 @@ Node* findPath(int startX, int startY, int goalX, int goalY) {
     int dy[] = {0, -1, 0, 1};
 
     bool pathFound = false;
+    Node* endNode = NULL;
 
     while (openList->size > 0) {
         Node current = pop(openList);
 
         if (current.x == goalX && current.y == goalY) {
             pathFound = true;
+            endNode = &nodes[current.y * GRID_SIZE + current.x];
             break;
         }
 
@@ -270,13 +293,37 @@ Node* findPath(int startX, int startY, int goalX, int goalY) {
         free(closedList[i]);
     }
     free(closedList);
-    free(openList->nodes);
-    free(openList);
+    destroyPriorityQueue(openList);
 
     if (!pathFound) {
         free(nodes);
+        *pathLength = 0;
         return NULL;
     }
 
-    return nodes;
+    // Count path length
+    *pathLength = 0;
+    Node* current = endNode;
+    while (current) {
+        (*pathLength)++;
+        current = current->parent;
+    }
+
+    // Allocate memory for the path
+    Node* path = (Node*)malloc(sizeof(Node) * (*pathLength));
+    if (!path) {
+        free(nodes);
+        *pathLength = 0;
+        return NULL;
+    }
+
+    // Fill the path array
+    current = endNode;
+    for (int i = *pathLength - 1; i >= 0; i--) {
+        path[i] = *current;
+        current = current->parent;
+    }
+
+    free(nodes);
+    return path;
 }

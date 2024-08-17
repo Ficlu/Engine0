@@ -21,36 +21,49 @@
  * @pre speed is a positive float value
  */
 void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
-    player->entity.gridX = startGridX;
-    player->entity.gridY = startGridY;
+    atomic_store(&player->entity.gridX, startGridX);
+    atomic_store(&player->entity.gridY, startGridY);
     player->entity.speed = speed;
-    WorldToScreenCoords(startGridX, startGridY, 0, 0, 1, &player->entity.posX, &player->entity.posY);
-    player->entity.targetGridX = startGridX;
-    player->entity.targetGridY = startGridY;
-    player->entity.finalGoalX = startGridX;
-    player->entity.finalGoalY = startGridY;
-    player->entity.needsPathfinding = false;
+    
+    float tempPosX, tempPosY;
+    WorldToScreenCoords(atomic_load(&player->entity.gridX), atomic_load(&player->entity.gridY), 0, 0, 1, &tempPosX, &tempPosY);
+    atomic_store(&player->entity.posX, tempPosX);
+    atomic_store(&player->entity.posY, tempPosY);
+
+    atomic_store(&player->entity.targetGridX, startGridX);
+    atomic_store(&player->entity.targetGridY, startGridY);
+    atomic_store(&player->entity.finalGoalX, startGridX);
+    atomic_store(&player->entity.finalGoalY, startGridY);
+    atomic_store(&player->entity.needsPathfinding, false);
     player->entity.cachedPath = NULL;
     player->entity.cachedPathLength = 0;
     player->entity.currentPathIndex = 0;
     player->zoomFactor = 3.0f;
     player->entity.isPlayer = true;
 
-    player->cameraTargetX = player->entity.posX;
-    player->cameraTargetY = player->entity.posY;
-    player->cameraCurrentX = player->entity.posX;
-    player->cameraCurrentY = player->entity.posY;
+    atomic_store(&player->cameraTargetX, atomic_load(&player->entity.posX));
+    atomic_store(&player->cameraTargetY, atomic_load(&player->entity.posY));
+    atomic_store(&player->cameraCurrentX, atomic_load(&player->entity.posX));
+    atomic_store(&player->cameraCurrentY, atomic_load(&player->entity.posY));
     player->cameraSpeed = 0.1f;
 
-    findNearestWalkableTile(player->entity.posX, player->entity.posY, &player->entity.gridX, &player->entity.gridY);
-    WorldToScreenCoords(player->entity.gridX, player->entity.gridY, 0, 0, 1, &player->entity.posX, &player->entity.posY);
-    player->cameraTargetX = player->entity.posX;
-    player->cameraTargetY = player->entity.posY;
-    player->cameraCurrentX = player->entity.posX;
-    player->cameraCurrentY = player->entity.posY;
+    int tempNearestX, tempNearestY;
+    findNearestWalkableTile(atomic_load(&player->entity.posX), atomic_load(&player->entity.posY), &tempNearestX, &tempNearestY);
+    atomic_store(&player->entity.gridX, tempNearestX);
+    atomic_store(&player->entity.gridY, tempNearestY);
 
-    printf("Player initialized at (%d, %d)\n", player->entity.gridX, player->entity.gridY);
+    WorldToScreenCoords(atomic_load(&player->entity.gridX), atomic_load(&player->entity.gridY), 0, 0, 1, &tempPosX, &tempPosY);
+    atomic_store(&player->entity.posX, tempPosX);
+    atomic_store(&player->entity.posY, tempPosY);
+
+    atomic_store(&player->cameraTargetX, atomic_load(&player->entity.posX));
+    atomic_store(&player->cameraTargetY, atomic_load(&player->entity.posY));
+    atomic_store(&player->cameraCurrentX, atomic_load(&player->entity.posX));
+    atomic_store(&player->cameraCurrentY, atomic_load(&player->entity.posY));
+
+    printf("Player initialized at (%d, %d)\n", atomic_load(&player->entity.gridX), atomic_load(&player->entity.gridY));
 }
+
 /*
  * UpdatePlayer
  *
@@ -92,6 +105,11 @@ void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
  * @pre player is a valid pointer to a Player structure
  */
 void CleanupPlayer(Player* player) {
+    if (player == NULL) {
+        fprintf(stderr, "Error: player pointer is NULL in CleanupPlayer\n");
+        return;
+    }
+
     if (player->entity.cachedPath) {
         free(player->entity.cachedPath);
         player->entity.cachedPath = NULL;

@@ -12,17 +12,19 @@
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 800
-#define MAX_ENEMIES 250
+#define MAX_ENEMIES 120
 #define MOVE_SPEED 0.002f
 #define GAME_LOGIC_INTERVAL_MS 600
 #define FRAME_TIME_MS 24
 #define CAMERA_ZOOM 4.00f  
 #define TILE_SIZE (1.0f / GRID_SIZE)
 extern GLuint outlineVAO;
-// Lerp function declaration
+#define MAX_ENTITIES (MAX_ENEMIES + 1)
+extern Entity* allEntities[MAX_ENTITIES];
 float lerp(float a, float b, float t);
 void WorldToScreenCoords(int gridX, int gridY, float cameraOffsetX, float cameraOffsetY, float zoomFactor, float* screenX, float* screenY);
 void setGridSize(int size);
+void CleanupEntities(void);
 void GameLoop();
 void Initialize();
 void HandleInput();
