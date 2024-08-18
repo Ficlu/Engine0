@@ -243,7 +243,6 @@ void CleanupEntities() {
     }
 }
 
-
 void CleanUp() {
     printf("Cleaning up...\n");
     CleanupEntities();
@@ -281,6 +280,7 @@ void CleanUp() {
     SDL_Quit();
     printf("Cleanup complete.\n");
 }
+
 /*
  * HandleInput
  *
@@ -312,6 +312,7 @@ void HandleInput() {
                     player.entity.targetGridX = player.entity.gridX;
                     player.entity.targetGridY = player.entity.gridY;
                     player.entity.needsPathfinding = true;
+                     printf("Player: needsPathfinding set to TRUE in HandleInput\n");
 
                     printf("Player final goal set: gridX = %d, gridY = %d\n", gridX, gridY);
                 }
@@ -566,8 +567,6 @@ int PhysicsLoop(void* arg) {
     }
     return 0;
 }
-
-
 
 /*
  * main

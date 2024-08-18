@@ -6,7 +6,7 @@
 #include <stdlib.h>
 
 extern GLuint textureAtlas;
-extern GLuint textureUniform;
+extern GLuint textureUniform;  // Declare as extern
 
 // Function declarations
 void initRendering();
@@ -18,6 +18,5 @@ void initializeOutlineVAO();
 GLuint createSquareVAO(float size, float texX, float texY, float texWidth, float texHeight);
 GLuint loadBMP(const char* filePath);
 GLuint createShader(GLenum type, const char* source);
-
 
 #endif // RENDERING_H

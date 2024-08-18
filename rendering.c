@@ -9,7 +9,7 @@
 #include <stdint.h>
 
 GLuint textureAtlas = 0;
-GLuint textureUniform;
+GLuint textureUniform = 0;  
 
 /*
  * initRendering
@@ -115,6 +115,7 @@ void initializeOutlineVAO() {
 
     printf("Outline VAO initialized\n");
 }
+
 /*
  * createShader
  *
