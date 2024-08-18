@@ -61,7 +61,6 @@ void GameLoop() {
     printf("Entering main game loop.\n");
 
     SDL_Thread* physicsThread = SDL_CreateThread(PhysicsLoop, "PhysicsThread", NULL);
-    srand((unsigned int)time(NULL));
     Uint32 lastLogicTick = SDL_GetTicks();
     Uint32 lastRenderTick = SDL_GetTicks();
 
@@ -94,36 +93,43 @@ void GameLoop() {
 void Initialize() {
     printf("Initializing...\n");
 
-    setGridSize(40); // Set the grid size at the beginning of initialization
-    generateTerrain(); // Generate the Minecraft-style terrain
+    setGridSize(40);
+    generateTerrain();
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_EVENTS) < 0) {
-        printf("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
+        fprintf(stderr, "SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
         exit(1);
     }
     printf("SDL initialized.\n");
 
     window = SDL_CreateWindow("2D Top-Down RPG", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
     if (window == NULL) {
-        printf("Window could not be created! SDL_Error: %s\n", SDL_GetError());
+        fprintf(stderr, "Window could not be created! SDL_Error: %s\n", SDL_GetError());
+        SDL_Quit();
         exit(1);
     }
     printf("Window created.\n");
 
     mainContext = SDL_GL_CreateContext(window);
     if (!mainContext) {
-        printf("SDL_GL_CreateContext failed: %s\n", SDL_GetError());
+        fprintf(stderr, "SDL_GL_CreateContext failed: %s\n", SDL_GetError());
+        SDL_DestroyWindow(window);
+        SDL_Quit();
         exit(1);
     }
     printf("OpenGL context created.\n");
 
     SDL_GL_MakeCurrent(window, mainContext);
-    SDL_GL_SetSwapInterval(1); // Enable V-Sync
+    SDL_GL_SetSwapInterval(1);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glewExperimental = GL_TRUE; 
-    if (glewInit() != GLEW_OK) {
-        printf("Error initializing GLEW\n");
+    GLenum glewError = glewInit();
+    if (glewError != GLEW_OK) {
+        fprintf(stderr, "Error initializing GLEW: %s\n", glewGetErrorString(glewError));
+        SDL_GL_DeleteContext(mainContext);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
         exit(1);
     }
     printf("GLEW initialized.\n");
@@ -131,7 +137,10 @@ void Initialize() {
     shaderProgram = createShaderProgram();
     outlineShaderProgram = createOutlineShaderProgram();
     if (!shaderProgram || !outlineShaderProgram) {
-        printf("Failed to create shader programs\n");
+        fprintf(stderr, "Failed to create shader programs\n");
+        SDL_GL_DeleteContext(mainContext);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
         exit(1);
     }
     printf("Shader programs created.\n");
@@ -143,7 +152,13 @@ void Initialize() {
     createGridVertices(&vertices, &vertexCount, 800, 800, 800 / GRID_SIZE);
     gridVAO = createGridVAO(vertices, vertexCount);
     if (!gridVAO) {
-        printf("Failed to create grid VAO\n");
+        fprintf(stderr, "Failed to create grid VAO\n");
+        free(vertices);
+        glDeleteProgram(shaderProgram);
+        glDeleteProgram(outlineShaderProgram);
+        SDL_GL_DeleteContext(mainContext);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
         exit(1);
     }
     free(vertices);
@@ -176,7 +191,15 @@ void Initialize() {
     // Load texture atlas
     textureAtlas = loadBMP("texture_atlas.bmp");
     if (!textureAtlas) {
-        printf("Failed to load texture atlas\n");
+        fprintf(stderr, "Failed to load texture atlas\n");
+        glDeleteVertexArrays(1, &gridVAO);
+        glDeleteVertexArrays(1, &squareVAO);
+        glDeleteBuffers(1, &squareVBO);
+        glDeleteProgram(shaderProgram);
+        glDeleteProgram(outlineShaderProgram);
+        SDL_GL_DeleteContext(mainContext);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
         exit(1);
     }
 
@@ -245,7 +268,7 @@ void CleanUp() {
     }
     if (textureAtlas) {
         glDeleteTextures(1, &textureAtlas);
-        textureAtlas = 0;  // Reset to 0 after deleting
+        textureAtlas = 0;
     }
     if (mainContext) {
         SDL_GL_DeleteContext(mainContext);
@@ -559,7 +582,7 @@ int main(int argc, char* argv[]) {
     (void)argc;
     (void)argv;
 
-    srand(time(NULL));  // Initialize random seed
+    srand((unsigned int)time(NULL));  
 
     printf("Starting GameLoop...\n");
     GameLoop();

@@ -8,3 +8,4 @@ test.exe
 testc.exe
 # Ignore object files
 *.o
+visualinfo.c
