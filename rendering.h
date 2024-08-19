@@ -5,8 +5,7 @@
 #include <GL/glew.h>
 #include <stdlib.h>
 #include "enemy.h"
-
-#define MAX_ENEMIES 120
+#include "gameloop.h"
 
 extern GLuint textureAtlas;
 extern GLuint textureUniform;
