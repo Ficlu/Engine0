@@ -18,9 +18,11 @@
 #define FRAME_TIME_MS 24
 #define CAMERA_ZOOM 4.00f  
 #define TILE_SIZE (1.0f / GRID_SIZE)
-extern GLuint outlineVAO;
 #define MAX_ENTITIES (MAX_ENEMIES + 1)
+
+extern GLuint outlineVAO;
 extern Entity* allEntities[MAX_ENTITIES];
+
 float lerp(float a, float b, float t);
 void WorldToScreenCoords(int gridX, int gridY, float cameraOffsetX, float cameraOffsetY, float zoomFactor, float* screenX, float* screenY);
 void setGridSize(int size);
@@ -33,6 +35,7 @@ void Render();
 int PhysicsLoop(void* arg);
 void CleanUp();
 void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor);
+void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor);
 void generateTerrain();
 
 #endif // GAMELOOP_H

@@ -7,15 +7,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-
+#include "gameloop.h"
 GLuint textureAtlas = 0;
-GLuint textureUniform = 0;  
+GLuint textureUniform;
+GLuint enemyBatchVBO = 0;
+GLuint enemyBatchVAO = 0;
 
-/*
- * initRendering
- *
- * Initializes SDL and OpenGL for rendering.
- */
 void initRendering() {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         printf("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
@@ -104,7 +101,6 @@ void initializeOutlineVAO() {
     glBindVertexArray(outlineVAO);
     glBindBuffer(GL_ARRAY_BUFFER, outlineVBO);
 
-    // Allocate buffer space (we'll update the data later)
     glBufferData(GL_ARRAY_BUFFER, 8 * sizeof(float), NULL, GL_DYNAMIC_DRAW);
 
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
@@ -116,15 +112,6 @@ void initializeOutlineVAO() {
     printf("Outline VAO initialized\n");
 }
 
-/*
- * createShader
- *
- * Creates a shader of the given type with the specified source code.
- *
- * @param[in] type The type of shader to create (GL_VERTEX_SHADER or GL_FRAGMENT_SHADER)
- * @param[in] source The source code of the shader
- * @return GLuint The created shader ID
- */
 GLuint createShader(GLenum type, const char* source) {
     GLuint shader = glCreateShader(type);
     glShaderSource(shader, 1, &source, NULL);
@@ -143,13 +130,6 @@ GLuint createShader(GLenum type, const char* source) {
     return shader;
 }
 
-/*
- * createShaderProgram
- *
- * Creates a shader program by linking a vertex shader and a fragment shader.
- *
- * @return GLuint The created shader program ID
- */
 GLuint createShaderProgram() {
     GLuint vertexShader = createShader(GL_VERTEX_SHADER, vertexShaderSource);
     GLuint fragmentShader = createShader(GL_FRAGMENT_SHADER, fragmentShaderSource);
@@ -175,28 +155,16 @@ GLuint createShaderProgram() {
     return shaderProgram;
 }
 
-/*
- * createGridVertices
- *
- * Creates the vertices for a grid.
- *
- * @param[out] vertices Pointer to the array of vertices
- * @param[out] vertexCount Pointer to the number of vertices
- * @param[in] width The width of the grid area
- * @param[in] height The height of the grid area
- * @param[in] cellSize The size of each cell in the grid
- */
 void createGridVertices(float** vertices, int* vertexCount, int width, int height, int cellSize) {
-    int size = (width < height) ? width : height;  // Use the smaller dimension
+    int size = (width < height) ? width : height;
     int numCells = size / cellSize;
-    int numLines = (numCells + 1) * 2;  // Vertical + Horizontal lines
-    *vertexCount = numLines * 2;  // Each line has 2 points
-    *vertices = (float*)malloc(*vertexCount * 2 * sizeof(float));  // 2 floats per point (x, y)
+    int numLines = (numCells + 1) * 2;
+    *vertexCount = numLines * 2;
+    *vertices = (float*)malloc(*vertexCount * 2 * sizeof(float));
 
     int index = 0;
-    float step = 2.0f / numCells;  // Step size in NDC
+    float step = 2.0f / numCells;
 
-    // Create vertical lines
     for (int i = 0; i <= numCells; i++) {
         float x = i * step - 1.0f;
         (*vertices)[index++] = x;
@@ -205,7 +173,6 @@ void createGridVertices(float** vertices, int* vertexCount, int width, int heigh
         (*vertices)[index++] = 1.0f;
     }
 
-    // Create horizontal lines
     for (int j = 0; j <= numCells; j++) {
         float y = j * step - 1.0f;
         (*vertices)[index++] = -1.0f;
@@ -215,15 +182,6 @@ void createGridVertices(float** vertices, int* vertexCount, int width, int heigh
     }
 }
 
-/*
- * createGridVAO
- *
- * Creates a Vertex Array Object (VAO) for the grid.
- *
- * @param[in] vertices Pointer to the array of vertices
- * @param[in] vertexCount The number of vertices
- * @return GLuint The created VAO ID
- */
 GLuint createGridVAO(float* vertices, int vertexCount) {
     GLuint VAO, VBO;
     glGenVertexArrays(1, &VAO);
@@ -244,21 +202,8 @@ GLuint createGridVAO(float* vertices, int vertexCount) {
     return VAO;
 }
 
-/*
- * createSquareVAO
- *
- * Creates a Vertex Array Object (VAO) for a textured square.
- *
- * @param[in] size The size of the square
- * @param[in] texX The x-coordinate of the texture's starting point
- * @param[in] texY The y-coordinate of the texture's starting point
- * @param[in] texWidth The width of the texture section
- * @param[in] texHeight The height of the texture section
- * @return GLuint The created VAO ID
- */
 GLuint createSquareVAO(float size, float texX, float texY, float texWidth, float texHeight) {
     float vertices[] = {
-        // Positions       // Texture Coords
         -size, -size, texX, texY + texHeight,
          size, -size, texX + texWidth, texY + texHeight,
          size,  size, texX + texWidth, texY,
@@ -284,23 +229,13 @@ GLuint createSquareVAO(float size, float texX, float texY, float texWidth, float
     return VAO;
 }
 
-/*
- * loadBMP
- *
- * Loads a BMP image and creates an OpenGL texture from it.
- *
- * @param[in] filePath The file path of the BMP image
- * @return GLuint The created texture ID
- */
 GLuint loadBMP(const char* filePath) {
-    // Open the file
     FILE* file = fopen(filePath, "rb");
     if (!file) {
         printf("Image could not be opened: %s\n", filePath);
         return 0;
     }
 
-    // Read the header
     unsigned char header[54];
     if (fread(header, 1, 54, file) != 54) {
         printf("Not a correct BMP file: %s\n", filePath);
@@ -308,37 +243,26 @@ GLuint loadBMP(const char* filePath) {
         return 0;
     }
 
-    // Parse header information
     unsigned int dataPos = *(int*)&(header[0x0A]);
     unsigned int imageSize = *(int*)&(header[0x22]);
     unsigned int width = *(int*)&(header[0x12]);
     unsigned int height = *(int*)&(header[0x16]);
 
-    // Some BMP files are misformatted, guess missing information
     if (imageSize == 0) imageSize = width * height * 3;
     if (dataPos == 0) dataPos = 54;
 
-    // Create buffer
     unsigned char* data = (unsigned char*)malloc(imageSize);
 
-    // Read the actual data from the file into the buffer
     fread(data, 1, imageSize, file);
-
-    // Close the file
     fclose(file);
 
-    // Create one OpenGL texture
     GLuint textureID;
     glGenTextures(1, &textureID);
-
-    // "Bind" the newly created texture
     glBindTexture(GL_TEXTURE_2D, textureID);
 
-    // Give the image to OpenGL
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_BGR, GL_UNSIGNED_BYTE, data);
     free(data);
 
-    // Set texture parameters
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
@@ -346,4 +270,72 @@ GLuint loadBMP(const char* filePath) {
 
     printf("Texture loaded successfully: %s (Width: %d, Height: %d)\n", filePath, width, height);
     return textureID;
+}
+
+void initializeEnemyBatchVAO() {
+    glGenVertexArrays(1, &enemyBatchVAO);
+    glGenBuffers(1, &enemyBatchVBO);
+
+    glBindVertexArray(enemyBatchVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, enemyBatchVBO);
+
+    glBufferData(GL_ARRAY_BUFFER, MAX_ENEMIES * 4 * 4 * sizeof(float), NULL, GL_DYNAMIC_DRAW);
+
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+
+    printf("Enemy Batch VAO initialized\n");
+}
+
+void updateEnemyBatchVBO(Enemy* enemies, int enemyCount, float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
+    float* batchData = (float*)malloc(enemyCount * 4 * 4 * sizeof(float));
+    if (!batchData) {
+        fprintf(stderr, "Failed to allocate memory for enemy batch data\n");
+        return;
+    }
+
+    int dataIndex = 0;
+    float enemyTexX = 1.0f / 3.0f;
+    float enemyTexY = 1.0f / 2.0f;
+    float enemyTexWidth = 1.0f / 3.0f;
+    float enemyTexHeight = 1.0f / 2.0f;
+
+    for (int i = 0; i < enemyCount; i++) {
+        float screenX = (enemies[i].entity.posX - cameraOffsetX) * zoomFactor;
+        float screenY = (enemies[i].entity.posY - cameraOffsetY) * zoomFactor;
+
+        // Top-left vertex
+        batchData[dataIndex++] = screenX - TILE_SIZE * zoomFactor;
+        batchData[dataIndex++] = screenY - TILE_SIZE * zoomFactor;
+        batchData[dataIndex++] = enemyTexX;
+        batchData[dataIndex++] = enemyTexY;
+
+        // Top-right vertex
+        batchData[dataIndex++] = screenX + TILE_SIZE * zoomFactor;
+        batchData[dataIndex++] = screenY - TILE_SIZE * zoomFactor;
+        batchData[dataIndex++] = enemyTexX + enemyTexWidth;
+        batchData[dataIndex++] = enemyTexY;
+
+        // Bottom-right vertex
+        batchData[dataIndex++] = screenX + TILE_SIZE * zoomFactor;
+        batchData[dataIndex++] = screenY + TILE_SIZE * zoomFactor;
+        batchData[dataIndex++] = enemyTexX + enemyTexWidth;
+        batchData[dataIndex++] = enemyTexY + enemyTexHeight;
+
+        // Bottom-left vertex
+        batchData[dataIndex++] = screenX - TILE_SIZE * zoomFactor;
+        batchData[dataIndex++] = screenY + TILE_SIZE * zoomFactor;
+        batchData[dataIndex++] = enemyTexX;
+        batchData[dataIndex++] = enemyTexY + enemyTexHeight;
+    }
+    glBindBuffer(GL_ARRAY_BUFFER, enemyBatchVBO);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, dataIndex * sizeof(float), batchData);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    free(batchData);
 }

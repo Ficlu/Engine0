@@ -164,7 +164,6 @@ void Initialize() {
     free(vertices);
     printf("Grid VAO created.\n");
 
-    // Create square VAO and VBO
     glGenVertexArrays(1, &squareVAO);
     glGenBuffers(1, &squareVBO);
 
@@ -188,7 +187,6 @@ void Initialize() {
     glBindVertexArray(0);
     printf("Square VAO and VBO created.\n");
 
-    // Load texture atlas
     textureAtlas = loadBMP("texture_atlas.bmp");
     if (!textureAtlas) {
         fprintf(stderr, "Failed to load texture atlas\n");
@@ -203,7 +201,6 @@ void Initialize() {
         exit(1);
     }
 
-    // Initialize player on a walkable tile
     int playerGridX, playerGridY;
     do {
         playerGridX = rand() % GRID_SIZE;
@@ -213,7 +210,6 @@ void Initialize() {
     InitPlayer(&player, playerGridX, playerGridY, MOVE_SPEED);
     printf("Player initialized at (%d, %d).\n", playerGridX, playerGridY);
 
-    // Initialize enemies on walkable tiles and set up allEntities
     allEntities[0] = &player.entity;
     for (int i = 0; i < MAX_ENEMIES; i++) {
         int enemyGridX, enemyGridY;
@@ -228,9 +224,14 @@ void Initialize() {
         printf("Enemy %d initialized at (%d, %d).\n", i, enemyGridX, enemyGridY);
     }
 
+    initializeEnemyBatchVAO();
+    printf("Enemy batch VAO initialized.\n");
+
+    initializeOutlineVAO();
+    printf("Outline VAO initialized.\n");
+
     printf("Initialization complete.\n");
 }
-
 void CleanupEntities() {
     for (int i = 0; i < MAX_ENTITIES; i++) {
         if (allEntities[i]) {
@@ -242,6 +243,7 @@ void CleanupEntities() {
         }
     }
 }
+
 
 void CleanUp() {
     printf("Cleaning up...\n");
@@ -269,6 +271,12 @@ void CleanUp() {
         glDeleteTextures(1, &textureAtlas);
         textureAtlas = 0;
     }
+    if (enemyBatchVAO) {
+        glDeleteVertexArrays(1, &enemyBatchVAO);
+    }
+    if (enemyBatchVBO) {
+        glDeleteBuffers(1, &enemyBatchVBO);
+    }
     if (mainContext) {
         SDL_GL_DeleteContext(mainContext);
     }
@@ -280,7 +288,6 @@ void CleanUp() {
     SDL_Quit();
     printf("Cleanup complete.\n");
 }
-
 /*
  * HandleInput
  *
@@ -312,7 +319,6 @@ void HandleInput() {
                     player.entity.targetGridX = player.entity.gridX;
                     player.entity.targetGridY = player.entity.gridY;
                     player.entity.needsPathfinding = true;
-                     printf("Player: needsPathfinding set to TRUE in HandleInput\n");
 
                     printf("Player final goal set: gridX = %d, gridY = %d\n", gridX, gridY);
                 }
@@ -567,6 +573,8 @@ int PhysicsLoop(void* arg) {
     }
     return 0;
 }
+
+
 
 /*
  * main

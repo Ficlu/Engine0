@@ -4,9 +4,14 @@
 #include <SDL2/SDL.h>
 #include <GL/glew.h>
 #include <stdlib.h>
+#include "enemy.h"
+
+#define MAX_ENEMIES 120
 
 extern GLuint textureAtlas;
-extern GLuint textureUniform;  // Declare as extern
+extern GLuint textureUniform;
+extern GLuint enemyBatchVBO;
+extern GLuint enemyBatchVAO;
 
 // Function declarations
 void initRendering();
@@ -18,5 +23,7 @@ void initializeOutlineVAO();
 GLuint createSquareVAO(float size, float texX, float texY, float texWidth, float texHeight);
 GLuint loadBMP(const char* filePath);
 GLuint createShader(GLenum type, const char* source);
+void initializeEnemyBatchVAO();
+void updateEnemyBatchVBO(Enemy* enemies, int enemyCount, float cameraOffsetX, float cameraOffsetY, float zoomFactor);
 
 #endif // RENDERING_H
