@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdatomic.h>
 
 /*
  * InitEnemy
@@ -34,31 +35,42 @@ void InitEnemy(Enemy* enemy, int startGridX, int startGridY, float speed) {
         return;
     }
 
-    enemy->entity.gridX = startGridX;
-    enemy->entity.gridY = startGridY;
+    atomic_store(&enemy->entity.gridX, startGridX);
+    atomic_store(&enemy->entity.gridY, startGridY);
     enemy->entity.speed = speed;
-    WorldToScreenCoords(startGridX, startGridY, 0, 0, 1, &enemy->entity.posX, &enemy->entity.posY);
-    enemy->entity.targetGridX = startGridX;
-    enemy->entity.targetGridY = startGridX;
-    enemy->entity.finalGoalX = startGridX;
-    enemy->entity.finalGoalY = startGridY;
-    enemy->entity.needsPathfinding = false;
+    
+    float tempPosX, tempPosY;
+    WorldToScreenCoords(startGridX, startGridY, 0, 0, 1, &tempPosX, &tempPosY);
+    atomic_store(&enemy->entity.posX, tempPosX);
+    atomic_store(&enemy->entity.posY, tempPosY);
+
+    atomic_store(&enemy->entity.targetGridX, startGridX);
+    atomic_store(&enemy->entity.targetGridY, startGridY);
+    atomic_store(&enemy->entity.finalGoalX, startGridX);
+    atomic_store(&enemy->entity.finalGoalY, startGridY);
+    atomic_store(&enemy->entity.needsPathfinding, false);
     enemy->entity.cachedPath = NULL;
     enemy->entity.cachedPathLength = 0;
     enemy->entity.currentPathIndex = 0;
     enemy->entity.isPlayer = false;
 
-    findNearestWalkableTile(enemy->entity.posX, enemy->entity.posY, &enemy->entity.gridX, &enemy->entity.gridY);
-    WorldToScreenCoords(enemy->entity.gridX, enemy->entity.gridY, 0, 0, 1, &enemy->entity.posX, &enemy->entity.posY);
+    int tempNearestX, tempNearestY;
+    findNearestWalkableTile(atomic_load(&enemy->entity.posX), atomic_load(&enemy->entity.posY), &tempNearestX, &tempNearestY);
+    atomic_store(&enemy->entity.gridX, tempNearestX);
+    atomic_store(&enemy->entity.gridY, tempNearestY);
+
+    WorldToScreenCoords(atomic_load(&enemy->entity.gridX), atomic_load(&enemy->entity.gridY), 0, 0, 1, &tempPosX, &tempPosY);
+    atomic_store(&enemy->entity.posX, tempPosX);
+    atomic_store(&enemy->entity.posY, tempPosY);
 
     enemy->pathColor.r = (float)rand() / RAND_MAX;
     enemy->pathColor.g = (float)rand() / RAND_MAX;
     enemy->pathColor.b = (float)rand() / RAND_MAX;
 
     printf("Enemy initialized at (%d, %d) with path color (%f, %f, %f)\n", 
-           enemy->entity.gridX, enemy->entity.gridY, enemy->pathColor.r, enemy->pathColor.g, enemy->pathColor.b);
+           atomic_load(&enemy->entity.gridX), atomic_load(&enemy->entity.gridY), 
+           enemy->pathColor.r, enemy->pathColor.g, enemy->pathColor.b);
 }
-
 /*
  * MovementAI
  *
@@ -79,7 +91,7 @@ void MovementAI(Enemy* enemy) {
         enemy->entity.needsPathfinding) {
         
         /* Only change path with a 30% chance */
-        if (rand() % 100 < 30) {
+        if (rand() % 100 < 4) {
             int newTargetX, newTargetY;
             do {
                 newTargetX = rand() % GRID_SIZE;

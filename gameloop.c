@@ -50,7 +50,6 @@ void WorldToScreenCoords(int gridX, int gridY, float cameraOffsetX, float camera
     *screenX = (2.0f * gridX / GRID_SIZE - 1.0f + 1.0f / GRID_SIZE - cameraOffsetX) * zoomFactor;
     *screenY = (1.0f - 2.0f * gridY / GRID_SIZE - 1.0f / GRID_SIZE - cameraOffsetY) * zoomFactor;
 }
-
 /*
  * GameLoop
  *
