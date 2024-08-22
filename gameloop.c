@@ -39,7 +39,7 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor);
 GLuint loadTexture(const char* filePath);  // New texture loading function
 
 bool isPointVisible(float x, float y, float playerX, float playerY, float zoomFactor) {
-    float minZoom = 2.0f;
+    float minZoom = 4.0f;
     float visibleRadius = minZoom / zoomFactor;
     float dx = x - playerX;
     float dy = y - playerY;
@@ -284,9 +284,13 @@ void CleanUp() {
     }
     cleanupGrid();
 
+    // Clean up GPU pathfinding resources
+    cleanupGPUPathfinding();
+
     SDL_Quit();
     printf("Cleanup complete.\n");
 }
+
 /*
  * HandleInput
  *
@@ -348,8 +352,10 @@ void HandleInput() {
 void UpdateGameLogic() {
     UpdatePlayer(&player, allEntities, MAX_ENTITIES);
 
+    Uint32 currentTime = SDL_GetTicks(); // Get the current time
+
     for (int i = 0; i < MAX_ENEMIES; i++) {
-        UpdateEnemy(&enemies[i], allEntities, MAX_ENTITIES);
+        UpdateEnemy(&enemies[i], allEntities, MAX_ENTITIES, currentTime);
     }
 }
 
@@ -473,7 +479,7 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
         }
     }
 
-    printf("Tiles rendered: %d, Tiles culled: %d\n", renderedTiles, culledTiles);
+    //printf("Tiles rendered: %d, Tiles culled: %d\n", renderedTiles, culledTiles);
 }
 
 /*
@@ -538,8 +544,8 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(playerVertices), playerVertices);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-    printf("Entities rendered: %d, Entities culled: %d\n", 
-           renderedEntities, culledEntities );
+    //printf("Entities rendered: %d, Entities culled: %d\n", 
+    //       renderedEntities, culledEntities );
 
 
 
