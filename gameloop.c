@@ -31,7 +31,8 @@ GLuint colorUniform;
 Entity* allEntities[MAX_ENTITIES];
 Player player;
 Enemy enemies[MAX_ENEMIES];
-
+atomic_int physics_load = ATOMIC_VAR_INIT(0);
+Uint32 FRAME_TIME_MS = 24;
 // Function declarations
 void setGridSize(int size);
 void generateTerrain();
@@ -69,6 +70,15 @@ void GameLoop() {
         if ((currentTick - lastLogicTick) >= GAME_LOGIC_INTERVAL_MS) {
             UpdateGameLogic();
             lastLogicTick = currentTick;
+        }
+
+        // Check physics load
+        int current_load = atomic_load(&physics_load);
+        if (current_load > 80) { // If physics is using more than 80% of its time
+            // Increase the render interval dynamically
+            FRAME_TIME_MS = 48; // Double the frame time
+        } else {
+            FRAME_TIME_MS = 24; // Reset to normal
         }
 
         if ((currentTick - lastRenderTick) >= FRAME_TIME_MS) {
@@ -374,7 +384,7 @@ void Render() {
 
     float cameraOffsetX = player.cameraCurrentX;
     float cameraOffsetY = player.cameraCurrentY;
-    float zoomFactor = player.zoomFactor;  // Use the player's zoom factor
+    float zoomFactor = player.zoomFactor;
 
     RenderTiles(cameraOffsetX, cameraOffsetY, zoomFactor);
     RenderEntities(cameraOffsetX, cameraOffsetY, zoomFactor);
@@ -492,65 +502,58 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
  * @param[in] zoomFactor The zoom factor applied to the view
  */
 void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
-    glBindVertexArray(squareVAO);
-
     float playerWorldX = player.entity.posX;
     float playerWorldY = player.entity.posY;
 
     int renderedEntities = 0;
     int culledEntities = 0;
+    int visibleEnemyCount = 0;
 
-    // Render enemies
-    float enemyTexX = 1.0f / 3.0f;
-    float enemyTexY = 1.0 / 2.0f;
-    float enemyTexWidth = 1.0f / 3.0f;
-    float enemyTexHeight = 1.0f / 2.0f;
+    // Count visible enemies
     for (int i = 0; i < MAX_ENEMIES; i++) {
         float enemyWorldX = enemies[i].entity.posX;
         float enemyWorldY = enemies[i].entity.posY;
         
-        if (!isPointVisible(enemyWorldX, enemyWorldY, playerWorldX, playerWorldY, zoomFactor)) {
+        if (isPointVisible(enemyWorldX, enemyWorldY, playerWorldX, playerWorldY, zoomFactor)) {
+            visibleEnemyCount++;
+        } else {
             culledEntities++;
-            continue;  // Skip rendering this enemy
         }
-
-        renderedEntities++;
-
-        float screenX = (enemyWorldX - cameraOffsetX) * zoomFactor;
-        float screenY = (enemyWorldY - cameraOffsetY) * zoomFactor;
-
-        float enemyVertices[] = {
-            screenX - TILE_SIZE * zoomFactor, screenY - TILE_SIZE * zoomFactor, enemyTexX, enemyTexY,
-            screenX + TILE_SIZE * zoomFactor, screenY - TILE_SIZE * zoomFactor, enemyTexX + enemyTexWidth, enemyTexY,
-            screenX + TILE_SIZE * zoomFactor, screenY + TILE_SIZE * zoomFactor, enemyTexX + enemyTexWidth, enemyTexY + enemyTexHeight,
-            screenX - TILE_SIZE * zoomFactor, screenY + TILE_SIZE * zoomFactor, enemyTexX, enemyTexY + enemyTexHeight
-        };
-        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(enemyVertices), enemyVertices);
-        glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     }
 
-    // Render player (always visible)
+    // Use the smooth camera values from the player
+    float smoothCameraOffsetX = player.cameraCurrentX;
+    float smoothCameraOffsetY = player.cameraCurrentY;
+
+    // Update and render enemy batch
+    updateEnemyBatchVBO(enemies, MAX_ENEMIES, smoothCameraOffsetX, smoothCameraOffsetY, zoomFactor);
+    glBindVertexArray(enemyBatchVAO);
+    glDrawArrays(GL_TRIANGLES, 0, MAX_ENEMIES * 6);
+    renderedEntities += MAX_ENEMIES;
+
+    // Render player
     renderedEntities++;
+    glBindVertexArray(squareVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, squareVBO);
+
+    float playerScreenX = (playerWorldX - smoothCameraOffsetX) * zoomFactor;
+    float playerScreenY = (playerWorldY - smoothCameraOffsetY) * zoomFactor;
     float playerTexX = 0.0f / 3.0f;
     float playerTexY = 1.0f / 2.0f;
     float playerTexWidth = 1.0f / 3.0f;
     float playerTexHeight = 1.0f / 2.0f;
     float playerVertices[] = {
-        (-TILE_SIZE) * zoomFactor, (-TILE_SIZE) * zoomFactor, playerTexX, playerTexY,
-        (TILE_SIZE) * zoomFactor, (-TILE_SIZE) * zoomFactor, playerTexX + playerTexWidth, playerTexY,
-        (TILE_SIZE) * zoomFactor, (TILE_SIZE) * zoomFactor, playerTexX + playerTexWidth, playerTexY + playerTexHeight,
-        (-TILE_SIZE) * zoomFactor, (TILE_SIZE) * zoomFactor, playerTexX, playerTexY + playerTexHeight
+        playerScreenX - TILE_SIZE * zoomFactor, playerScreenY - TILE_SIZE * zoomFactor, playerTexX, playerTexY,
+        playerScreenX + TILE_SIZE * zoomFactor, playerScreenY - TILE_SIZE * zoomFactor, playerTexX + playerTexWidth, playerTexY,
+        playerScreenX + TILE_SIZE * zoomFactor, playerScreenY + TILE_SIZE * zoomFactor, playerTexX + playerTexWidth, playerTexY + playerTexHeight,
+        playerScreenX - TILE_SIZE * zoomFactor, playerScreenY + TILE_SIZE * zoomFactor, playerTexX, playerTexY + playerTexHeight
     };
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(playerVertices), playerVertices);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-    //printf("Entities rendered: %d, Entities culled: %d\n", 
-    //       renderedEntities, culledEntities );
-
-
-
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
-
 /*
  * PhysicsLoop
  *
@@ -564,6 +567,8 @@ int PhysicsLoop(void* arg) {
     while (atomic_load(&isRunning)) {
         Uint32 startTime = SDL_GetTicks();
         
+        atomic_store(&physics_load, 100); // Assume 100% load at start
+
         UpdateEntity(&player.entity, allEntities, MAX_ENTITIES);
         UpdatePlayer(&player, allEntities, MAX_ENTITIES);
 
@@ -571,14 +576,19 @@ int PhysicsLoop(void* arg) {
             UpdateEntity(&enemies[i].entity, allEntities, MAX_ENTITIES);
         }
 
-        int interval = 8 - (SDL_GetTicks() - startTime);
-        if (interval > 0) {
-            SDL_Delay(interval);
+        Uint32 endTime = SDL_GetTicks();
+        Uint32 elapsedTime = endTime - startTime;
+        
+        // Calculate actual load percentage
+        int load = (elapsedTime * 100) / 8; // Assuming 8ms target time
+        atomic_store(&physics_load, load);
+
+        if (elapsedTime < 8) {
+            SDL_Delay(8 - elapsedTime);
         }
     }
     return 0;
 }
-
 
 
 /*

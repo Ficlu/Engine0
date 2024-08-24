@@ -3,6 +3,7 @@
 #include "rendering.h"
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_opengl.h>
 #include <GL/glew.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -279,7 +280,7 @@ void initializeEnemyBatchVAO() {
     glBindVertexArray(enemyBatchVAO);
     glBindBuffer(GL_ARRAY_BUFFER, enemyBatchVBO);
 
-    glBufferData(GL_ARRAY_BUFFER, MAX_ENEMIES * 4 * 4 * sizeof(float), NULL, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, MAX_ENEMIES * 6 * 4 * sizeof(float), NULL, GL_DYNAMIC_DRAW);
 
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
@@ -288,12 +289,13 @@ void initializeEnemyBatchVAO() {
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
-
-    printf("Enemy Batch VAO initialized\n");
 }
 
+
 void updateEnemyBatchVBO(Enemy* enemies, int enemyCount, float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
-    float* batchData = (float*)malloc(enemyCount * 4 * 4 * sizeof(float));
+    (void)enemyCount; // Acknowledge unused parameter
+
+    float* batchData = (float*)malloc(MAX_ENEMIES * 6 * 4 * sizeof(float));
     if (!batchData) {
         fprintf(stderr, "Failed to allocate memory for enemy batch data\n");
         return;
@@ -305,36 +307,52 @@ void updateEnemyBatchVBO(Enemy* enemies, int enemyCount, float cameraOffsetX, fl
     float enemyTexWidth = 1.0f / 3.0f;
     float enemyTexHeight = 1.0f / 2.0f;
 
-    for (int i = 0; i < enemyCount; i++) {
-        float screenX = (enemies[i].entity.posX - cameraOffsetX) * zoomFactor;
-        float screenY = (enemies[i].entity.posY - cameraOffsetY) * zoomFactor;
+    for (int i = 0; i < MAX_ENEMIES; i++) {
+        float enemyScreenX = (enemies[i].entity.posX - cameraOffsetX) * zoomFactor;
+        float enemyScreenY = (enemies[i].entity.posY - cameraOffsetY) * zoomFactor;
+        float halfSize = TILE_SIZE * zoomFactor;  // Remove the division by 2
 
+        // First triangle
         // Top-left vertex
-        batchData[dataIndex++] = screenX - TILE_SIZE * zoomFactor;
-        batchData[dataIndex++] = screenY - TILE_SIZE * zoomFactor;
+        batchData[dataIndex++] = enemyScreenX - halfSize;
+        batchData[dataIndex++] = enemyScreenY - halfSize;
         batchData[dataIndex++] = enemyTexX;
         batchData[dataIndex++] = enemyTexY;
 
         // Top-right vertex
-        batchData[dataIndex++] = screenX + TILE_SIZE * zoomFactor;
-        batchData[dataIndex++] = screenY - TILE_SIZE * zoomFactor;
+        batchData[dataIndex++] = enemyScreenX + halfSize;
+        batchData[dataIndex++] = enemyScreenY - halfSize;
+        batchData[dataIndex++] = enemyTexX + enemyTexWidth;
+        batchData[dataIndex++] = enemyTexY;
+
+        // Bottom-left vertex
+        batchData[dataIndex++] = enemyScreenX - halfSize;
+        batchData[dataIndex++] = enemyScreenY + halfSize;
+        batchData[dataIndex++] = enemyTexX;
+        batchData[dataIndex++] = enemyTexY + enemyTexHeight;
+
+        // Second triangle
+        // Top-right vertex
+        batchData[dataIndex++] = enemyScreenX + halfSize;
+        batchData[dataIndex++] = enemyScreenY - halfSize;
         batchData[dataIndex++] = enemyTexX + enemyTexWidth;
         batchData[dataIndex++] = enemyTexY;
 
         // Bottom-right vertex
-        batchData[dataIndex++] = screenX + TILE_SIZE * zoomFactor;
-        batchData[dataIndex++] = screenY + TILE_SIZE * zoomFactor;
+        batchData[dataIndex++] = enemyScreenX + halfSize;
+        batchData[dataIndex++] = enemyScreenY + halfSize;
         batchData[dataIndex++] = enemyTexX + enemyTexWidth;
         batchData[dataIndex++] = enemyTexY + enemyTexHeight;
 
         // Bottom-left vertex
-        batchData[dataIndex++] = screenX - TILE_SIZE * zoomFactor;
-        batchData[dataIndex++] = screenY + TILE_SIZE * zoomFactor;
+        batchData[dataIndex++] = enemyScreenX - halfSize;
+        batchData[dataIndex++] = enemyScreenY + halfSize;
         batchData[dataIndex++] = enemyTexX;
         batchData[dataIndex++] = enemyTexY + enemyTexHeight;
     }
+
     glBindBuffer(GL_ARRAY_BUFFER, enemyBatchVBO);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, dataIndex * sizeof(float), batchData);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, MAX_ENEMIES * 6 * 4 * sizeof(float), batchData);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     free(batchData);

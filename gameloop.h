@@ -12,16 +12,16 @@
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 800
-#define MAX_ENEMIES 300
+#define MAX_ENEMIES 200
 #define MOVE_SPEED 0.002f
-#define GAME_LOGIC_INTERVAL_MS 600
-#define FRAME_TIME_MS 24
+#define GAME_LOGIC_INTERVAL_MS ((Uint32)600)
 #define CAMERA_ZOOM 5.00f  
 #define TILE_SIZE (1.0f / GRID_SIZE)
 #define MAX_ENTITIES (MAX_ENEMIES + 1)
-
+#define PHYSICS_INTERVAL_MS 12 
 extern GLuint outlineVAO;
 extern Entity* allEntities[MAX_ENTITIES];
+extern Uint32 FRAME_TIME_MS;
 
 float lerp(float a, float b, float t);
 void WorldToScreenCoords(int gridX, int gridY, float cameraOffsetX, float cameraOffsetY, float zoomFactor, float* screenX, float* screenY);
