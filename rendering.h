@@ -11,7 +11,7 @@ extern GLuint textureAtlas;
 extern GLuint textureUniform;
 extern GLuint enemyBatchVBO;
 extern GLuint enemyBatchVAO;
-
+extern GLuint outlineVBO;
 // Function declarations
 void initRendering();
 GLuint createShaderProgram();

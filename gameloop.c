@@ -23,6 +23,8 @@ SDL_Window* window = NULL;
 SDL_GLContext mainContext;
 GLuint shaderProgram;
 GLuint gridVAO;
+GLuint tilesBatchVAO;
+GLuint tilesBatchVBO;
 GLuint squareVAO;
 GLuint squareVBO;
 int vertexCount;
@@ -38,14 +40,26 @@ void setGridSize(int size);
 void generateTerrain();
 void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor);
 GLuint loadTexture(const char* filePath);  // New texture loading function
+bool isPointVisible(float worldX, float worldY, float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
+    // Transform world coordinates to screen coordinates
+    float screenX = (worldX - cameraOffsetX) * zoomFactor;
+    float screenY = (worldY - cameraOffsetY) * zoomFactor;
 
-bool isPointVisible(float x, float y, float playerX, float playerY, float zoomFactor) {
-    float minZoom = 4.0f;
-    float visibleRadius = minZoom / zoomFactor;
-    float dx = x - playerX;
-    float dy = y - playerY;
-    return (dx * dx + dy * dy) <= (visibleRadius * visibleRadius);
+    // Calculate the margin based on the tile size and zoom factor
+    float margin = TILE_SIZE * 3 * zoomFactor;
+
+    // Define the visible screen bounds in screen space (NDC) with a tile size margin
+    float leftBound = -1.0f - margin;
+    float rightBound = 1.0f + margin;
+    float bottomBound = -1.0f - margin;
+    float topBound = 1.0f + margin;
+    // Check if the point (screenX, screenY) is within the expanded screen bounds
+    return (screenX >= leftBound && screenX <= rightBound && screenY >= bottomBound && screenY <= topBound);
 }
+
+
+
+
 
 void WorldToScreenCoords(int gridX, int gridY, float cameraOffsetX, float cameraOffsetY, float zoomFactor, float* screenX, float* screenY) {
     *screenX = (2.0f * gridX / GRID_SIZE - 1.0f + 1.0f / GRID_SIZE - cameraOffsetX) * zoomFactor;
@@ -175,7 +189,7 @@ void Initialize() {
 
     glGenVertexArrays(1, &squareVAO);
     glGenBuffers(1, &squareVBO);
-
+    glGenBuffers(1, &outlineVBO);
     glBindVertexArray(squareVAO);
 
     float squareVertices[] = {
@@ -239,6 +253,13 @@ void Initialize() {
     initializeOutlineVAO();
     printf("Outline VAO initialized.\n");
 
+    initializeTilesBatchVAO();
+    printf("Tiles batch VAO initialized.\n");
+
+    // Initialize GPU pathfinding
+    initializeGPUPathfinding();
+    printf("GPU pathfinding initialized.\n");
+
     printf("Initialization complete.\n");
 }
 void CleanupEntities() {
@@ -249,11 +270,36 @@ void CleanupEntities() {
             } else {  // Enemies are from index 1 to MAX_ENEMIES
                 CleanupEnemy(&enemies[i - 1]);
             }
+            allEntities[i] = NULL;
         }
     }
 }
+void drawTargetTileOutline(int x, int y, float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
+    glUseProgram(outlineShaderProgram);
+    glBindVertexArray(outlineVAO);
 
+    GLint outlineColorUniform = glGetUniformLocation(outlineShaderProgram, "outlineColor");
+    glUniform3f(outlineColorUniform, 1.0f, 1.0f, 0.0f); // Yellow outline
 
+    float posX, posY;
+    WorldToScreenCoords(x, y, cameraOffsetX, cameraOffsetY, zoomFactor, &posX, &posY);
+
+    float outlineScale = 1.05f; // Slightly larger than the tile
+    float halfSize = TILE_SIZE * zoomFactor * outlineScale;
+    
+    float outlineVertices[] = {
+        posX - halfSize, posY - halfSize,
+        posX + halfSize, posY - halfSize,
+        posX + halfSize, posY + halfSize,
+        posX - halfSize, posY + halfSize
+    };
+
+    glBindBuffer(GL_ARRAY_BUFFER, outlineVBO);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(outlineVertices), outlineVertices);
+    glDrawArrays(GL_LINE_LOOP, 0, 4);
+
+    glUseProgram(shaderProgram);
+}
 void CleanUp() {
     printf("Cleaning up...\n");
     CleanupEntities();
@@ -286,6 +332,12 @@ void CleanUp() {
     if (enemyBatchVBO) {
         glDeleteBuffers(1, &enemyBatchVBO);
     }
+    if (tilesBatchVAO) {
+        glDeleteVertexArrays(1, &tilesBatchVAO);
+    }
+    if (tilesBatchVBO) {
+        glDeleteBuffers(1, &tilesBatchVBO);
+    }
     if (mainContext) {
         SDL_GL_DeleteContext(mainContext);
     }
@@ -300,7 +352,6 @@ void CleanUp() {
     SDL_Quit();
     printf("Cleanup complete.\n");
 }
-
 /*
  * HandleInput
  *
@@ -394,6 +445,26 @@ void Render() {
 
     SDL_GL_SwapWindow(window);
 }
+#define MAX_VISIBLE_TILES (GRID_SIZE * GRID_SIZE)
+void initializeTilesBatchVAO() {
+    glGenVertexArrays(1, &tilesBatchVAO);
+    glGenBuffers(1, &tilesBatchVBO);
+
+    glBindVertexArray(tilesBatchVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, tilesBatchVBO);
+
+    glBufferData(GL_ARRAY_BUFFER, MAX_VISIBLE_TILES * 6 * 4 * sizeof(float), NULL, GL_DYNAMIC_DRAW);
+
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
+}
+
+
 
 /*
  * RenderTiles
@@ -404,15 +475,25 @@ void Render() {
  * @param[in] cameraOffsetY The vertical camera offset
  * @param[in] zoomFactor The zoom factor applied to the view
  */
+#define MAX_VISIBLE_TILES (GRID_SIZE * GRID_SIZE)
+
 void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
     glUseProgram(shaderProgram);
-    glBindVertexArray(squareVAO);
+    glBindVertexArray(tilesBatchVAO);
 
     float playerWorldX = player.entity.posX;
     float playerWorldY = player.entity.posY;
 
     int renderedTiles = 0;
     int culledTiles = 0;
+
+    float* batchData = (float*)malloc(MAX_VISIBLE_TILES * 6 * 4 * sizeof(float));
+    if (!batchData) {
+        fprintf(stderr, "Failed to allocate memory for tile batch data\n");
+        return;
+    }
+
+    int dataIndex = 0;
 
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
@@ -421,7 +502,7 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
 
             if (!isPointVisible(worldX, worldY, playerWorldX, playerWorldY, zoomFactor)) {
                 culledTiles++;
-                continue;  // Skip rendering this tile
+                continue;  // Skip this tile
             }
 
             renderedTiles++;
@@ -453,43 +534,54 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
                     break;
             }
 
-            float vertices[] = {
-                posX - TILE_SIZE * zoomFactor, posY - TILE_SIZE * zoomFactor, texX, texY + texHeight,
-                posX + TILE_SIZE * zoomFactor, posY - TILE_SIZE * zoomFactor, texX + texWidth, texY + texHeight,
-                posX + TILE_SIZE * zoomFactor, posY + TILE_SIZE * zoomFactor, texX + texWidth, texY,
-                posX - TILE_SIZE * zoomFactor, posY + TILE_SIZE * zoomFactor, texX, texY
-            };
+            float halfSize = TILE_SIZE * zoomFactor;
 
-            glBindBuffer(GL_ARRAY_BUFFER, squareVBO);
-            glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
-            glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+            // First triangle
+            batchData[dataIndex++] = posX - halfSize;
+            batchData[dataIndex++] = posY - halfSize;
+            batchData[dataIndex++] = texX;
+            batchData[dataIndex++] = texY + texHeight;
 
-            // Draw outline for player's final target tile
-            if (x == player.entity.finalGoalX && y == player.entity.finalGoalY) {
-                glUseProgram(outlineShaderProgram);
-                glBindVertexArray(outlineVAO);
+            batchData[dataIndex++] = posX + halfSize;
+            batchData[dataIndex++] = posY - halfSize;
+            batchData[dataIndex++] = texX + texWidth;
+            batchData[dataIndex++] = texY + texHeight;
 
-                GLint outlineColorUniform = glGetUniformLocation(outlineShaderProgram, "outlineColor");
-                glUniform3f(outlineColorUniform, 1.0f, 1.0f, 0.0f); // Yellow outline
+            batchData[dataIndex++] = posX - halfSize;
+            batchData[dataIndex++] = posY + halfSize;
+            batchData[dataIndex++] = texX;
+            batchData[dataIndex++] = texY;
 
-                float outlineScale = 1.05f; // Slightly larger than the tile
-                float outlineVertices[] = {
-                    posX - TILE_SIZE * zoomFactor * outlineScale, posY - TILE_SIZE * zoomFactor * outlineScale,
-                    posX + TILE_SIZE * zoomFactor * outlineScale, posY - TILE_SIZE * zoomFactor * outlineScale,
-                    posX + TILE_SIZE * zoomFactor * outlineScale, posY + TILE_SIZE * zoomFactor * outlineScale,
-                    posX - TILE_SIZE * zoomFactor * outlineScale, posY + TILE_SIZE * zoomFactor * outlineScale
-                };
+            // Second triangle
+            batchData[dataIndex++] = posX + halfSize;
+            batchData[dataIndex++] = posY - halfSize;
+            batchData[dataIndex++] = texX + texWidth;
+            batchData[dataIndex++] = texY + texHeight;
 
-                glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(outlineVertices), outlineVertices);
-                glDrawArrays(GL_LINE_LOOP, 0, 4);
+            batchData[dataIndex++] = posX + halfSize;
+            batchData[dataIndex++] = posY + halfSize;
+            batchData[dataIndex++] = texX + texWidth;
+            batchData[dataIndex++] = texY;
 
-                glUseProgram(shaderProgram);
-                glBindVertexArray(squareVAO);
-            }
+            batchData[dataIndex++] = posX - halfSize;
+            batchData[dataIndex++] = posY + halfSize;
+            batchData[dataIndex++] = texX;
+            batchData[dataIndex++] = texY;
         }
     }
 
-    //printf("Tiles rendered: %d, Tiles culled: %d\n", renderedTiles, culledTiles);
+    glBindBuffer(GL_ARRAY_BUFFER, tilesBatchVBO);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, dataIndex * sizeof(float), batchData);
+    glDrawArrays(GL_TRIANGLES, 0, renderedTiles * 6);
+
+    free(batchData);
+
+    // Draw outline for player's final target tile
+    if (isPointVisible(player.entity.finalGoalX, player.entity.finalGoalY, playerWorldX, playerWorldY, zoomFactor)) {
+        drawTargetTileOutline(player.entity.finalGoalX, player.entity.finalGoalY, cameraOffsetX, cameraOffsetY, zoomFactor);
+    }
+
+    printf("Tiles rendered: %d, Tiles culled: %d\n", renderedTiles, culledTiles);
 }
 
 /*
@@ -505,34 +597,39 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     float playerWorldX = player.entity.posX;
     float playerWorldY = player.entity.posY;
 
-    int renderedEntities = 0;
-    int culledEntities = 0;
     int visibleEnemyCount = 0;
+    int culledEnemyCount = 0;
 
-    // Count visible enemies
-    for (int i = 0; i < MAX_ENEMIES; i++) {
+    // Allocate memory for only visible enemies
+    Enemy visibleEnemies[MAX_ENEMIES];
+
+    // Frustum culling to count visible enemies
+   for (int i = 0; i < MAX_ENEMIES; i++) {
         float enemyWorldX = enemies[i].entity.posX;
         float enemyWorldY = enemies[i].entity.posY;
-        
+
         if (isPointVisible(enemyWorldX, enemyWorldY, playerWorldX, playerWorldY, zoomFactor)) {
-            visibleEnemyCount++;
+            visibleEnemies[visibleEnemyCount++] = enemies[i];
         } else {
-            culledEntities++;
+            culledEnemyCount++;
         }
     }
+
+    // Log summary of visible and culled enemies
+    printf("Total enemies: %d, Visible enemies: %d, Culled enemies: %d\n", MAX_ENEMIES, visibleEnemyCount, culledEnemyCount);
+
+
 
     // Use the smooth camera values from the player
     float smoothCameraOffsetX = player.cameraCurrentX;
     float smoothCameraOffsetY = player.cameraCurrentY;
 
-    // Update and render enemy batch
-    updateEnemyBatchVBO(enemies, MAX_ENEMIES, smoothCameraOffsetX, smoothCameraOffsetY, zoomFactor);
+    // Render the enemy batch
+    updateEnemyBatchVBO(visibleEnemies, visibleEnemyCount, cameraOffsetX, cameraOffsetY, zoomFactor);
     glBindVertexArray(enemyBatchVAO);
-    glDrawArrays(GL_TRIANGLES, 0, MAX_ENEMIES * 6);
-    renderedEntities += MAX_ENEMIES;
+    glDrawArrays(GL_TRIANGLES, 0, visibleEnemyCount * 6);  // Draw only the visible enemies
 
-    // Render player
-    renderedEntities++;
+    // Render player (unchanged)
     glBindVertexArray(squareVAO);
     glBindBuffer(GL_ARRAY_BUFFER, squareVBO);
 
@@ -554,6 +651,8 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
+
+
 /*
  * PhysicsLoop
  *

@@ -293,9 +293,7 @@ void initializeEnemyBatchVAO() {
 
 
 void updateEnemyBatchVBO(Enemy* enemies, int enemyCount, float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
-    (void)enemyCount; // Acknowledge unused parameter
-
-    float* batchData = (float*)malloc(MAX_ENEMIES * 6 * 4 * sizeof(float));
+    float* batchData = (float*)malloc(enemyCount * 6 * 4 * sizeof(float));
     if (!batchData) {
         fprintf(stderr, "Failed to allocate memory for enemy batch data\n");
         return;
@@ -307,10 +305,10 @@ void updateEnemyBatchVBO(Enemy* enemies, int enemyCount, float cameraOffsetX, fl
     float enemyTexWidth = 1.0f / 3.0f;
     float enemyTexHeight = 1.0f / 2.0f;
 
-    for (int i = 0; i < MAX_ENEMIES; i++) {
+    for (int i = 0; i < enemyCount; i++) {
         float enemyScreenX = (enemies[i].entity.posX - cameraOffsetX) * zoomFactor;
         float enemyScreenY = (enemies[i].entity.posY - cameraOffsetY) * zoomFactor;
-        float halfSize = TILE_SIZE * zoomFactor;  // Remove the division by 2
+        float halfSize = TILE_SIZE * zoomFactor;
 
         // First triangle
         // Top-left vertex
@@ -352,7 +350,7 @@ void updateEnemyBatchVBO(Enemy* enemies, int enemyCount, float cameraOffsetX, fl
     }
 
     glBindBuffer(GL_ARRAY_BUFFER, enemyBatchVBO);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, MAX_ENEMIES * 6 * 4 * sizeof(float), batchData);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, enemyCount * 6 * 4 * sizeof(float), batchData);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     free(batchData);
