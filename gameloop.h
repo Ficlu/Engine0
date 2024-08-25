@@ -12,13 +12,13 @@
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 800
-#define MAX_ENEMIES 150
-#define MOVE_SPEED 0.002f
+#define MAX_ENEMIES 100
+#define MOVE_SPEED 0.001f
 #define GAME_LOGIC_INTERVAL_MS ((Uint32)600)
 #define CAMERA_ZOOM 5.00f  
 #define TILE_SIZE (1.0f / GRID_SIZE)
 #define MAX_ENTITIES (MAX_ENEMIES + 1)
-#define PHYSICS_INTERVAL_MS 12 
+#define PHYSICS_INTERVAL_MS 12
 extern GLuint outlineVAO;
 extern GLuint outlineVBO;
 extern GLuint tilesBatchVAO;

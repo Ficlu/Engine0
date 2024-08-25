@@ -80,21 +80,24 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
 void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
     UpdateEntity(&player->entity, allEntities, entityCount);
 
-    float dx = player->entity.posX - player->cameraCurrentX;
-    float dy = player->entity.posY - player->cameraCurrentY;
-    float lookAheadFactor = 0.5f;
+    // Camera follow logic
+    float playerPosX = atomic_load(&player->entity.posX);
+    float playerPosY = atomic_load(&player->entity.posY);
+
+    float dx = playerPosX - player->cameraCurrentX;
+    float dy = playerPosY - player->cameraCurrentY;
+    float lookAheadFactor = 1.0f;
 
     player->lookAheadX = dx * lookAheadFactor;
     player->lookAheadY = dy * lookAheadFactor;
 
-    player->cameraTargetX = player->entity.posX + player->lookAheadX;
-    player->cameraTargetY = player->entity.posY + player->lookAheadY;
+    player->cameraTargetX = playerPosX + player->lookAheadX;
+    player->cameraTargetY = playerPosY + player->lookAheadY;
 
-    float smoothFactor = 0.05f;
-    player->cameraCurrentX += (player->cameraTargetX - player->cameraCurrentX) * smoothFactor;
-    player->cameraCurrentY += (player->cameraTargetY - player->cameraCurrentY) * smoothFactor;
+    float cameraSmoothFactor = 0.05f; // Adjust this value to control camera smoothness
+    player->cameraCurrentX += (player->cameraTargetX - player->cameraCurrentX) * cameraSmoothFactor;
+    player->cameraCurrentY += (player->cameraTargetY - player->cameraCurrentY) * cameraSmoothFactor;
 }
-
 /*
  * CleanupPlayer
  *

@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <immintrin.h>
 #include <SDL2/SDL.h>
 #include <GL/glew.h>
 #include <SDL2/SDL_opengl.h>
@@ -242,7 +243,7 @@ void Initialize() {
         } while (!grid[enemyGridY][enemyGridX].isWalkable || 
                  (enemyGridX == playerGridX && enemyGridY == playerGridY));
 
-        InitEnemy(&enemies[i], enemyGridX, enemyGridY, MOVE_SPEED * 0.5f);
+        InitEnemy(&enemies[i], enemyGridX, enemyGridY, MOVE_SPEED);
         allEntities[i + 1] = &enemies[i].entity;
         printf("Enemy %d initialized at (%d, %d).\n", i, enemyGridX, enemyGridY);
     }
@@ -388,7 +389,7 @@ void HandleInput() {
                 }
             }
         } else if (event.type == SDL_MOUSEWHEEL) {
-            float zoomSpeed = 0.1f;
+            float zoomSpeed = 0.2f;
             float minZoom = 2.0f;
             float maxZoom = 5.0f;
 
@@ -603,29 +604,60 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     // Allocate memory for only visible enemies
     Enemy visibleEnemies[MAX_ENEMIES];
 
-    // Frustum culling to count visible enemies
-   for (int i = 0; i < MAX_ENEMIES; i++) {
-        float enemyWorldX = enemies[i].entity.posX;
-        float enemyWorldY = enemies[i].entity.posY;
+    // Prepare SIMD variables
+    __m128 cameraOffset = _mm_set_ps(0, 0, cameraOffsetY, cameraOffsetX);
+    __m128 zoomFactorVec = _mm_set1_ps(zoomFactor);
+    __m128 marginVec = _mm_set1_ps(TILE_SIZE);
+    __m128 minusOne = _mm_set1_ps(-1.0f);
+    __m128 one = _mm_set1_ps(1.0f);
 
-        if (isPointVisible(enemyWorldX, enemyWorldY, playerWorldX, playerWorldY, zoomFactor)) {
-            visibleEnemies[visibleEnemyCount++] = enemies[i];
-        } else {
-            culledEnemyCount++;
+    // Calculate screen space bounds
+    __m128 leftBound = _mm_sub_ps(minusOne, marginVec);
+    __m128 rightBound = _mm_add_ps(one, marginVec);
+    __m128 bottomBound = _mm_sub_ps(minusOne, marginVec);
+    __m128 topBound = _mm_add_ps(one, marginVec);
+
+    // Process enemies in groups of 4
+    for (int i = 0; i < MAX_ENEMIES; i += 4) {
+        __m128 enemyPosX = _mm_set_ps(
+            enemies[i+3].entity.posX, enemies[i+2].entity.posX,
+            enemies[i+1].entity.posX, enemies[i].entity.posX
+        );
+        __m128 enemyPosY = _mm_set_ps(
+            enemies[i+3].entity.posY, enemies[i+2].entity.posY,
+            enemies[i+1].entity.posY, enemies[i].entity.posY
+        );
+
+        // Calculate screen coordinates
+        __m128 screenX = _mm_mul_ps(_mm_sub_ps(enemyPosX, _mm_set1_ps(playerWorldX)), zoomFactorVec);
+        __m128 screenY = _mm_mul_ps(_mm_sub_ps(enemyPosY, _mm_set1_ps(playerWorldY)), zoomFactorVec);
+
+        // Check visibility
+        __m128 visibleX = _mm_and_ps(_mm_cmpge_ps(screenX, leftBound), _mm_cmple_ps(screenX, rightBound));
+        __m128 visibleY = _mm_and_ps(_mm_cmpge_ps(screenY, bottomBound), _mm_cmple_ps(screenY, topBound));
+        __m128 visible = _mm_and_ps(visibleX, visibleY);
+
+        // Store results
+        int visibilityMask = _mm_movemask_ps(visible);
+
+        for (int j = 0; j < 4 && i + j < MAX_ENEMIES; ++j) {
+            if (visibilityMask & (1 << j)) {
+                visibleEnemies[visibleEnemyCount++] = enemies[i + j];
+            } else {
+                culledEnemyCount++;
+            }
         }
     }
 
     // Log summary of visible and culled enemies
     printf("Total enemies: %d, Visible enemies: %d, Culled enemies: %d\n", MAX_ENEMIES, visibleEnemyCount, culledEnemyCount);
 
-
-
     // Use the smooth camera values from the player
     float smoothCameraOffsetX = player.cameraCurrentX;
     float smoothCameraOffsetY = player.cameraCurrentY;
 
     // Render the enemy batch
-    updateEnemyBatchVBO(visibleEnemies, visibleEnemyCount, cameraOffsetX, cameraOffsetY, zoomFactor);
+    updateEnemyBatchVBO(visibleEnemies, visibleEnemyCount, smoothCameraOffsetX, smoothCameraOffsetY, zoomFactor);
     glBindVertexArray(enemyBatchVAO);
     glDrawArrays(GL_TRIANGLES, 0, visibleEnemyCount * 6);  // Draw only the visible enemies
 
@@ -651,7 +683,6 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
-
 
 /*
  * PhysicsLoop
