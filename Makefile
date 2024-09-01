@@ -2,16 +2,19 @@
 CC = gcc
 CFLAGS = -Isrc/include -Wall -Wextra -g -std=c11
 LDFLAGS = -Lsrc/lib -lmingw32 -Isrc/include/cglm/include -lSDL2main -lSDL2 -lSDL2_ttf -lglew32 -lglfw3 -mconsole -lopengl32 -lm -latomic
-OBJS = gameloop.o rendering.o player.o enemy.o grid.o pathfinding.o entity.o
+OBJS = gameloop.o rendering.o player.o enemy.o grid.o pathfinding.o entity.o asciiMap.o
 
 gameloop.exe: $(OBJS)
 	$(CC) -o $@ $(OBJS) $(LDFLAGS)
 
-gameloop.o: gameloop.c gameloop.h rendering.h player.h entity.h enemy.h grid.h pathfinding.h
+gameloop.o: gameloop.c gameloop.h rendering.h player.h entity.h enemy.h grid.h pathfinding.h asciiMap.h
 	$(CC) $(CFLAGS) -c gameloop.c
 
 rendering.o: rendering.c rendering.h 
 	$(CC) $(CFLAGS) -c rendering.c
+
+asciiMap.o: asciiMap.c asciiMap.h grid.h
+	$(CC) $(CFLAGS) -c asciiMap.c
 
 clean:
 	rm -f $(OBJS) bin/gameloop.exe

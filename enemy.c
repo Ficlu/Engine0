@@ -68,6 +68,7 @@ void InitEnemy(Enemy* enemy, int startGridX, int startGridY, float speed) {
     //printf("Enemy initialized at (%d, %d)\n", 
     //     atomic_load(&enemy->entity.gridX), atomic_load(&enemy->entity.gridY));
 }
+
 /*
  * MovementAI
  *

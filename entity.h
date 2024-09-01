@@ -23,6 +23,7 @@ typedef struct {
     int cachedPathLength;
     int currentPathIndex;
     bool isPlayer;
+    
 } Entity;
 
 void findNearestWalkableTile(float posX, float posY, int* nearestX, int* nearestY);

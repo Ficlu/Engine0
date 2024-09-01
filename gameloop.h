@@ -9,6 +9,7 @@
 #include "enemy.h"
 #include <stdatomic.h>
 #include "pathfinding.h"
+#include "asciiMap.h"  // Add this line
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 800

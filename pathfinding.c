@@ -152,7 +152,9 @@ Node pop(PriorityQueue* pq) {
  * @return float The heuristic distance between the points
  */
 float heuristic(int x1, int y1, int x2, int y2) {
-    return sqrtf((x1 - x2) * (x1 - x2) + (y1 - y2) * (y1 - y2));
+    int dx = abs(x1 - x2);
+    int dy = abs(y1 - y2);
+    return (dx + dy) + (1.414f - 2) * fminf(dx, dy);
 }
 
 /*

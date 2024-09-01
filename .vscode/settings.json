@@ -21,6 +21,7 @@
         "xlocale": "c",
         "enemy.h": "c",
         "stdint.h": "c",
-        "sdl.h": "c"
+        "sdl.h": "c",
+        "glew.h": "c"
     }
 }

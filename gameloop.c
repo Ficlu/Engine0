@@ -11,6 +11,7 @@
 #include <stdatomic.h>
 #include <time.h>
 #include "rendering.h"
+#include "asciiMap.h"
 #include "player.h"
 #include "enemy.h"
 #include "grid.h"
@@ -118,7 +119,17 @@ void Initialize() {
     printf("Initializing...\n");
 
     setGridSize(40);
-    generateTerrain();
+
+    // Load ASCII map
+    char* asciiMap = loadASCIIMap("testmap.txt");
+    if (asciiMap) {
+        generateTerrainFromASCII(asciiMap);
+        free(asciiMap);
+        printf("Test map loaded successfully.\n");
+    } else {
+        printf("Failed to load test map. Falling back to random generation.\n");
+        generateTerrain();
+    }
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_EVENTS) < 0) {
         fprintf(stderr, "SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
