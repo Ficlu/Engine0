@@ -3,6 +3,7 @@
 #include "asciiMap.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 char* loadASCIIMap(const char* filename) {
     FILE* file = fopen(filename, "r");
@@ -18,24 +19,31 @@ char* loadASCIIMap(const char* filename) {
         return NULL;
     }
 
-    size_t read = fread(asciiMap, sizeof(char), GRID_SIZE * GRID_SIZE, file);
-    if (read != GRID_SIZE * GRID_SIZE) {
-        printf("Failed to read complete ASCII map\n");
-        free(asciiMap);
-        fclose(file);
-        return NULL;
+    char line[GRID_SIZE + 2]; // +2 for the newline and null-terminator
+    int index = 0;
+
+    while (fgets(line, sizeof(line), file)) {
+        // Strip newline character if present
+        line[strcspn(line, "\r\n")] = '\0';
+
+        // Copy the line into the asciiMap
+        strncpy(&asciiMap[index], line, GRID_SIZE);
+        index += GRID_SIZE;
+
+        if (index >= GRID_SIZE * GRID_SIZE) {
+            break;
+        }
     }
 
     fclose(file);
     return asciiMap;
 }
-
 void generateTerrainFromASCII(const char* asciiMap) {
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
             char c = asciiMap[y * GRID_SIZE + x];
             grid[y][x].terrainType = charToTerrain(c);
-            grid[y][x].isWalkable = (c != CHAR_UNWALKABLE && c != CHAR_WATER);
+            grid[y][x].isWalkable = (c != CHAR_WATER);
             
             // Set biome based on terrain (you may want to adjust this logic)
             switch(grid[y][x].terrainType) {
@@ -55,9 +63,7 @@ TerrainType charToTerrain(char c) {
         case CHAR_WATER: return TERRAIN_WATER;
         case CHAR_SAND: return TERRAIN_SAND;
         case CHAR_GRASS: return TERRAIN_GRASS;
-        case CHAR_DIRT: return TERRAIN_DIRT;
         case CHAR_STONE: return TERRAIN_STONE;
-        case CHAR_UNWALKABLE: return TERRAIN_UNWALKABLE;
         default: return TERRAIN_GRASS; // Default to grass for unknown characters
     }
 }
@@ -67,9 +73,7 @@ char terrainToChar(TerrainType terrain) {
         case TERRAIN_WATER: return CHAR_WATER;
         case TERRAIN_SAND: return CHAR_SAND;
         case TERRAIN_GRASS: return CHAR_GRASS;
-        case TERRAIN_DIRT: return CHAR_DIRT;
         case TERRAIN_STONE: return CHAR_STONE;
-        case TERRAIN_UNWALKABLE: return CHAR_UNWALKABLE;
         default: return CHAR_GRASS;
     }
 }

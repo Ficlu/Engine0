@@ -5,12 +5,10 @@
 
 #include "grid.h"
 
-#define CHAR_WATER '1'
+#define CHAR_STONE '1'
 #define CHAR_SAND '2'
-#define CHAR_GRASS '3'
-#define CHAR_DIRT '4'
-#define CHAR_STONE '5'
-#define CHAR_UNWALKABLE '.'
+#define CHAR_WATER '3'
+#define CHAR_GRASS '4'
 
 // Function to load an ASCII map from a file
 char* loadASCIIMap(const char* filename);
