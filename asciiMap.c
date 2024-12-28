@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+char* loadedMapData = NULL;  // Add at top of file with other globals
 
 char* loadASCIIMap(const char* filename) {
     FILE* file = fopen(filename, "r");
@@ -10,65 +11,55 @@ char* loadASCIIMap(const char* filename) {
         return NULL;
     }
 
-    char* asciiMap = (char*)malloc(GRID_SIZE * GRID_SIZE * sizeof(char));
-    if (!asciiMap) {
+    // Free any previously loaded map data
+    if (loadedMapData) {
+        free(loadedMapData);
+        loadedMapData = NULL;
+    }
+
+    // Allocate memory for the entire ASCII map
+    loadedMapData = (char*)malloc(GRID_SIZE * GRID_SIZE * sizeof(char));
+    if (!loadedMapData) {
         printf("Failed to allocate memory for ASCII map\n");
         fclose(file);
         return NULL;
     }
 
-    char line[GRID_SIZE + 2];
+    // Read the map file line-by-line into loadedMapData
     int index = 0;
-
-    while (fgets(line, sizeof(line), file)) {
-        line[strcspn(line, "\r\n")] = '\0';
-        strncpy(&asciiMap[index], line, GRID_SIZE);
+    char line[GRID_SIZE + 2];  // +2 for newline + null terminator
+    while (fgets(line, sizeof(line), file) && index < GRID_SIZE * GRID_SIZE) {
+        line[strcspn(line, "\r\n")] = '\0';  // remove newline
+        strncpy(&loadedMapData[index], line, GRID_SIZE);
         index += GRID_SIZE;
-
-        if (index >= GRID_SIZE * GRID_SIZE) {
-            break;
-        }
     }
-
     fclose(file);
 
-    printf("\n=== Starting Chunk Processing ===\n");
+    // ==========================
+    // Remove any chunk-creation loop here!
+    // ==========================
 
-    Chunk currentChunk;
-    for (int chunkY = 0; chunkY < NUM_CHUNKS; chunkY++) {
-        for (int chunkX = 0; chunkX < NUM_CHUNKS; chunkX++) {
-            printf("\nProcessing chunk at x:%d, y:%d\n", chunkX, chunkY);
-            
-            loadMapChunk(asciiMap, chunkX, chunkY, &currentChunk);
-            currentChunk.chunkX = chunkX;
-            currentChunk.chunkY = chunkY;
-            processChunk(&currentChunk);
-            writeChunkToGrid(&currentChunk);
-
-            // Debug print the chunk we just processed
-            printf("Chunk (%d,%d) processed and written to grid\n", chunkX, chunkY);
-            debugPrintGridSection(chunkX * CHUNK_SIZE, chunkY * CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE);
-        }
-    }
-
-    printf("\n=== Chunk Processing Complete ===\n");
-    return asciiMap;
+    printf("ASCII map successfully loaded into memory.\n");
+    return loadedMapData;
 }
-
-
-
 void loadMapChunk(const char* mapData, int chunkX, int chunkY, Chunk* chunk) {
     // Only log when chunkX and chunkY are divisible by 5
     if (chunkX % 5 == 0 && chunkY % 5 == 0) {
         printf("\nLoading chunk (%d,%d):\n", chunkX, chunkY);
         printf("Chunk starting at map index: %d\n", chunkY * CHUNK_SIZE * GRID_SIZE + chunkX * CHUNK_SIZE);
+        
+        // Add this debug print to see the first character of the chunk
+        int startIndex = (chunkY * CHUNK_SIZE * GRID_SIZE) + (chunkX * CHUNK_SIZE);
+        printf("First char in chunk: %c\n", mapData[startIndex]);
     }
-    
+    // Debug: Print the raw map data for this chunk
+    printf("\nLoading chunk (%d,%d) - Raw map data:\n", chunkX, chunkY);
     for (int y = 0; y < CHUNK_SIZE; y++) {
         for (int x = 0; x < CHUNK_SIZE; x++) {
             int mapX = chunkX * CHUNK_SIZE + x;
             int mapY = chunkY * CHUNK_SIZE + y;
             int mapIndex = mapY * GRID_SIZE + mapX;
+            printf("%c", mapData[mapIndex]);
 
             char terrainChar = mapData[mapIndex];
             TerrainType terrain = charToTerrain(terrainChar);
@@ -114,13 +105,14 @@ void generateTerrainFromASCII(const char* asciiMap) {
 // Keep existing functions unchanged
 TerrainType charToTerrain(char c) {
     switch(c) {
-        case CHAR_WATER: return TERRAIN_WATER;
-        case CHAR_SAND: return TERRAIN_SAND;
-        case CHAR_GRASS: return TERRAIN_GRASS;
-        case CHAR_STONE: return TERRAIN_STONE;
-        default: return TERRAIN_GRASS;
+        case CHAR_WATER: return TERRAIN_WATER; // e.g. '0' or '~'
+        case CHAR_SAND:  return TERRAIN_SAND;  // e.g. '.'
+        case CHAR_GRASS: return TERRAIN_GRASS; // e.g. '3'
+        case CHAR_STONE: return TERRAIN_STONE; // e.g. '4'
+        default:         return TERRAIN_GRASS; // fallback
     }
 }
+
 
 char terrainToChar(TerrainType terrain) {
     switch(terrain) {

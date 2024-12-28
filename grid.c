@@ -3,6 +3,8 @@
 #include "grid.h"
 #include <stdlib.h>
 #include <stdio.h>
+#include <math.h>
+
 #include "asciiMap.h" 
 GridCell grid[GRID_SIZE][GRID_SIZE];
 
@@ -46,7 +48,10 @@ void initializeGrid(int size) {
  * Cleans up resources allocated for the grid. (Currently does nothing)
  */
 void cleanupGrid() {
-    // Nothing to clean up for now
+    if (loadedMapData) {
+        free(loadedMapData);
+        loadedMapData = NULL;
+    }
 }
 
 /*
@@ -134,83 +139,20 @@ void writeChunkToGrid(const Chunk* chunk) {
     }
 }
 
-/*
- * generateTerrain
- *
- * Generates the terrain for the grid using Perlin noise and biome data.
- */
+
 void generateTerrain() {
-    float randomOffset = ((float)rand() / RAND_MAX) * 0.2f - 0.1f;
-
-    for (int y = 0; y < GRID_SIZE; y++) {
-        for (int x = 0; x < GRID_SIZE; x++) {
-            float biomeValue = perlinNoise(x * 0.1f, y * 0.1f, 0.5f, 4) + randomOffset;
-            float heightValue = perlinNoise(x * 0.2f, y * 0.2f, 0.5f, 4) + randomOffset;
-
-            biomeValue = biomeValue < 0 ? 0 : (biomeValue > 1 ? 1 : biomeValue);
-            heightValue = heightValue < 0 ? 0 : (heightValue > 1 ? 1 : heightValue);
-
-            BiomeType biome;
-            if (biomeValue < 0.1f) biome = BIOME_OCEAN;
-            else if (biomeValue < 0.3f) biome = BIOME_BEACH;
-            else if (biomeValue < 0.5f) biome = BIOME_PLAINS;
-            else if (biomeValue < 0.7f) biome = BIOME_FOREST;
-            else if (biomeValue < 0.8f) biome = BIOME_DESERT;
-            else biome = BIOME_MOUNTAINS;
-
-            grid[y][x].biomeType = biome;
-
-            if (heightValue > biomeData[biome].heightThresholds[0]) {
-                grid[y][x].terrainType = biomeData[biome].terrainTypes[0];
-            } else if (heightValue > biomeData[biome].heightThresholds[1]) {
-                grid[y][x].terrainType = biomeData[biome].terrainTypes[1];
-            } else {
-                grid[y][x].terrainType = biomeData[biome].terrainTypes[2];
-            }
-
-            grid[y][x].isWalkable = (grid[y][x].terrainType != TERRAIN_WATER && 
-                                    grid[y][x].terrainType != TERRAIN_GRASS);
+    printf("Generating initial terrain...\n");
+    
+    // Initialize each chunk in the grid
+    for (int chunkY = 0; chunkY < NUM_CHUNKS; chunkY++) {
+        for (int chunkX = 0; chunkX < NUM_CHUNKS; chunkX++) {
+            Chunk tempChunk;
+            initializeChunk(&tempChunk, chunkX, chunkY);
+            writeChunkToGrid(&tempChunk);
         }
     }
 
-    // Determine the number of water tiles needed for 10% coverage
-    int totalTiles = GRID_SIZE * GRID_SIZE;
-    int targetWaterTiles = totalTiles * 0.10;
-
-    // Generate water clusters
-    int waterTiles = 0;
-    while (waterTiles < targetWaterTiles) {
-        // Randomly decide the size of the cluster (between 3 and 7)
-        int clusterSize = 3 + rand() % 5;
-
-        // Randomly choose the starting point for the cluster
-        int startX = rand() % GRID_SIZE;
-        int startY = rand() % GRID_SIZE;
-
-        for (int i = 0; i < clusterSize; i++) {
-            // Randomly offset from the starting point within a small radius
-            int offsetX = (rand() % 3) - 1; // -1, 0, or 1
-            int offsetY = (rand() % 3) - 1; // -1, 0, or 1
-
-            int x = startX + offsetX;
-            int y = startY + offsetY;
-
-            // Ensure the new coordinates are within bounds
-            if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
-                // Only convert to water if it is not already water
-                if (grid[y][x].terrainType != TERRAIN_WATER) {
-                    grid[y][x].terrainType = TERRAIN_WATER;
-                    grid[y][x].isWalkable = false;
-                    waterTiles++;
-
-                    // Stop if we have reached the target number of water tiles
-                    if (waterTiles >= targetWaterTiles) {
-                        break;
-                    }
-                }
-            }
-        }
-    }
+    printf("Initial terrain generation complete\n");
 
     // Ensure the center of the map is walkable for player spawn
     int centerX = GRID_SIZE / 2;
@@ -219,14 +161,14 @@ void generateTerrain() {
         for (int x = centerX - 1; x <= centerX + 1; x++) {
             if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
                 grid[y][x].isWalkable = true;
-                if (grid[y][x].terrainType == TERRAIN_WATER || grid[y][x].terrainType == TERRAIN_UNWALKABLE) {
+                if (grid[y][x].terrainType == TERRAIN_WATER || 
+                    grid[y][x].terrainType == TERRAIN_UNWALKABLE) {
                     grid[y][x].terrainType = TERRAIN_GRASS;
                 }
             }
         }
     }
 }
-
 // Perlin noise functions
 
 /*
@@ -311,4 +253,264 @@ float perlinNoise(float x, float y, float persistence, int octaves) {
     }
 
     return total / maxValue;
+}
+
+// Global chunk manager
+ChunkManager* globalChunkManager = NULL;
+
+void initChunkManager(ChunkManager* manager, int loadRadius) {
+    manager->loadRadius = loadRadius;
+    manager->numLoadedChunks = 0;
+    manager->playerChunk.x = -9999;  // Invalid initial position
+    manager->playerChunk.y = -9999;
+
+    // Initialize all chunk pointers to NULL
+    for (int i = 0; i < MAX_LOADED_CHUNKS; i++) {
+        manager->chunks[i] = NULL;
+        manager->chunkCoords[i].x = 0;
+        manager->chunkCoords[i].y = 0;
+    }
+
+    printf("Chunk manager initialized with radius %d\n", loadRadius);
+}
+
+void initializeChunk(Chunk* chunk, int chunkX, int chunkY) {
+    chunk->chunkX = chunkX;
+    chunk->chunkY = chunkY;
+    chunk->isLoaded = true;
+    
+    // Initialize with default terrain (will be overwritten by map data)
+    for (int y = 0; y < CHUNK_SIZE; y++) {
+        for (int x = 0; x < CHUNK_SIZE; x++) {
+            chunk->cells[y][x].terrainType = TERRAIN_GRASS;
+            chunk->cells[y][x].biomeType = BIOME_PLAINS;
+            chunk->cells[y][x].isWalkable = true;
+        }
+    }
+
+    printf("Initialized chunk (%d,%d)\n", chunkX, chunkY);
+}
+void cleanupChunkManager(ChunkManager* manager) {
+    if (!manager) return;
+
+    for (int i = 0; i < MAX_LOADED_CHUNKS; i++) {
+        if (manager->chunks[i]) {
+            free(manager->chunks[i]);
+            manager->chunks[i] = NULL;
+        }
+    }
+
+    manager->numLoadedChunks = 0;
+    printf("Chunk manager cleaned up\n");
+}
+
+ChunkCoord getChunkFromWorldPos(float worldX, float worldY) {
+    ChunkCoord coord;
+    
+    // Convert from normalized (-1 to 1) to grid coordinates (0 to GRID_SIZE)
+    float gridX = (worldX + 1.0f) * (GRID_SIZE / 2.0f);
+    float gridY = (-worldY + 1.0f) * (GRID_SIZE / 2.0f);
+    
+    // Convert to chunk coordinates
+    coord.x = (int)floorf(gridX / CHUNK_SIZE);
+    coord.y = (int)floorf(gridY / CHUNK_SIZE);
+    
+    printf("World pos (%.2f, %.2f) -> Grid pos (%.2f, %.2f) -> Chunk (%d, %d)\n", 
+           worldX, worldY, gridX, gridY, coord.x, coord.y);
+           
+    return coord;
+}
+
+bool isChunkLoaded(ChunkManager* manager, int chunkX, int chunkY) {
+    for (int i = 0; i < manager->numLoadedChunks; i++) {
+        if (manager->chunkCoords[i].x == chunkX && 
+            manager->chunkCoords[i].y == chunkY) {
+            return true;
+        }
+    }
+    return false;
+}
+
+Chunk* getChunk(ChunkManager* manager, int chunkX, int chunkY) {
+    for (int i = 0; i < manager->numLoadedChunks; i++) {
+        if (manager->chunkCoords[i].x == chunkX && 
+            manager->chunkCoords[i].y == chunkY) {
+            return manager->chunks[i];
+        }
+    }
+    return NULL;
+}
+
+void updatePlayerChunk(ChunkManager* manager, float playerX, float playerY) {
+    ChunkCoord currentChunk = getChunkFromWorldPos(playerX, playerY);
+    
+    // Calculate position within current chunk (0.0 to 1.0)
+    float chunkRelativeX = (playerX / CHUNK_SIZE) - currentChunk.x;
+    float chunkRelativeY = (playerY / CHUNK_SIZE) - currentChunk.y;
+    
+    // Define edge threshold (e.g., when within 20% of chunk edge)
+    float edgeThreshold = 0.2f;
+    
+    // Check if near any chunk edge
+    bool nearEdge = (chunkRelativeX < edgeThreshold || 
+                    chunkRelativeX > (1.0f - edgeThreshold) ||
+                    chunkRelativeY < edgeThreshold || 
+                    chunkRelativeY > (1.0f - edgeThreshold));
+
+    // Trigger chunk loading if:
+    // 1. Player moved to new chunk OR
+    // 2. Player is near edge of current chunk
+    if (currentChunk.x != manager->playerChunk.x || 
+        currentChunk.y != manager->playerChunk.y ||
+        nearEdge) {
+        
+        printf("Chunk update triggered - Position: (%.2f, %.2f), In chunk: (%d, %d), Near edge: %s\n",
+               playerX, playerY, currentChunk.x, currentChunk.y, 
+               nearEdge ? "true" : "false");
+        
+        manager->playerChunk = currentChunk;
+        loadChunksAroundPlayer(manager);
+    }
+}
+void loadChunksAroundPlayer(ChunkManager* manager) {
+    // Player's current chunk
+    int px = manager->playerChunk.x;
+    int py = manager->playerChunk.y;
+    
+    // Use a wider radius when player is near edge
+    int effectiveRadius = manager->loadRadius + 1;  // Always load one extra chunk out
+    
+    // Calculate chunk loading bounds with expanded radius
+    int startX = px - effectiveRadius;
+    int endX = px + effectiveRadius;
+    int startY = py - effectiveRadius;
+    int endY = py + effectiveRadius;
+
+    printf("\nChunk loading debug:\n");
+    printf("Player chunk: (%d,%d)\n", px, py);
+    printf("Loading radius: %d (effective: %d)\n", manager->loadRadius, effectiveRadius);
+    printf("Chunk area being loaded:\n");
+    
+    // Print chunk grid visualization
+    for (int y = startY; y <= endY; y++) {
+        printf("  ");  // Indent
+        for (int x = startX; x <= endX; x++) {
+            if (x == px && y == py) {
+                printf("P "); // Player's chunk
+            } else {
+                bool isLoaded = false;
+                for (int i = 0; i < manager->numLoadedChunks; i++) {
+                    if (manager->chunkCoords[i].x == x && manager->chunkCoords[i].y == y) {
+                        isLoaded = true;
+                        break;
+                    }
+                }
+                printf("%c ", isLoaded ? '#' : '.');  // # for loaded, . for not loaded
+            }
+        }
+        printf("\n");
+    }
+    printf("\nP = Player's chunk, # = Loaded chunk, . = Unloaded chunk\n");
+
+    // 1) Mark which chunks we want to keep
+    bool keepChunk[MAX_LOADED_CHUNKS];
+    for (int i = 0; i < manager->numLoadedChunks; i++) {
+        keepChunk[i] = false;
+        
+        // Keep chunks in radius regardless of grid bounds
+        int cx = manager->chunkCoords[i].x;
+        int cy = manager->chunkCoords[i].y;
+        if (cx >= startX && cx <= endX && cy >= startY && cy <= endY) {
+            keepChunk[i] = true;
+        }
+    }
+
+    // 2) Unload out-of-range chunks
+    for (int i = manager->numLoadedChunks - 1; i >= 0; i--) {
+        if (!keepChunk[i]) {
+            Chunk* c = manager->chunks[i];
+            if (c) {
+                // Unload chunk data from grid
+                int gridStartX = c->chunkX * CHUNK_SIZE;
+                int gridStartY = c->chunkY * CHUNK_SIZE;
+                
+                for (int yy = 0; yy < CHUNK_SIZE; yy++) {
+                    for (int xx = 0; xx < CHUNK_SIZE; xx++) {
+                        int gx = gridStartX + xx;
+                        int gy = gridStartY + yy;
+                        if (gx >= 0 && gx < GRID_SIZE && gy >= 0 && gy < GRID_SIZE) {
+                            grid[gy][gx].terrainType = TERRAIN_UNLOADED;
+                            grid[gy][gx].isWalkable = false;
+                        }
+                    }
+                }
+                free(c);
+            }
+
+            // Remove from manager arrays
+            if (i < manager->numLoadedChunks - 1) {
+                manager->chunks[i] = manager->chunks[manager->numLoadedChunks - 1];
+                manager->chunkCoords[i] = manager->chunkCoords[manager->numLoadedChunks - 1];
+            }
+            manager->chunks[manager->numLoadedChunks - 1] = NULL;
+            manager->numLoadedChunks--;
+        }
+    }
+
+    // 3) Load new chunks
+    for (int cy = startY; cy <= endY; cy++) {
+        for (int cx = startX; cx <= endX; cx++) {
+            // Check if this chunk would be at least partially in valid grid space
+            bool chunkInGrid = false;
+            int gridStartX = cx * CHUNK_SIZE;
+            int gridStartY = cy * CHUNK_SIZE;
+            
+            // Check if any corner of the chunk is in bounds
+            if ((gridStartX >= 0 && gridStartX < GRID_SIZE && 
+                 gridStartY >= 0 && gridStartY < GRID_SIZE) ||
+                (gridStartX + CHUNK_SIZE > 0 && gridStartX + CHUNK_SIZE <= GRID_SIZE &&
+                 gridStartY + CHUNK_SIZE > 0 && gridStartY + CHUNK_SIZE <= GRID_SIZE)) {
+                chunkInGrid = true;
+            }
+
+            if (!chunkInGrid) continue;
+
+            // Check if already loaded
+            bool alreadyLoaded = false;
+            for (int i = 0; i < manager->numLoadedChunks; i++) {
+                if (manager->chunkCoords[i].x == cx && manager->chunkCoords[i].y == cy) {
+                    alreadyLoaded = true;
+                    break;
+                }
+            }
+            
+            if (!alreadyLoaded && manager->numLoadedChunks < MAX_LOADED_CHUNKS) {
+                printf("Loading new chunk at (%d,%d)\n", cx, cy);
+                
+                Chunk* newChunk = (Chunk*)malloc(sizeof(Chunk));
+                if (!newChunk) {
+                    printf("Failed to allocate memory for chunk (%d,%d)\n", cx, cy);
+                    continue;
+                }
+                
+                initializeChunk(newChunk, cx, cy);
+
+                if (loadedMapData) {
+                    loadMapChunk(loadedMapData, cx, cy, newChunk);
+                }
+
+                // Add to manager
+                int idx = manager->numLoadedChunks;
+                manager->chunks[idx] = newChunk;
+                manager->chunkCoords[idx].x = cx;
+                manager->chunkCoords[idx].y = cy;
+                manager->numLoadedChunks++;
+
+                writeChunkToGrid(newChunk);
+            }
+        }
+    }
+
+    printf("\nFinal chunks loaded: %d (effective radius = %d). Player at chunk: (%d, %d)\n",
+           manager->numLoadedChunks, effectiveRadius, px, py);
 }

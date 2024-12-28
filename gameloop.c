@@ -118,26 +118,54 @@ void GameLoop() {
 void Initialize() {
     printf("Initializing...\n");
 
+    // Set grid size (still uses a fixed 40 in your code)
     setGridSize(40);
 
-    // Load ASCII map
-    char* asciiMap = loadASCIIMap("testmap.txt");
-    if (asciiMap) {
-        generateTerrainFromASCII(asciiMap);
-        free(asciiMap);
-        printf("Test map loaded successfully.\n");
-    } else {
-        printf("Failed to load test map. Falling back to random generation.\n");
-        generateTerrain();
+    // -----------------------------------------
+    // 1) Initialize the chunk manager *first*,
+    //    but DO NOT load chunks yet
+    // -----------------------------------------
+    globalChunkManager = (ChunkManager*)malloc(sizeof(ChunkManager));
+    if (!globalChunkManager) {
+        fprintf(stderr, "Failed to allocate chunk manager\n");
+        exit(1);
     }
+    initChunkManager(globalChunkManager, 1); // e.g. loadRadius=2
+    printf("Chunk manager initialized.\n");
 
+    // -----------------------------------------
+    // 2) Initialize the global grid to some defaults
+    // -----------------------------------------
+    initializeGrid(GRID_SIZE);
+    printf("Grid initialized.\n");
+
+    // -----------------------------------------
+    // 3) Load ASCII map from file
+    //
+    //    -- We have removed the code from
+    //       loadASCIIMap() that did chunk loading.
+    // -----------------------------------------
+    char* asciiMap = loadASCIIMap("testmap.txt");
+    if (!asciiMap) {
+        fprintf(stderr, "Failed to load test map!\n");
+        exit(1);
+    }
+    printf("ASCII map loaded successfully.\n");
+
+    // -----------------------------------------
+    // 4) Initialize SDL, create Window, GL Context, etc.
+    // -----------------------------------------
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_EVENTS) < 0) {
         fprintf(stderr, "SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
         exit(1);
     }
     printf("SDL initialized.\n");
 
-    window = SDL_CreateWindow("2D Top-Down RPG", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+    window = SDL_CreateWindow("2D Top-Down RPG",
+                              SDL_WINDOWPOS_CENTERED,
+                              SDL_WINDOWPOS_CENTERED, 
+                              WINDOW_WIDTH, WINDOW_HEIGHT,
+                              SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
     if (window == NULL) {
         fprintf(stderr, "Window could not be created! SDL_Error: %s\n", SDL_GetError());
         SDL_Quit();
@@ -156,8 +184,10 @@ void Initialize() {
 
     SDL_GL_MakeCurrent(window, mainContext);
     SDL_GL_SetSwapInterval(1);
+
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     glewExperimental = GL_TRUE; 
     GLenum glewError = glewInit();
     if (glewError != GLEW_OK) {
@@ -169,6 +199,7 @@ void Initialize() {
     }
     printf("GLEW initialized.\n");
 
+    // Create our two shader programs (main & outline)
     shaderProgram = createShaderProgram();
     outlineShaderProgram = createOutlineShaderProgram();
     if (!shaderProgram || !outlineShaderProgram) {
@@ -180,9 +211,13 @@ void Initialize() {
     }
     printf("Shader programs created.\n");
 
+    // Get uniform locations for color and texture
     colorUniform = glGetUniformLocation(shaderProgram, "color");
     textureUniform = glGetUniformLocation(shaderProgram, "textureAtlas");
 
+    // -----------------------------------------
+    // 5) Create grid VAO
+    // -----------------------------------------
     float* vertices;
     createGridVertices(&vertices, &vertexCount, 800, 800, 800 / GRID_SIZE);
     gridVAO = createGridVAO(vertices, vertexCount);
@@ -199,6 +234,9 @@ void Initialize() {
     free(vertices);
     printf("Grid VAO created.\n");
 
+    // -----------------------------------------
+    // 6) Create Square VAO & VBO (for player, etc.)
+    // -----------------------------------------
     glGenVertexArrays(1, &squareVAO);
     glGenBuffers(1, &squareVBO);
     glGenBuffers(1, &outlineVBO);
@@ -222,6 +260,9 @@ void Initialize() {
     glBindVertexArray(0);
     printf("Square VAO and VBO created.\n");
 
+    // -----------------------------------------
+    // 7) Load texture atlas
+    // -----------------------------------------
     textureAtlas = loadBMP("texture_atlas.bmp");
     if (!textureAtlas) {
         fprintf(stderr, "Failed to load texture atlas\n");
@@ -236,22 +277,33 @@ void Initialize() {
         exit(1);
     }
 
-    int playerGridX, playerGridY;
-    do {
-        playerGridX = rand() % GRID_SIZE;
-        playerGridY = rand() % GRID_SIZE;
-    } while (!grid[playerGridY][playerGridX].isWalkable);
-
+    // -----------------------------------------
+    // 8) Initialize the player in the center
+    // -----------------------------------------
+    int playerGridX = GRID_SIZE / 2;
+    int playerGridY = GRID_SIZE / 2;
     InitPlayer(&player, playerGridX, playerGridY, MOVE_SPEED);
     printf("Player initialized at (%d, %d).\n", playerGridX, playerGridY);
 
+    // -----------------------------------------
+    // 9) Now that the player is placed, do the
+    //    initial chunk load *once* here
+    // -----------------------------------------
+    ChunkCoord playerStartChunk = getChunkFromWorldPos(playerGridX, playerGridY);
+    globalChunkManager->playerChunk = playerStartChunk;
+    loadChunksAroundPlayer(globalChunkManager);
+    printf("Initial chunks loaded around player.\n");
+
+    // -----------------------------------------
+    // 10) Initialize all enemies
+    // -----------------------------------------
     allEntities[0] = &player.entity;
     for (int i = 0; i < MAX_ENEMIES; i++) {
         int enemyGridX, enemyGridY;
         do {
             enemyGridX = rand() % GRID_SIZE;
             enemyGridY = rand() % GRID_SIZE;
-        } while (!grid[enemyGridY][enemyGridX].isWalkable || 
+        } while (!grid[enemyGridY][enemyGridX].isWalkable ||
                  (enemyGridX == playerGridX && enemyGridY == playerGridY));
 
         InitEnemy(&enemies[i], enemyGridX, enemyGridY, MOVE_SPEED);
@@ -259,6 +311,9 @@ void Initialize() {
         printf("Enemy %d initialized at (%d, %d).\n", i, enemyGridX, enemyGridY);
     }
 
+    // -----------------------------------------
+    // 11) Initialize VAOs for enemies, outlines, and tiles
+    // -----------------------------------------
     initializeEnemyBatchVAO();
     printf("Enemy batch VAO initialized.\n");
 
@@ -268,12 +323,16 @@ void Initialize() {
     initializeTilesBatchVAO();
     printf("Tiles batch VAO initialized.\n");
 
-    // Initialize GPU pathfinding
+    // -----------------------------------------
+    // 12) Initialize GPU-based pathfinding
+    // -----------------------------------------
     initializeGPUPathfinding();
     printf("GPU pathfinding initialized.\n");
 
     printf("Initialization complete.\n");
 }
+
+
 void CleanupEntities() {
     for (int i = 0; i < MAX_ENTITIES; i++) {
         if (allEntities[i]) {
@@ -334,6 +393,11 @@ void CleanUp() {
     if (outlineShaderProgram) {
         glDeleteProgram(outlineShaderProgram);
     }
+    if (globalChunkManager) {
+    cleanupChunkManager(globalChunkManager);
+    free(globalChunkManager);
+    globalChunkManager = NULL;
+}
     if (textureAtlas) {
         glDeleteTextures(1, &textureAtlas);
         textureAtlas = 0;
@@ -423,14 +487,20 @@ void HandleInput() {
  * Updates the game logic including player and enemy states.
  */
 void UpdateGameLogic() {
+    // 1) Update the player's movement, position, etc.
     UpdatePlayer(&player, allEntities, MAX_ENTITIES);
 
-    Uint32 currentTime = SDL_GetTicks(); // Get the current time
+    // 2) Immediately check if we've crossed into a new chunk.
+    //    - This calls loadChunksAroundPlayer(...) if the player’s chunk changed.
+    updatePlayerChunk(globalChunkManager, player.entity.posX, player.entity.posY);
 
+    // 3) Update enemies or any other game entities.
+    Uint32 currentTime = SDL_GetTicks(); // Get the current time
     for (int i = 0; i < MAX_ENEMIES; i++) {
         UpdateEnemy(&enemies[i], allEntities, MAX_ENTITIES, currentTime);
     }
 }
+
 
 /*
  * Render
@@ -509,6 +579,17 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
 
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
+            // ---------------------------------------------
+            // 1) Skip if this cell is marked as 'unloaded'
+            // ---------------------------------------------
+            if (grid[y][x].terrainType == TERRAIN_UNLOADED) {
+                // Do not render this tile
+                continue;
+            }
+
+            // ---------------------------------------------
+            // 2) Perform your existing visibility cull
+            // ---------------------------------------------
             float worldX, worldY;
             WorldToScreenCoords(x, y, 0, 0, 1, &worldX, &worldY);
 
@@ -519,29 +600,33 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
 
             renderedTiles++;
 
+            // ---------------------------------------------
+            // 3) Calculate tile position, UV coords, etc.
+            // ---------------------------------------------
             float posX, posY;
             WorldToScreenCoords(x, y, cameraOffsetX, cameraOffsetY, zoomFactor, &posX, &posY);
 
             float texX = 0.0f;
-            float texY = 0.0f;  
+            float texY = 0.0f;
             float texWidth = 1.0f / 3.0f;
             float texHeight = 1.0f / 2.0f;
 
             switch (grid[y][x].terrainType) {
                 case TERRAIN_SAND:
-                    texX = 0.0f / 3.0f;
+                    texX = 0.0f / 3.0f; // bottom-left
                     texY = 0.0f / 2.0f;
                     break;
                 case TERRAIN_WATER:
-                    texX = 1.0f / 3.0f;
+                    texX = 1.0f / 3.0f; // bottom-middle
                     texY = 0.0f / 2.0f;
                     break;
                 case TERRAIN_GRASS:
-                    texX = 2.0f / 3.0f;
+                    texX = 2.0f / 3.0f; // bottom-right
                     texY = 0.0f / 2.0f;
                     break;
                 default:
-                    texX = 2.0f / 3.0f;
+                    // e.g. TERRAIN_DIRT, TERRAIN_STONE, or fallback
+                    texX = 2.0f / 3.0f; // top-right
                     texY = 1.0f / 2.0f;
                     break;
             }
@@ -588,7 +673,9 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
 
     free(batchData);
 
+    // ------------------------------------------------
     // Draw outline for player's final target tile
+    // ------------------------------------------------
     if (isPointVisible(player.entity.finalGoalX, player.entity.finalGoalY, playerWorldX, playerWorldY, zoomFactor)) {
         drawTargetTileOutline(player.entity.finalGoalX, player.entity.finalGoalY, cameraOffsetX, cameraOffsetY, zoomFactor);
     }
