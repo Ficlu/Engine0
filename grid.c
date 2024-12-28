@@ -3,7 +3,7 @@
 #include "grid.h"
 #include <stdlib.h>
 #include <stdio.h>
-
+#include "asciiMap.h" 
 GridCell grid[GRID_SIZE][GRID_SIZE];
 
 BiomeData biomeData[BIOME_COUNT] = {
@@ -78,6 +78,17 @@ bool isValid(int x, int y) {
     return x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE;
 }
 
+void processChunk(Chunk* chunk) {
+    if (chunk->chunkX < 0 || chunk->chunkX >= NUM_CHUNKS || 
+        chunk->chunkY < 0 || chunk->chunkY >= NUM_CHUNKS) {
+        printf("Invalid chunk coordinates: %d, %d\n", chunk->chunkX, chunk->chunkY);
+        return;
+    }
+    
+    // Process chunk data - for now just validates coordinates
+    // Future: Add chunk-specific processing here
+}
+
 /*
  * setGridSize
  *
@@ -92,25 +103,53 @@ void setGridSize(int size) {
     }
 }
 
+void debugPrintGridSection(int startX, int startY, int width, int height) {
+    printf("\nGrid Section from (%d,%d):\n", startX, startY);
+    for(int y = startY; y < startY + height && y < GRID_SIZE; y++) {
+        for(int x = startX; x < startX + width && x < GRID_SIZE; x++) {
+            printf("%c ", terrainToChar(grid[y][x].terrainType));
+        }
+        printf("\n");
+    }
+    printf("\n");
+}
+
+// Modify writeChunkToGrid in grid.c:
+void writeChunkToGrid(const Chunk* chunk) {
+    int startX = chunk->chunkX * CHUNK_SIZE;
+    int startY = chunk->chunkY * CHUNK_SIZE;
+    
+    printf("\nWriting chunk (%d,%d) to grid starting at position (%d,%d)\n", 
+           chunk->chunkX, chunk->chunkY, startX, startY);
+    
+    for (int y = 0; y < CHUNK_SIZE; y++) {
+        for (int x = 0; x < CHUNK_SIZE; x++) {
+            int gridX = startX + x;
+            int gridY = startY + y;
+            
+            if (gridX < GRID_SIZE && gridY < GRID_SIZE) {
+                grid[gridY][gridX] = chunk->cells[y][x];
+            }
+        }
+    }
+}
+
 /*
  * generateTerrain
  *
  * Generates the terrain for the grid using Perlin noise and biome data.
  */
 void generateTerrain() {
-    float randomOffset = ((float)rand() / RAND_MAX) * 0.2f - 0.1f;  // Random value between -0.1 and 0.1
+    float randomOffset = ((float)rand() / RAND_MAX) * 0.2f - 0.1f;
 
-    // First pass: generate basic terrain
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
             float biomeValue = perlinNoise(x * 0.1f, y * 0.1f, 0.5f, 4) + randomOffset;
             float heightValue = perlinNoise(x * 0.2f, y * 0.2f, 0.5f, 4) + randomOffset;
 
-            // Clamp values to [0, 1] range
             biomeValue = biomeValue < 0 ? 0 : (biomeValue > 1 ? 1 : biomeValue);
             heightValue = heightValue < 0 ? 0 : (heightValue > 1 ? 1 : heightValue);
 
-            // Determine biome
             BiomeType biome;
             if (biomeValue < 0.1f) biome = BIOME_OCEAN;
             else if (biomeValue < 0.3f) biome = BIOME_BEACH;
@@ -121,7 +160,6 @@ void generateTerrain() {
 
             grid[y][x].biomeType = biome;
 
-            // Determine terrain type based on biome and height
             if (heightValue > biomeData[biome].heightThresholds[0]) {
                 grid[y][x].terrainType = biomeData[biome].terrainTypes[0];
             } else if (heightValue > biomeData[biome].heightThresholds[1]) {
@@ -130,8 +168,8 @@ void generateTerrain() {
                 grid[y][x].terrainType = biomeData[biome].terrainTypes[2];
             }
 
-            // Set initial walkability
-            grid[y][x].isWalkable = (grid[y][x].terrainType != TERRAIN_WATER && grid[y][x].terrainType != TERRAIN_GRASS);
+            grid[y][x].isWalkable = (grid[y][x].terrainType != TERRAIN_WATER && 
+                                    grid[y][x].terrainType != TERRAIN_GRASS);
         }
     }
 

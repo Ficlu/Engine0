@@ -1,5 +1,3 @@
-// ascii_map.h
-
 #ifndef ASCII_MAP_H
 #define ASCII_MAP_H
 
@@ -10,19 +8,16 @@
 #define CHAR_WATER '3'
 #define CHAR_GRASS '4'
 
-// Function to load an ASCII map from a file
+// Modified function to load chunks from an ASCII map file
 char* loadASCIIMap(const char* filename);
 
-// Function to generate terrain from an ASCII map
+// New function to load a specific chunk from the map data
+void loadMapChunk(const char* mapData, int chunkX, int chunkY, Chunk* chunk);
+
+// Existing functions remain unchanged
 void generateTerrainFromASCII(const char* asciiMap);
-
-// Function to convert a character to a terrain type
 TerrainType charToTerrain(char c);
-
-// Function to convert a terrain type to a character
 char terrainToChar(TerrainType terrain);
-
-// Function to save the current grid as an ASCII map
 void saveGridAsASCII(const char* filename);
 
 #endif // ASCII_MAP_H

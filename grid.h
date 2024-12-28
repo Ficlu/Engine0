@@ -4,14 +4,16 @@
 #include <stdbool.h>
 
 #define GRID_SIZE 40
+#define CHUNK_SIZE 8  // 8x8 chunks
+#define NUM_CHUNKS (GRID_SIZE / CHUNK_SIZE)
 
 typedef enum {
     TERRAIN_WATER,
     TERRAIN_SAND,
     TERRAIN_GRASS,
-    TERRAIN_DIRT,
+    TERRAIN_DIRT, 
     TERRAIN_STONE,
-    TERRAIN_UNWALKABLE  // New terrain type for unwalkable tiles
+    TERRAIN_UNWALKABLE
 } TerrainType;
 
 typedef enum {
@@ -25,8 +27,8 @@ typedef enum {
 } BiomeType;
 
 typedef struct {
-    TerrainType terrainTypes[3]; // Top, middle, bottom layers
-    float heightThresholds[2]; // Thresholds between layers
+    TerrainType terrainTypes[3];
+    float heightThresholds[2];
 } BiomeData;
 
 typedef struct {
@@ -34,6 +36,12 @@ typedef struct {
     BiomeType biomeType;
     bool isWalkable;
 } GridCell;
+
+typedef struct {
+    GridCell cells[CHUNK_SIZE][CHUNK_SIZE];
+    int chunkX;
+    int chunkY;
+} Chunk;
 
 extern GridCell grid[GRID_SIZE][GRID_SIZE];
 extern BiomeData biomeData[BIOME_COUNT];
@@ -43,6 +51,8 @@ void cleanupGrid();
 bool isWalkable(int x, int y);
 void setGridSize(int size);
 bool isValid(int x, int y);
-void generateTerrain();  // Add this line
-
+void generateTerrain();
+void processChunk(Chunk* chunk);
+void writeChunkToGrid(const Chunk* chunk);
+void debugPrintGridSection(int startX, int startY, int width, int height);
 #endif // GRID_H
