@@ -17,7 +17,7 @@ char* loadASCIIMap(const char* filename) {
         loadedMapData = NULL;
     }
 
-    // Allocate memory for the entire ASCII map
+    // Just load the raw data into memory - don't process chunks yet
     loadedMapData = (char*)malloc(GRID_SIZE * GRID_SIZE * sizeof(char));
     if (!loadedMapData) {
         printf("Failed to allocate memory for ASCII map\n");
@@ -25,7 +25,6 @@ char* loadASCIIMap(const char* filename) {
         return NULL;
     }
 
-    // Read the map file line-by-line into loadedMapData
     int index = 0;
     char line[GRID_SIZE + 2];  // +2 for newline + null terminator
     while (fgets(line, sizeof(line), file) && index < GRID_SIZE * GRID_SIZE) {
@@ -35,11 +34,7 @@ char* loadASCIIMap(const char* filename) {
     }
     fclose(file);
 
-    // ==========================
-    // Remove any chunk-creation loop here!
-    // ==========================
-
-    printf("ASCII map successfully loaded into memory.\n");
+    printf("ASCII map data loaded into memory.\n");
     return loadedMapData;
 }
 void loadMapChunk(const char* mapData, int chunkX, int chunkY, Chunk* chunk) {

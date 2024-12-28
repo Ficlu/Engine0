@@ -487,20 +487,11 @@ void HandleInput() {
  * Updates the game logic including player and enemy states.
  */
 void UpdateGameLogic() {
-    // 1) Update the player's movement, position, etc.
-    UpdatePlayer(&player, allEntities, MAX_ENTITIES);
-
-    // 2) Immediately check if we've crossed into a new chunk.
-    //    - This calls loadChunksAroundPlayer(...) if the player’s chunk changed.
-    updatePlayerChunk(globalChunkManager, player.entity.posX, player.entity.posY);
-
-    // 3) Update enemies or any other game entities.
-    Uint32 currentTime = SDL_GetTicks(); // Get the current time
+    // Only handle non-physics game state updates here
     for (int i = 0; i < MAX_ENEMIES; i++) {
-        UpdateEnemy(&enemies[i], allEntities, MAX_ENTITIES, currentTime);
+        UpdateEnemy(&enemies[i], allEntities, MAX_ENTITIES, SDL_GetTicks());
     }
 }
-
 
 /*
  * Render
@@ -795,11 +786,18 @@ int PhysicsLoop(void* arg) {
     while (atomic_load(&isRunning)) {
         Uint32 startTime = SDL_GetTicks();
         
-        atomic_store(&physics_load, 100); // Assume 100% load at start
+        atomic_store(&physics_load, 100);
 
+        // Update player physics
         UpdateEntity(&player.entity, allEntities, MAX_ENTITIES);
         UpdatePlayer(&player, allEntities, MAX_ENTITIES);
+        
+        // Check for chunk updates immediately after player moves
+        if (globalChunkManager) {
+            updatePlayerChunk(globalChunkManager, player.entity.posX, player.entity.posY);
+        }
 
+        // Update other entities
         for (int i = 0; i < MAX_ENEMIES; i++) {
             UpdateEntity(&enemies[i].entity, allEntities, MAX_ENTITIES);
         }
@@ -807,8 +805,7 @@ int PhysicsLoop(void* arg) {
         Uint32 endTime = SDL_GetTicks();
         Uint32 elapsedTime = endTime - startTime;
         
-        // Calculate actual load percentage
-        int load = (elapsedTime * 100) / 8; // Assuming 8ms target time
+        int load = (elapsedTime * 100) / 8;
         atomic_store(&physics_load, load);
 
         if (elapsedTime < 8) {

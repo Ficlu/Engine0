@@ -311,13 +311,14 @@ ChunkCoord getChunkFromWorldPos(float worldX, float worldY) {
     float gridX = (worldX + 1.0f) * (GRID_SIZE / 2.0f);
     float gridY = (-worldY + 1.0f) * (GRID_SIZE / 2.0f);
     
-    // Convert to chunk coordinates
+    // Convert to chunk coordinates with bounds checking
     coord.x = (int)floorf(gridX / CHUNK_SIZE);
     coord.y = (int)floorf(gridY / CHUNK_SIZE);
     
-    printf("World pos (%.2f, %.2f) -> Grid pos (%.2f, %.2f) -> Chunk (%d, %d)\n", 
-           worldX, worldY, gridX, gridY, coord.x, coord.y);
-           
+    // Clamp to valid range
+    coord.x = fmax(0, fmin(coord.x, NUM_CHUNKS - 1));
+    coord.y = fmax(0, fmin(coord.y, NUM_CHUNKS - 1));
+    
     return coord;
 }
 
@@ -344,110 +345,54 @@ Chunk* getChunk(ChunkManager* manager, int chunkX, int chunkY) {
 void updatePlayerChunk(ChunkManager* manager, float playerX, float playerY) {
     ChunkCoord currentChunk = getChunkFromWorldPos(playerX, playerY);
     
-    // Calculate position within current chunk (0.0 to 1.0)
-    float chunkRelativeX = (playerX / CHUNK_SIZE) - currentChunk.x;
-    float chunkRelativeY = (playerY / CHUNK_SIZE) - currentChunk.y;
-    
-    // Define edge threshold (e.g., when within 20% of chunk edge)
-    float edgeThreshold = 0.2f;
-    
-    // Check if near any chunk edge
-    bool nearEdge = (chunkRelativeX < edgeThreshold || 
-                    chunkRelativeX > (1.0f - edgeThreshold) ||
-                    chunkRelativeY < edgeThreshold || 
-                    chunkRelativeY > (1.0f - edgeThreshold));
-
-    // Trigger chunk loading if:
-    // 1. Player moved to new chunk OR
-    // 2. Player is near edge of current chunk
+    // Only trigger chunk loading if player has moved to a different chunk
     if (currentChunk.x != manager->playerChunk.x || 
-        currentChunk.y != manager->playerChunk.y ||
-        nearEdge) {
+        currentChunk.y != manager->playerChunk.y) {
         
-        printf("Chunk update triggered - Position: (%.2f, %.2f), In chunk: (%d, %d), Near edge: %s\n",
-               playerX, playerY, currentChunk.x, currentChunk.y, 
-               nearEdge ? "true" : "false");
-        
+        printf("Player moved to new chunk: (%d,%d) -> (%d,%d)\n", 
+               manager->playerChunk.x, manager->playerChunk.y,
+               currentChunk.x, currentChunk.y);
+               
         manager->playerChunk = currentChunk;
         loadChunksAroundPlayer(manager);
     }
 }
 void loadChunksAroundPlayer(ChunkManager* manager) {
-    // Player's current chunk
+    if (!manager) return;
+
     int px = manager->playerChunk.x;
     int py = manager->playerChunk.y;
+    int effectiveRadius = manager->loadRadius;
     
-    // Use a wider radius when player is near edge
-    int effectiveRadius = manager->loadRadius + 1;  // Always load one extra chunk out
-    
-    // Calculate chunk loading bounds with expanded radius
-    int startX = px - effectiveRadius;
-    int endX = px + effectiveRadius;
-    int startY = py - effectiveRadius;
-    int endY = py + effectiveRadius;
+    printf("\nUnloading chunks outside radius %d of (%d,%d)\n", 
+           effectiveRadius, px, py);
 
-    printf("\nChunk loading debug:\n");
-    printf("Player chunk: (%d,%d)\n", px, py);
-    printf("Loading radius: %d (effective: %d)\n", manager->loadRadius, effectiveRadius);
-    printf("Chunk area being loaded:\n");
-    
-    // Print chunk grid visualization
-    for (int y = startY; y <= endY; y++) {
-        printf("  ");  // Indent
-        for (int x = startX; x <= endX; x++) {
-            if (x == px && y == py) {
-                printf("P "); // Player's chunk
-            } else {
-                bool isLoaded = false;
-                for (int i = 0; i < manager->numLoadedChunks; i++) {
-                    if (manager->chunkCoords[i].x == x && manager->chunkCoords[i].y == y) {
-                        isLoaded = true;
-                        break;
-                    }
-                }
-                printf("%c ", isLoaded ? '#' : '.');  // # for loaded, . for not loaded
-            }
-        }
-        printf("\n");
-    }
-    printf("\nP = Player's chunk, # = Loaded chunk, . = Unloaded chunk\n");
-
-    // 1) Mark which chunks we want to keep
-    bool keepChunk[MAX_LOADED_CHUNKS];
-    for (int i = 0; i < manager->numLoadedChunks; i++) {
-        keepChunk[i] = false;
-        
-        // Keep chunks in radius regardless of grid bounds
-        int cx = manager->chunkCoords[i].x;
-        int cy = manager->chunkCoords[i].y;
-        if (cx >= startX && cx <= endX && cy >= startY && cy <= endY) {
-            keepChunk[i] = true;
-        }
-    }
-
-    // 2) Unload out-of-range chunks
+    // First: Aggressively unload all chunks outside radius
     for (int i = manager->numLoadedChunks - 1; i >= 0; i--) {
-        if (!keepChunk[i]) {
-            Chunk* c = manager->chunks[i];
-            if (c) {
-                // Unload chunk data from grid
-                int gridStartX = c->chunkX * CHUNK_SIZE;
-                int gridStartY = c->chunkY * CHUNK_SIZE;
-                
-                for (int yy = 0; yy < CHUNK_SIZE; yy++) {
-                    for (int xx = 0; xx < CHUNK_SIZE; xx++) {
-                        int gx = gridStartX + xx;
-                        int gy = gridStartY + yy;
-                        if (gx >= 0 && gx < GRID_SIZE && gy >= 0 && gy < GRID_SIZE) {
-                            grid[gy][gx].terrainType = TERRAIN_UNLOADED;
-                            grid[gy][gx].isWalkable = false;
-                        }
+        int dx = abs(manager->chunkCoords[i].x - px);
+        int dy = abs(manager->chunkCoords[i].y - py);
+        
+        if (dx > effectiveRadius || dy > effectiveRadius) {
+            printf("Unloading chunk at (%d,%d) - distance (%d,%d) exceeds radius\n",
+                   manager->chunkCoords[i].x, manager->chunkCoords[i].y, dx, dy);
+            
+            // Mark grid cells in this chunk as unloaded
+            int startX = manager->chunkCoords[i].x * CHUNK_SIZE;
+            int startY = manager->chunkCoords[i].y * CHUNK_SIZE;
+            for (int y = 0; y < CHUNK_SIZE; y++) {
+                for (int x = 0; x < CHUNK_SIZE; x++) {
+                    int gridX = startX + x;
+                    int gridY = startY + y;
+                    if (gridX >= 0 && gridX < GRID_SIZE && 
+                        gridY >= 0 && gridY < GRID_SIZE) {
+                        grid[gridY][gridX].terrainType = TERRAIN_UNLOADED;
+                        grid[gridY][gridX].isWalkable = false;
                     }
                 }
-                free(c);
             }
-
-            // Remove from manager arrays
+            
+            // Free and remove the chunk
+            free(manager->chunks[i]);
             if (i < manager->numLoadedChunks - 1) {
                 manager->chunks[i] = manager->chunks[manager->numLoadedChunks - 1];
                 manager->chunkCoords[i] = manager->chunkCoords[manager->numLoadedChunks - 1];
@@ -457,60 +402,45 @@ void loadChunksAroundPlayer(ChunkManager* manager) {
         }
     }
 
-    // 3) Load new chunks
-    for (int cy = startY; cy <= endY; cy++) {
-        for (int cx = startX; cx <= endX; cx++) {
-            // Check if this chunk would be at least partially in valid grid space
-            bool chunkInGrid = false;
-            int gridStartX = cx * CHUNK_SIZE;
-            int gridStartY = cy * CHUNK_SIZE;
+    // Then: Load new chunks within radius
+    for (int dy = -effectiveRadius; dy <= effectiveRadius; dy++) {
+        for (int dx = -effectiveRadius; dx <= effectiveRadius; dx++) {
+            int cx = px + dx;
+            int cy = py + dy;
             
-            // Check if any corner of the chunk is in bounds
-            if ((gridStartX >= 0 && gridStartX < GRID_SIZE && 
-                 gridStartY >= 0 && gridStartY < GRID_SIZE) ||
-                (gridStartX + CHUNK_SIZE > 0 && gridStartX + CHUNK_SIZE <= GRID_SIZE &&
-                 gridStartY + CHUNK_SIZE > 0 && gridStartY + CHUNK_SIZE <= GRID_SIZE)) {
-                chunkInGrid = true;
+            // Skip if out of bounds
+            if (cx < 0 || cx >= NUM_CHUNKS || cy < 0 || cy >= NUM_CHUNKS) {
+                continue;
             }
-
-            if (!chunkInGrid) continue;
 
             // Check if already loaded
             bool alreadyLoaded = false;
             for (int i = 0; i < manager->numLoadedChunks; i++) {
-                if (manager->chunkCoords[i].x == cx && manager->chunkCoords[i].y == cy) {
+                if (manager->chunkCoords[i].x == cx && 
+                    manager->chunkCoords[i].y == cy) {
                     alreadyLoaded = true;
                     break;
                 }
             }
-            
+
             if (!alreadyLoaded && manager->numLoadedChunks < MAX_LOADED_CHUNKS) {
                 printf("Loading new chunk at (%d,%d)\n", cx, cy);
                 
                 Chunk* newChunk = (Chunk*)malloc(sizeof(Chunk));
-                if (!newChunk) {
-                    printf("Failed to allocate memory for chunk (%d,%d)\n", cx, cy);
-                    continue;
-                }
-                
-                initializeChunk(newChunk, cx, cy);
+                if (!newChunk) continue;
 
+                initializeChunk(newChunk, cx, cy);
+                
                 if (loadedMapData) {
                     loadMapChunk(loadedMapData, cx, cy, newChunk);
                 }
 
-                // Add to manager
-                int idx = manager->numLoadedChunks;
-                manager->chunks[idx] = newChunk;
-                manager->chunkCoords[idx].x = cx;
-                manager->chunkCoords[idx].y = cy;
+                manager->chunks[manager->numLoadedChunks] = newChunk;
+                manager->chunkCoords[manager->numLoadedChunks] = (ChunkCoord){cx, cy};
                 manager->numLoadedChunks++;
-
+                
                 writeChunkToGrid(newChunk);
             }
         }
     }
-
-    printf("\nFinal chunks loaded: %d (effective radius = %d). Player at chunk: (%d, %d)\n",
-           manager->numLoadedChunks, effectiveRadius, px, py);
 }
