@@ -23,6 +23,8 @@ extern TileBatchData tileBatchData;
 extern EntityBatchData entityBatchData;
 void cleanupEntityBatchData(void);
 
+void cleanupTileBatchData(void);
+void cleanupEntityBatchData(void);
 
 extern GLuint textureAtlas;
 extern GLuint textureUniform;

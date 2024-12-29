@@ -130,7 +130,7 @@ void Initialize() {
         fprintf(stderr, "Failed to allocate chunk manager\n");
         exit(1);
     }
-    initChunkManager(globalChunkManager, 1); // e.g. loadRadius=2
+    initChunkManager(globalChunkManager, 2); // e.g. loadRadius=2
     printf("Chunk manager initialized.\n");
 
     // -----------------------------------------

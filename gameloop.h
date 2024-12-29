@@ -13,7 +13,7 @@
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 800
-#define MAX_ENEMIES 300
+#define MAX_ENEMIES 150
 #define MOVE_SPEED 0.001f
 #define GAME_LOGIC_INTERVAL_MS ((Uint32)600)
 #define CAMERA_ZOOM 5.00f  
