@@ -81,6 +81,8 @@ void debugPrintGridSection(int startX, int startY, int width, int height);
 void initChunkManager(ChunkManager* manager, int loadRadius);
 void cleanupChunkManager(ChunkManager* manager);
 ChunkCoord getChunkFromWorldPos(float worldX, float worldY);
+bool isPositionInLoadedChunk(float worldX, float worldY);
+
 bool isChunkLoaded(ChunkManager* manager, int chunkX, int chunkY);
 void updatePlayerChunk(ChunkManager* manager, float playerX, float playerY);
 void loadChunksAroundPlayer(ChunkManager* manager);

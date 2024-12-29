@@ -357,6 +357,12 @@ void updatePlayerChunk(ChunkManager* manager, float playerX, float playerY) {
         loadChunksAroundPlayer(manager);
     }
 }
+
+bool isPositionInLoadedChunk(float worldX, float worldY) {
+    ChunkCoord coord = getChunkFromWorldPos(worldX, worldY);
+    return isChunkLoaded(globalChunkManager, coord.x, coord.y);
+}
+
 void loadChunksAroundPlayer(ChunkManager* manager) {
     if (!manager) return;
 

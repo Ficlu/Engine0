@@ -329,6 +329,39 @@ void Initialize() {
     initializeGPUPathfinding();
     printf("GPU pathfinding initialized.\n");
 
+    // -----------------------------------------
+    // 13) Apply initial chunk culling
+    // -----------------------------------------
+    ChunkCoord playerChunk = getChunkFromWorldPos(player.entity.gridX, player.entity.gridY);
+    int radius = globalChunkManager->loadRadius;
+    
+    // Cull everything outside the initial radius
+    for (int cy = 0; cy < NUM_CHUNKS; cy++) {
+        for (int cx = 0; cx < NUM_CHUNKS; cx++) {
+            int dx = abs(cx - playerChunk.x);
+            int dy = abs(cy - playerChunk.y);
+            
+            // If chunk is outside radius, mark all its cells as unloaded
+            if (dx > radius || dy > radius) {
+                int startX = cx * CHUNK_SIZE;
+                int startY = cy * CHUNK_SIZE;
+                
+                for (int y = 0; y < CHUNK_SIZE; y++) {
+                    for (int x = 0; x < CHUNK_SIZE; x++) {
+                        int gridX = startX + x;
+                        int gridY = startY + y;
+                        if (gridX >= 0 && gridX < GRID_SIZE && 
+                            gridY >= 0 && gridY < GRID_SIZE) {
+                            grid[gridY][gridX].terrainType = TERRAIN_UNLOADED;
+                            grid[gridY][gridX].isWalkable = false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    printf("Initial chunk culling complete.\n");
     printf("Initialization complete.\n");
 }
 
@@ -465,8 +498,8 @@ void HandleInput() {
             }
         } else if (event.type == SDL_MOUSEWHEEL) {
             float zoomSpeed = 0.2f;
-            float minZoom = 2.0f;
-            float maxZoom = 5.0f;
+            float minZoom = 1.0f;
+            float maxZoom = 20.0f;
 
             if (event.wheel.y > 0) {
                 // Zoom in
@@ -689,12 +722,12 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
 
     int visibleEnemyCount = 0;
     int culledEnemyCount = 0;
+    int chunkCulledCount = 0;
 
     // Allocate memory for only visible enemies
     Enemy visibleEnemies[MAX_ENEMIES];
 
     // Prepare SIMD variables
-    __m128 cameraOffset = _mm_set_ps(0, 0, cameraOffsetY, cameraOffsetX);
     __m128 zoomFactorVec = _mm_set1_ps(zoomFactor);
     __m128 marginVec = _mm_set1_ps(TILE_SIZE);
     __m128 minusOne = _mm_set1_ps(-1.0f);
@@ -708,6 +741,19 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
 
     // Process enemies in groups of 4
     for (int i = 0; i < MAX_ENEMIES; i += 4) {
+        bool enemyValid[4] = {false, false, false, false};
+        int validEnemiesInGroup = (MAX_ENEMIES - i) < 4 ? (MAX_ENEMIES - i) : 4;
+
+        // First check which enemies are in loaded chunks
+        for (int j = 0; j < validEnemiesInGroup; j++) {
+            if (isPositionInLoadedChunk(enemies[i+j].entity.posX, enemies[i+j].entity.posY)) {
+                enemyValid[j] = true;
+            } else {
+                chunkCulledCount++;
+            }
+        }
+
+        // Only process screen visibility for valid enemies
         __m128 enemyPosX = _mm_set_ps(
             enemies[i+3].entity.posX, enemies[i+2].entity.posX,
             enemies[i+1].entity.posX, enemies[i].entity.posX
@@ -726,20 +772,20 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
         __m128 visibleY = _mm_and_ps(_mm_cmpge_ps(screenY, bottomBound), _mm_cmple_ps(screenY, topBound));
         __m128 visible = _mm_and_ps(visibleX, visibleY);
 
-        // Store results
         int visibilityMask = _mm_movemask_ps(visible);
 
-        for (int j = 0; j < 4 && i + j < MAX_ENEMIES; ++j) {
-            if (visibilityMask & (1 << j)) {
+        for (int j = 0; j < validEnemiesInGroup; ++j) {
+            if (enemyValid[j] && (visibilityMask & (1 << j))) {
                 visibleEnemies[visibleEnemyCount++] = enemies[i + j];
-            } else {
+            } else if (enemyValid[j]) {
                 culledEnemyCount++;
             }
         }
     }
 
     // Log summary of visible and culled enemies
-    printf("Total enemies: %d, Visible enemies: %d, Culled enemies: %d\n", MAX_ENEMIES, visibleEnemyCount, culledEnemyCount);
+    printf("Total enemies: %d, Visible: %d, View-culled: %d, Chunk-culled: %d\n", 
+           MAX_ENEMIES, visibleEnemyCount, culledEnemyCount, chunkCulledCount);
 
     // Use the smooth camera values from the player
     float smoothCameraOffsetX = player.cameraCurrentX;
