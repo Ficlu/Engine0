@@ -363,6 +363,8 @@ bool isPositionInLoadedChunk(float worldX, float worldY) {
     return isChunkLoaded(globalChunkManager, coord.x, coord.y);
 }
 
+
+
 void loadChunksAroundPlayer(ChunkManager* manager) {
     if (!manager) return;
 

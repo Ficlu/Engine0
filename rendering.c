@@ -13,7 +13,8 @@ GLuint textureAtlas = 0;
 GLuint textureUniform;
 GLuint enemyBatchVBO = 0;
 GLuint enemyBatchVAO = 0;
-
+EntityBatchData entityBatchData = {NULL, 0};
+TileBatchData tileBatchData = {NULL, 0};
 void initRendering() {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         printf("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
@@ -276,11 +277,19 @@ GLuint loadBMP(const char* filePath) {
 void initializeEnemyBatchVAO() {
     glGenVertexArrays(1, &enemyBatchVAO);
     glGenBuffers(1, &enemyBatchVBO);
+    
+    // Create persistent buffer
+    entityBatchData.bufferCapacity = MAX_ENEMIES * 6 * 4;
+    entityBatchData.persistentBuffer = malloc(entityBatchData.bufferCapacity * sizeof(float));
+    
+    if (!entityBatchData.persistentBuffer) {
+        fprintf(stderr, "Failed to allocate persistent enemy batch buffer\n");
+        return;
+    }
 
     glBindVertexArray(enemyBatchVAO);
     glBindBuffer(GL_ARRAY_BUFFER, enemyBatchVBO);
-
-    glBufferData(GL_ARRAY_BUFFER, MAX_ENEMIES * 6 * 4 * sizeof(float), NULL, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, entityBatchData.bufferCapacity * sizeof(float), NULL, GL_DYNAMIC_DRAW);
 
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
@@ -291,13 +300,8 @@ void initializeEnemyBatchVAO() {
     glBindVertexArray(0);
 }
 
-
 void updateEnemyBatchVBO(Enemy* enemies, int enemyCount, float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
-    float* batchData = (float*)malloc(enemyCount * 6 * 4 * sizeof(float));
-    if (!batchData) {
-        fprintf(stderr, "Failed to allocate memory for enemy batch data\n");
-        return;
-    }
+    if (!entityBatchData.persistentBuffer) return;
 
     int dataIndex = 0;
     float enemyTexX = 1.0f / 3.0f;
@@ -310,48 +314,59 @@ void updateEnemyBatchVBO(Enemy* enemies, int enemyCount, float cameraOffsetX, fl
         float enemyScreenY = (enemies[i].entity.posY - cameraOffsetY) * zoomFactor;
         float halfSize = TILE_SIZE * zoomFactor;
 
+        float* buffer = entityBatchData.persistentBuffer;
+
         // First triangle
-        // Top-left vertex
-        batchData[dataIndex++] = enemyScreenX - halfSize;
-        batchData[dataIndex++] = enemyScreenY - halfSize;
-        batchData[dataIndex++] = enemyTexX;
-        batchData[dataIndex++] = enemyTexY;
+        buffer[dataIndex++] = enemyScreenX - halfSize;
+        buffer[dataIndex++] = enemyScreenY - halfSize;
+        buffer[dataIndex++] = enemyTexX;
+        buffer[dataIndex++] = enemyTexY;
 
-        // Top-right vertex
-        batchData[dataIndex++] = enemyScreenX + halfSize;
-        batchData[dataIndex++] = enemyScreenY - halfSize;
-        batchData[dataIndex++] = enemyTexX + enemyTexWidth;
-        batchData[dataIndex++] = enemyTexY;
+        buffer[dataIndex++] = enemyScreenX + halfSize;
+        buffer[dataIndex++] = enemyScreenY - halfSize;
+        buffer[dataIndex++] = enemyTexX + enemyTexWidth;
+        buffer[dataIndex++] = enemyTexY;
 
-        // Bottom-left vertex
-        batchData[dataIndex++] = enemyScreenX - halfSize;
-        batchData[dataIndex++] = enemyScreenY + halfSize;
-        batchData[dataIndex++] = enemyTexX;
-        batchData[dataIndex++] = enemyTexY + enemyTexHeight;
+        buffer[dataIndex++] = enemyScreenX - halfSize;
+        buffer[dataIndex++] = enemyScreenY + halfSize;
+        buffer[dataIndex++] = enemyTexX;
+        buffer[dataIndex++] = enemyTexY + enemyTexHeight;
 
         // Second triangle
-        // Top-right vertex
-        batchData[dataIndex++] = enemyScreenX + halfSize;
-        batchData[dataIndex++] = enemyScreenY - halfSize;
-        batchData[dataIndex++] = enemyTexX + enemyTexWidth;
-        batchData[dataIndex++] = enemyTexY;
+        buffer[dataIndex++] = enemyScreenX + halfSize;
+        buffer[dataIndex++] = enemyScreenY - halfSize;
+        buffer[dataIndex++] = enemyTexX + enemyTexWidth;
+        buffer[dataIndex++] = enemyTexY;
 
-        // Bottom-right vertex
-        batchData[dataIndex++] = enemyScreenX + halfSize;
-        batchData[dataIndex++] = enemyScreenY + halfSize;
-        batchData[dataIndex++] = enemyTexX + enemyTexWidth;
-        batchData[dataIndex++] = enemyTexY + enemyTexHeight;
+        buffer[dataIndex++] = enemyScreenX + halfSize;
+        buffer[dataIndex++] = enemyScreenY + halfSize;
+        buffer[dataIndex++] = enemyTexX + enemyTexWidth;
+        buffer[dataIndex++] = enemyTexY + enemyTexHeight;
 
-        // Bottom-left vertex
-        batchData[dataIndex++] = enemyScreenX - halfSize;
-        batchData[dataIndex++] = enemyScreenY + halfSize;
-        batchData[dataIndex++] = enemyTexX;
-        batchData[dataIndex++] = enemyTexY + enemyTexHeight;
+        buffer[dataIndex++] = enemyScreenX - halfSize;
+        buffer[dataIndex++] = enemyScreenY + halfSize;
+        buffer[dataIndex++] = enemyTexX;
+        buffer[dataIndex++] = enemyTexY + enemyTexHeight;
     }
 
     glBindBuffer(GL_ARRAY_BUFFER, enemyBatchVBO);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, enemyCount * 6 * 4 * sizeof(float), batchData);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, dataIndex * sizeof(float), entityBatchData.persistentBuffer);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
 
-    free(batchData);
+void cleanupEntityBatchData() {
+    if (entityBatchData.persistentBuffer) {
+        free(entityBatchData.persistentBuffer);
+        entityBatchData.persistentBuffer = NULL;
+    }
+    entityBatchData.bufferCapacity = 0;
+}
+
+
+void cleanupTileBatchData() {
+    if (tileBatchData.persistentBuffer) {
+        free(tileBatchData.persistentBuffer);
+        tileBatchData.persistentBuffer = NULL;
+    }
+    tileBatchData.bufferCapacity = 0;
 }

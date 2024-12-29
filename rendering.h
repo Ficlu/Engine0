@@ -7,6 +7,23 @@
 #include "enemy.h"
 #include "gameloop.h"
 
+typedef struct {
+    float* persistentBuffer;
+    size_t bufferCapacity;
+} EntityBatchData;
+
+typedef struct {
+    float* persistentBuffer;
+    size_t bufferCapacity;
+} TileBatchData;
+
+extern TileBatchData tileBatchData;
+
+
+extern EntityBatchData entityBatchData;
+void cleanupEntityBatchData(void);
+
+
 extern GLuint textureAtlas;
 extern GLuint textureUniform;
 extern GLuint enemyBatchVBO;

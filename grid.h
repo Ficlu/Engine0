@@ -28,6 +28,8 @@ typedef enum {
     BIOME_COUNT
 } BiomeType;
 
+
+
 typedef struct {
     TerrainType terrainTypes[3];
     float heightThresholds[2];

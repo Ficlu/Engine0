@@ -404,6 +404,7 @@ void drawTargetTileOutline(int x, int y, float cameraOffsetX, float cameraOffset
 
     glUseProgram(shaderProgram);
 }
+
 void CleanUp() {
     printf("Cleaning up...\n");
     CleanupEntities();
@@ -427,10 +428,10 @@ void CleanUp() {
         glDeleteProgram(outlineShaderProgram);
     }
     if (globalChunkManager) {
-    cleanupChunkManager(globalChunkManager);
-    free(globalChunkManager);
-    globalChunkManager = NULL;
-}
+        cleanupChunkManager(globalChunkManager);
+        free(globalChunkManager);
+        globalChunkManager = NULL;
+    }
     if (textureAtlas) {
         glDeleteTextures(1, &textureAtlas);
         textureAtlas = 0;
@@ -447,6 +448,10 @@ void CleanUp() {
     if (tilesBatchVBO) {
         glDeleteBuffers(1, &tilesBatchVBO);
     }
+
+    cleanupEntityBatchData();
+    cleanupTileBatchData();
+
     if (mainContext) {
         SDL_GL_DeleteContext(mainContext);
     }
@@ -455,12 +460,12 @@ void CleanUp() {
     }
     cleanupGrid();
 
-    // Clean up GPU pathfinding resources
     cleanupGPUPathfinding();
 
     SDL_Quit();
     printf("Cleanup complete.\n");
 }
+
 /*
  * HandleInput
  *
@@ -585,6 +590,16 @@ void initializeTilesBatchVAO() {
 #define MAX_VISIBLE_TILES (GRID_SIZE * GRID_SIZE)
 
 void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
+    // One-time initialization of the persistent buffer
+    if (!tileBatchData.persistentBuffer) {
+        tileBatchData.bufferCapacity = MAX_VISIBLE_TILES * 6 * 4;
+        tileBatchData.persistentBuffer = malloc(tileBatchData.bufferCapacity * sizeof(float));
+        if (!tileBatchData.persistentBuffer) {
+            fprintf(stderr, "Failed to allocate tile batch buffer\n");
+            return;
+        }
+    }
+
     glUseProgram(shaderProgram);
     glBindVertexArray(tilesBatchVAO);
 
@@ -594,40 +609,25 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
     int renderedTiles = 0;
     int culledTiles = 0;
 
-    float* batchData = (float*)malloc(MAX_VISIBLE_TILES * 6 * 4 * sizeof(float));
-    if (!batchData) {
-        fprintf(stderr, "Failed to allocate memory for tile batch data\n");
-        return;
-    }
-
     int dataIndex = 0;
+    float* batchData = tileBatchData.persistentBuffer;
 
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
-            // ---------------------------------------------
-            // 1) Skip if this cell is marked as 'unloaded'
-            // ---------------------------------------------
             if (grid[y][x].terrainType == TERRAIN_UNLOADED) {
-                // Do not render this tile
                 continue;
             }
 
-            // ---------------------------------------------
-            // 2) Perform your existing visibility cull
-            // ---------------------------------------------
             float worldX, worldY;
             WorldToScreenCoords(x, y, 0, 0, 1, &worldX, &worldY);
 
             if (!isPointVisible(worldX, worldY, playerWorldX, playerWorldY, zoomFactor)) {
                 culledTiles++;
-                continue;  // Skip this tile
+                continue;
             }
 
             renderedTiles++;
 
-            // ---------------------------------------------
-            // 3) Calculate tile position, UV coords, etc.
-            // ---------------------------------------------
             float posX, posY;
             WorldToScreenCoords(x, y, cameraOffsetX, cameraOffsetY, zoomFactor, &posX, &posY);
 
@@ -638,20 +638,19 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
 
             switch (grid[y][x].terrainType) {
                 case TERRAIN_SAND:
-                    texX = 0.0f / 3.0f; // bottom-left
+                    texX = 0.0f / 3.0f;
                     texY = 0.0f / 2.0f;
                     break;
                 case TERRAIN_WATER:
-                    texX = 1.0f / 3.0f; // bottom-middle
+                    texX = 1.0f / 3.0f;
                     texY = 0.0f / 2.0f;
                     break;
                 case TERRAIN_GRASS:
-                    texX = 2.0f / 3.0f; // bottom-right
+                    texX = 2.0f / 3.0f;
                     texY = 0.0f / 2.0f;
                     break;
                 default:
-                    // e.g. TERRAIN_DIRT, TERRAIN_STONE, or fallback
-                    texX = 2.0f / 3.0f; // top-right
+                    texX = 2.0f / 3.0f;
                     texY = 1.0f / 2.0f;
                     break;
             }
@@ -696,18 +695,12 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
     glBufferSubData(GL_ARRAY_BUFFER, 0, dataIndex * sizeof(float), batchData);
     glDrawArrays(GL_TRIANGLES, 0, renderedTiles * 6);
 
-    free(batchData);
-
-    // ------------------------------------------------
-    // Draw outline for player's final target tile
-    // ------------------------------------------------
     if (isPointVisible(player.entity.finalGoalX, player.entity.finalGoalY, playerWorldX, playerWorldY, zoomFactor)) {
         drawTargetTileOutline(player.entity.finalGoalX, player.entity.finalGoalY, cameraOffsetX, cameraOffsetY, zoomFactor);
     }
 
     printf("Tiles rendered: %d, Tiles culled: %d\n", renderedTiles, culledTiles);
 }
-
 /*
  * RenderEntities
  *
