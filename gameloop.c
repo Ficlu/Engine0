@@ -520,12 +520,13 @@ void HandleInput() {
  * Updates the game logic including player and enemy states.
  */
 void UpdateGameLogic() {
-    // Only handle non-physics game state updates here
     for (int i = 0; i < MAX_ENEMIES; i++) {
-        UpdateEnemy(&enemies[i], allEntities, MAX_ENTITIES, SDL_GetTicks());
+        if (isPositionInLoadedChunk(enemies[i].entity.posX, enemies[i].entity.posY)) {
+            UpdateEnemy(&enemies[i], allEntities, MAX_ENTITIES, SDL_GetTicks());
+        }
+        // Entities in unloaded chunks retain their state but aren't updated
     }
 }
-
 /*
  * Render
  *
@@ -724,22 +725,18 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     int culledEnemyCount = 0;
     int chunkCulledCount = 0;
 
-    // Allocate memory for only visible enemies
     Enemy visibleEnemies[MAX_ENEMIES];
 
-    // Prepare SIMD variables
     __m128 zoomFactorVec = _mm_set1_ps(zoomFactor);
     __m128 marginVec = _mm_set1_ps(TILE_SIZE);
     __m128 minusOne = _mm_set1_ps(-1.0f);
     __m128 one = _mm_set1_ps(1.0f);
 
-    // Calculate screen space bounds
     __m128 leftBound = _mm_sub_ps(minusOne, marginVec);
     __m128 rightBound = _mm_add_ps(one, marginVec);
     __m128 bottomBound = _mm_sub_ps(minusOne, marginVec);
     __m128 topBound = _mm_add_ps(one, marginVec);
 
-    // Process enemies in groups of 4
     for (int i = 0; i < MAX_ENEMIES; i += 4) {
         bool enemyValid[4] = {false, false, false, false};
         int validEnemiesInGroup = (MAX_ENEMIES - i) < 4 ? (MAX_ENEMIES - i) : 4;
@@ -753,7 +750,6 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
             }
         }
 
-        // Only process screen visibility for valid enemies
         __m128 enemyPosX = _mm_set_ps(
             enemies[i+3].entity.posX, enemies[i+2].entity.posX,
             enemies[i+1].entity.posX, enemies[i].entity.posX
@@ -763,11 +759,9 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
             enemies[i+1].entity.posY, enemies[i].entity.posY
         );
 
-        // Calculate screen coordinates
         __m128 screenX = _mm_mul_ps(_mm_sub_ps(enemyPosX, _mm_set1_ps(playerWorldX)), zoomFactorVec);
         __m128 screenY = _mm_mul_ps(_mm_sub_ps(enemyPosY, _mm_set1_ps(playerWorldY)), zoomFactorVec);
 
-        // Check visibility
         __m128 visibleX = _mm_and_ps(_mm_cmpge_ps(screenX, leftBound), _mm_cmple_ps(screenX, rightBound));
         __m128 visibleY = _mm_and_ps(_mm_cmpge_ps(screenY, bottomBound), _mm_cmple_ps(screenY, topBound));
         __m128 visible = _mm_and_ps(visibleX, visibleY);
@@ -783,20 +777,17 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
         }
     }
 
-    // Log summary of visible and culled enemies
     printf("Total enemies: %d, Visible: %d, View-culled: %d, Chunk-culled: %d\n", 
            MAX_ENEMIES, visibleEnemyCount, culledEnemyCount, chunkCulledCount);
 
-    // Use the smooth camera values from the player
     float smoothCameraOffsetX = player.cameraCurrentX;
     float smoothCameraOffsetY = player.cameraCurrentY;
 
-    // Render the enemy batch
     updateEnemyBatchVBO(visibleEnemies, visibleEnemyCount, smoothCameraOffsetX, smoothCameraOffsetY, zoomFactor);
     glBindVertexArray(enemyBatchVAO);
-    glDrawArrays(GL_TRIANGLES, 0, visibleEnemyCount * 6);  // Draw only the visible enemies
+    glDrawArrays(GL_TRIANGLES, 0, visibleEnemyCount * 6);
 
-    // Render player (unchanged)
+    // Render player
     glBindVertexArray(squareVAO);
     glBindBuffer(GL_ARRAY_BUFFER, squareVBO);
 
@@ -843,9 +834,12 @@ int PhysicsLoop(void* arg) {
             updatePlayerChunk(globalChunkManager, player.entity.posX, player.entity.posY);
         }
 
-        // Update other entities
+        // Update other entities - but only if they're in loaded chunks
         for (int i = 0; i < MAX_ENEMIES; i++) {
-            UpdateEntity(&enemies[i].entity, allEntities, MAX_ENTITIES);
+            if (isPositionInLoadedChunk(enemies[i].entity.posX, enemies[i].entity.posY)) {
+                UpdateEntity(&enemies[i].entity, allEntities, MAX_ENTITIES);
+            }
+            // Entities in unloaded chunks retain their state but aren't updated
         }
 
         Uint32 endTime = SDL_GetTicks();
@@ -860,7 +854,6 @@ int PhysicsLoop(void* arg) {
     }
     return 0;
 }
-
 
 /*
  * main
