@@ -41,6 +41,11 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
     player->zoomFactor = 3.0f;
     player->entity.isPlayer = true;
 
+    // Initialize new build-related fields
+    player->targetBuildX = 0;
+    player->targetBuildY = 0;
+    player->hasBuildTarget = false;
+
     atomic_store(&player->cameraTargetX, atomic_load(&player->entity.posX));
     atomic_store(&player->cameraTargetY, atomic_load(&player->entity.posY));
     atomic_store(&player->cameraCurrentX, atomic_load(&player->entity.posX));
@@ -63,7 +68,6 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
 
     printf("Player initialized at (%d, %d)\n", atomic_load(&player->entity.gridX), atomic_load(&player->entity.gridY));
 }
-
 /*
  * UpdatePlayer
  *
@@ -80,6 +84,28 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
 void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
     UpdateEntity(&player->entity, allEntities, entityCount);
 
+    // Check if we have a build target and have reached it
+    if (player->hasBuildTarget) {
+        int currentX = atomic_load(&player->entity.gridX);
+        int currentY = atomic_load(&player->entity.gridY);
+        
+        bool isNearTarget = (
+            abs(currentX - player->targetBuildX) <= 1 && 
+            abs(currentY - player->targetBuildY) <= 1
+        );
+
+        if (isNearTarget) {
+            // Place the wall
+            grid[player->targetBuildY][player->targetBuildX].hasWall = true;
+            grid[player->targetBuildY][player->targetBuildX].isWalkable = false;
+            printf("Reached build location - placed wall at: %d, %d\n", 
+                   player->targetBuildX, player->targetBuildY);
+            
+            // Clear the build target
+            player->hasBuildTarget = false;
+        }
+    }
+
     // Camera follow logic
     float playerPosX = atomic_load(&player->entity.posX);
     float playerPosY = atomic_load(&player->entity.posY);
@@ -94,7 +120,7 @@ void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
     player->cameraTargetX = playerPosX + player->lookAheadX;
     player->cameraTargetY = playerPosY + player->lookAheadY;
 
-    float cameraSmoothFactor = 0.05f; // Adjust this value to control camera smoothness
+    float cameraSmoothFactor = 0.05f;
     player->cameraCurrentX += (player->cameraTargetX - player->cameraCurrentX) * cameraSmoothFactor;
     player->cameraCurrentY += (player->cameraTargetY - player->cameraCurrentY) * cameraSmoothFactor;
 }

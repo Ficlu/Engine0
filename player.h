@@ -12,7 +12,10 @@ typedef struct {
     float cameraSpeed;
     float lookAheadX;
     float lookAheadY;
-    float zoomFactor;  // Add this line
+    float zoomFactor;
+    int targetBuildX;      // New: Coordinates where we want to build
+    int targetBuildY;      // New: Coordinates where we want to build
+    bool hasBuildTarget;   // New: Flag to indicate if we have a pending build
 } Player;
 
 void InitPlayer(Player* player, int startGridX, int startGridY, float speed);

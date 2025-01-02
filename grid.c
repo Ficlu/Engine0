@@ -38,6 +38,7 @@ void initializeGrid(int size) {
             grid[y][x].terrainType = TERRAIN_GRASS;
             grid[y][x].biomeType = BIOME_PLAINS;
             grid[y][x].isWalkable = true;
+            grid[y][x].hasWall = false;  // Initialize hasWall to false
         }
     }
 }
@@ -285,11 +286,13 @@ void initializeChunk(Chunk* chunk, int chunkX, int chunkY) {
             chunk->cells[y][x].terrainType = TERRAIN_GRASS;
             chunk->cells[y][x].biomeType = BIOME_PLAINS;
             chunk->cells[y][x].isWalkable = true;
+            chunk->cells[y][x].hasWall = false;  // Initialize hasWall to false
         }
     }
 
     printf("Initialized chunk (%d,%d)\n", chunkX, chunkY);
 }
+
 void cleanupChunkManager(ChunkManager* manager) {
     if (!manager) return;
 

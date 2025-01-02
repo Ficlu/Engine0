@@ -305,9 +305,9 @@ void updateEnemyBatchVBO(Enemy* enemies, int enemyCount, float cameraOffsetX, fl
 
     int dataIndex = 0;
     float enemyTexX = 1.0f / 3.0f;
-    float enemyTexY = 1.0f / 2.0f;
+    float enemyTexY = 2.0f / 3.0f;
     float enemyTexWidth = 1.0f / 3.0f;
-    float enemyTexHeight = 1.0f / 2.0f;
+    float enemyTexHeight = 1.0f / 3.0f;
 
     for (int i = 0; i < enemyCount; i++) {
         float enemyScreenX = (enemies[i].entity.posX - cameraOffsetX) * zoomFactor;

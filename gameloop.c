@@ -31,7 +31,7 @@ GLuint squareVAO;
 GLuint squareVBO;
 int vertexCount;
 GLuint colorUniform;
-
+bool placementModeActive = false;
 Entity* allEntities[MAX_ENTITIES];
 Player player;
 Enemy enemies[MAX_ENEMIES];
@@ -130,7 +130,7 @@ void Initialize() {
         fprintf(stderr, "Failed to allocate chunk manager\n");
         exit(1);
     }
-    initChunkManager(globalChunkManager, 2); // e.g. loadRadius=2
+    initChunkManager(globalChunkManager, 1); // e.g. loadRadius=2
     printf("Chunk manager initialized.\n");
 
     // -----------------------------------------
@@ -263,7 +263,7 @@ void Initialize() {
     // -----------------------------------------
     // 7) Load texture atlas
     // -----------------------------------------
-    textureAtlas = loadBMP("texture_atlas.bmp");
+    textureAtlas = loadBMP("texture_atlas-1.bmp");
     if (!textureAtlas) {
         fprintf(stderr, "Failed to load texture atlas\n");
         glDeleteVertexArrays(1, &gridVAO);
@@ -477,7 +477,15 @@ void HandleInput() {
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_QUIT) {
             atomic_store(&isRunning, false);
-        } else if (event.type == SDL_MOUSEBUTTONDOWN) {
+        } 
+        else if (event.type == SDL_KEYDOWN) {
+            printf("Key pressed: %d\n", event.key.keysym.sym);
+            if (event.key.keysym.sym == SDLK_e) {
+                placementModeActive = !placementModeActive;
+                printf("Placement mode %s\n", placementModeActive ? "activated" : "deactivated");
+            }
+        }
+        else if (event.type == SDL_MOUSEBUTTONDOWN) {
             if (event.button.button == SDL_BUTTON_LEFT) {
                 int mouseX, mouseY;
                 SDL_GetMouseState(&mouseX, &mouseY);
@@ -491,14 +499,44 @@ void HandleInput() {
                 int gridX = (int)((worldX + 1.0f) * GRID_SIZE / 2);
                 int gridY = (int)((1.0f - worldY) * GRID_SIZE / 2);
 
-                if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE && grid[gridY][gridX].isWalkable) {
-                    player.entity.finalGoalX = gridX;
-                    player.entity.finalGoalY = gridY;
-                    player.entity.targetGridX = player.entity.gridX;
-                    player.entity.targetGridY = player.entity.gridY;
-                    player.entity.needsPathfinding = true;
+                if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE) {
+                    if (placementModeActive) {
+                        int playerGridX = player.entity.gridX;
+                        int playerGridY = player.entity.gridY;
+                        bool isNearby = (
+                            abs(gridX - playerGridX) <= 1 && 
+                            abs(gridY - playerGridY) <= 1
+                        );
 
-                    printf("Player final goal set: gridX = %d, gridY = %d\n", gridX, gridY);
+                        if (isNearby) {
+                            grid[gridY][gridX].hasWall = true;
+                            grid[gridY][gridX].isWalkable = false;
+                            printf("Placed wall at grid position: %d, %d\n", gridX, gridY);
+                        } else {
+                            if (grid[gridY][gridX].isWalkable) {
+                                player.entity.finalGoalX = gridX;
+                                player.entity.finalGoalY = gridY;
+                                player.entity.targetGridX = player.entity.gridX;
+                                player.entity.targetGridY = player.entity.gridY;
+                                player.entity.needsPathfinding = true;
+                                // Set the build target
+                                player.targetBuildX = gridX;
+                                player.targetBuildY = gridY;
+                                player.hasBuildTarget = true;
+                                printf("Moving to wall placement location: %d, %d\n", gridX, gridY);
+                            } else {
+                                printf("Can't move to that location - tile is not walkable\n");
+                            }
+                        }
+                    }
+                    else if (grid[gridY][gridX].isWalkable) {
+                        player.entity.finalGoalX = gridX;
+                        player.entity.finalGoalY = gridY;
+                        player.entity.targetGridX = player.entity.gridX;
+                        player.entity.targetGridY = player.entity.gridY;
+                        player.entity.needsPathfinding = true;
+                        printf("Player final goal set: gridX = %d, gridY = %d\n", gridX, gridY);
+                    }
                 }
             }
         } else if (event.type == SDL_MOUSEWHEEL) {
@@ -518,7 +556,6 @@ void HandleInput() {
         }
     }
 }
-
 /*
  * UpdateGameLogic
  *
@@ -634,24 +671,25 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
             float texX = 0.0f;
             float texY = 0.0f;
             float texWidth = 1.0f / 3.0f;
-            float texHeight = 1.0f / 2.0f;
+            float texHeight = 1.0f / 3.0f;
 
+            // Your original terrain texture coordinates
             switch (grid[y][x].terrainType) {
                 case TERRAIN_SAND:
                     texX = 0.0f / 3.0f;
-                    texY = 0.0f / 2.0f;
+                    texY = 1.0f / 3.0f;
                     break;
                 case TERRAIN_WATER:
                     texX = 1.0f / 3.0f;
-                    texY = 0.0f / 2.0f;
+                    texY = 1.0f / 3.0f;
                     break;
                 case TERRAIN_GRASS:
                     texX = 2.0f / 3.0f;
-                    texY = 0.0f / 2.0f;
+                    texY = 1.0f / 3.0f;
                     break;
                 default:
                     texX = 2.0f / 3.0f;
-                    texY = 1.0f / 2.0f;
+                    texY = 1.0f / 3.0f;
                     break;
             }
 
@@ -688,6 +726,46 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
             batchData[dataIndex++] = posY + halfSize;
             batchData[dataIndex++] = texX;
             batchData[dataIndex++] = texY;
+
+            // If there's a wall, add the wall triangles right after terrain
+            if (grid[y][x].hasWall) {
+                float wallTexX = 0.0f / 3.0f;  // Left position
+                float wallTexY = 0.0f / 3.0f;  // Bottom row
+
+                // First triangle for wall
+                batchData[dataIndex++] = posX - halfSize;
+                batchData[dataIndex++] = posY - halfSize;
+                batchData[dataIndex++] = wallTexX;
+                batchData[dataIndex++] = wallTexY + texHeight;
+
+                batchData[dataIndex++] = posX + halfSize;
+                batchData[dataIndex++] = posY - halfSize;
+                batchData[dataIndex++] = wallTexX + texWidth;
+                batchData[dataIndex++] = wallTexY + texHeight;
+
+                batchData[dataIndex++] = posX - halfSize;
+                batchData[dataIndex++] = posY + halfSize;
+                batchData[dataIndex++] = wallTexX;
+                batchData[dataIndex++] = wallTexY;
+
+                // Second triangle for wall
+                batchData[dataIndex++] = posX + halfSize;
+                batchData[dataIndex++] = posY - halfSize;
+                batchData[dataIndex++] = wallTexX + texWidth;
+                batchData[dataIndex++] = wallTexY + texHeight;
+
+                batchData[dataIndex++] = posX + halfSize;
+                batchData[dataIndex++] = posY + halfSize;
+                batchData[dataIndex++] = wallTexX + texWidth;
+                batchData[dataIndex++] = wallTexY;
+
+                batchData[dataIndex++] = posX - halfSize;
+                batchData[dataIndex++] = posY + halfSize;
+                batchData[dataIndex++] = wallTexX;
+                batchData[dataIndex++] = wallTexY;
+
+                renderedTiles++;  // Count the wall as another rendered tile
+            }
         }
     }
 
@@ -787,9 +865,10 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     float playerScreenX = (playerWorldX - smoothCameraOffsetX) * zoomFactor;
     float playerScreenY = (playerWorldY - smoothCameraOffsetY) * zoomFactor;
     float playerTexX = 0.0f / 3.0f;
-    float playerTexY = 1.0f / 2.0f;
+    float playerTexY = 2.0f / 3.0f;
     float playerTexWidth = 1.0f / 3.0f;
-    float playerTexHeight = 1.0f / 2.0f;
+    float playerTexHeight = 1.0f / 3.0f;
+
     float playerVertices[] = {
         playerScreenX - TILE_SIZE * zoomFactor, playerScreenY - TILE_SIZE * zoomFactor, playerTexX, playerTexY,
         playerScreenX + TILE_SIZE * zoomFactor, playerScreenY - TILE_SIZE * zoomFactor, playerTexX + playerTexWidth, playerTexY,

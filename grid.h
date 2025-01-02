@@ -29,7 +29,6 @@ typedef enum {
 } BiomeType;
 
 
-
 typedef struct {
     TerrainType terrainTypes[3];
     float heightThresholds[2];
@@ -39,7 +38,9 @@ typedef struct {
     TerrainType terrainType;
     BiomeType biomeType;
     bool isWalkable;
+    bool hasWall;  // New field
 } GridCell;
+
 
 typedef struct {
     int x;
