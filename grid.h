@@ -60,6 +60,8 @@ typedef struct {
     ChunkCoord playerChunk;
     int loadRadius;
     int numLoadedChunks;
+    GridCell storedChunkData[NUM_CHUNKS][NUM_CHUNKS][CHUNK_SIZE][CHUNK_SIZE];  // New storage array
+    bool chunkHasData[NUM_CHUNKS][NUM_CHUNKS];  // Track which chunks have saved data
 } ChunkManager;
 
 extern GridCell grid[GRID_SIZE][GRID_SIZE];

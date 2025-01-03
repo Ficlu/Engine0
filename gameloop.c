@@ -508,11 +508,28 @@ void HandleInput() {
                             abs(gridY - playerGridY) <= 1
                         );
 
-                        if (isNearby) {
+                        // Check if tile is occupied by player or entities
+                        bool isTileOccupied = (gridX == playerGridX && gridY == playerGridY);
+                        
+                        // Check for any entities on the tile
+                        for (int i = 0; i < MAX_ENTITIES; i++) {
+                            if (allEntities[i] != NULL) {
+                                if (atomic_load(&allEntities[i]->gridX) == gridX && 
+                                    atomic_load(&allEntities[i]->gridY) == gridY) {
+                                    isTileOccupied = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (isNearby && !isTileOccupied) {
                             grid[gridY][gridX].hasWall = true;
                             grid[gridY][gridX].isWalkable = false;
                             printf("Placed wall at grid position: %d, %d\n", gridX, gridY);
+                        } else if (isTileOccupied) {
+                            printf("Can't place wall - tile is occupied\n");
                         } else {
+                            // If not nearby and not occupied, pathfind to the target location
                             if (grid[gridY][gridX].isWalkable) {
                                 player.entity.finalGoalX = gridX;
                                 player.entity.finalGoalY = gridY;
@@ -624,7 +641,6 @@ void initializeTilesBatchVAO() {
  * @param[in] cameraOffsetY The vertical camera offset
  * @param[in] zoomFactor The zoom factor applied to the view
  */
-#define MAX_VISIBLE_TILES (GRID_SIZE * GRID_SIZE)
 
 void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
     // One-time initialization of the persistent buffer
@@ -671,25 +687,25 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
             float texX = 0.0f;
             float texY = 0.0f;
             float texWidth = 1.0f / 3.0f;
-            float texHeight = 1.0f / 3.0f;
+            float texHeight = 1.0f / 4.0f;
 
             // Your original terrain texture coordinates
             switch (grid[y][x].terrainType) {
                 case TERRAIN_SAND:
                     texX = 0.0f / 3.0f;
-                    texY = 1.0f / 3.0f;
+                    texY = 2.0f / 4.0f;
                     break;
                 case TERRAIN_WATER:
                     texX = 1.0f / 3.0f;
-                    texY = 1.0f / 3.0f;
+                    texY = 2.0f / 4.0f;
                     break;
                 case TERRAIN_GRASS:
                     texX = 2.0f / 3.0f;
-                    texY = 1.0f / 3.0f;
+                    texY = 2.0f / 4.0f;
                     break;
                 default:
                     texX = 2.0f / 3.0f;
-                    texY = 1.0f / 3.0f;
+                    texY = 2.0f / 4.0f;
                     break;
             }
 
@@ -729,42 +745,42 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
 
             // If there's a wall, add the wall triangles right after terrain
             if (grid[y][x].hasWall) {
-                float wallTexX = 0.0f / 3.0f;  // Left position
-                float wallTexY = 0.0f / 3.0f;  // Bottom row
+                float wallTexX = 0.0f / 3.0f;
+                float wallTexY = 1.0f / 4.0f;
 
-                // First triangle for wall
+                // First triangle for wall with corrected texture coordinates
                 batchData[dataIndex++] = posX - halfSize;
                 batchData[dataIndex++] = posY - halfSize;
-                batchData[dataIndex++] = wallTexX;
-                batchData[dataIndex++] = wallTexY + texHeight;
-
-                batchData[dataIndex++] = posX + halfSize;
-                batchData[dataIndex++] = posY - halfSize;
-                batchData[dataIndex++] = wallTexX + texWidth;
-                batchData[dataIndex++] = wallTexY + texHeight;
-
-                batchData[dataIndex++] = posX - halfSize;
-                batchData[dataIndex++] = posY + halfSize;
                 batchData[dataIndex++] = wallTexX;
                 batchData[dataIndex++] = wallTexY;
 
-                // Second triangle for wall
                 batchData[dataIndex++] = posX + halfSize;
                 batchData[dataIndex++] = posY - halfSize;
-                batchData[dataIndex++] = wallTexX + texWidth;
-                batchData[dataIndex++] = wallTexY + texHeight;
-
-                batchData[dataIndex++] = posX + halfSize;
-                batchData[dataIndex++] = posY + halfSize;
                 batchData[dataIndex++] = wallTexX + texWidth;
                 batchData[dataIndex++] = wallTexY;
 
                 batchData[dataIndex++] = posX - halfSize;
                 batchData[dataIndex++] = posY + halfSize;
                 batchData[dataIndex++] = wallTexX;
+                batchData[dataIndex++] = wallTexY + texHeight;
+
+                // Second triangle for wall with corrected texture coordinates
+                batchData[dataIndex++] = posX + halfSize;
+                batchData[dataIndex++] = posY - halfSize;
+                batchData[dataIndex++] = wallTexX + texWidth;
                 batchData[dataIndex++] = wallTexY;
 
-                renderedTiles++;  // Count the wall as another rendered tile
+                batchData[dataIndex++] = posX + halfSize;
+                batchData[dataIndex++] = posY + halfSize;
+                batchData[dataIndex++] = wallTexX + texWidth;
+                batchData[dataIndex++] = wallTexY + texHeight;
+
+                batchData[dataIndex++] = posX - halfSize;
+                batchData[dataIndex++] = posY + halfSize;
+                batchData[dataIndex++] = wallTexX;
+                batchData[dataIndex++] = wallTexY + texHeight;
+
+                renderedTiles++;
             }
         }
     }
@@ -865,9 +881,9 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     float playerScreenX = (playerWorldX - smoothCameraOffsetX) * zoomFactor;
     float playerScreenY = (playerWorldY - smoothCameraOffsetY) * zoomFactor;
     float playerTexX = 0.0f / 3.0f;
-    float playerTexY = 2.0f / 3.0f;
+    float playerTexY = 3.0f / 4.0f;
     float playerTexWidth = 1.0f / 3.0f;
-    float playerTexHeight = 1.0f / 3.0f;
+    float playerTexHeight = 1.0f / 4.0f;
 
     float playerVertices[] = {
         playerScreenX - TILE_SIZE * zoomFactor, playerScreenY - TILE_SIZE * zoomFactor, playerTexX, playerTexY,

@@ -140,7 +140,6 @@ void writeChunkToGrid(const Chunk* chunk) {
     }
 }
 
-
 void generateTerrain() {
     printf("Generating initial terrain...\n");
     
@@ -272,8 +271,25 @@ void initChunkManager(ChunkManager* manager, int loadRadius) {
         manager->chunkCoords[i].y = 0;
     }
 
+    // Initialize stored chunk data tracking
+    for (int cy = 0; cy < NUM_CHUNKS; cy++) {
+        for (int cx = 0; cx < NUM_CHUNKS; cx++) {
+            manager->chunkHasData[cy][cx] = false;
+            // Initialize stored chunk data
+            for (int y = 0; y < CHUNK_SIZE; y++) {
+                for (int x = 0; x < CHUNK_SIZE; x++) {
+                    manager->storedChunkData[cy][cx][y][x].terrainType = TERRAIN_GRASS;
+                    manager->storedChunkData[cy][cx][y][x].biomeType = BIOME_PLAINS;
+                    manager->storedChunkData[cy][cx][y][x].isWalkable = true;
+                    manager->storedChunkData[cy][cx][y][x].hasWall = false;
+                }
+            }
+        }
+    }
+
     printf("Chunk manager initialized with radius %d\n", loadRadius);
 }
+
 
 void initializeChunk(Chunk* chunk, int chunkX, int chunkY) {
     chunk->chunkX = chunkX;
@@ -286,7 +302,7 @@ void initializeChunk(Chunk* chunk, int chunkX, int chunkY) {
             chunk->cells[y][x].terrainType = TERRAIN_GRASS;
             chunk->cells[y][x].biomeType = BIOME_PLAINS;
             chunk->cells[y][x].isWalkable = true;
-            chunk->cells[y][x].hasWall = false;  // Initialize hasWall to false
+            chunk->cells[y][x].hasWall = false;  // Initialize wall state
         }
     }
 
@@ -387,20 +403,24 @@ void loadChunksAroundPlayer(ChunkManager* manager) {
             printf("Unloading chunk at (%d,%d) - distance (%d,%d) exceeds radius\n",
                    manager->chunkCoords[i].x, manager->chunkCoords[i].y, dx, dy);
             
-            // Mark grid cells in this chunk as unloaded
-            int startX = manager->chunkCoords[i].x * CHUNK_SIZE;
-            int startY = manager->chunkCoords[i].y * CHUNK_SIZE;
+            // Store chunk data before unloading
+            int chunkX = manager->chunkCoords[i].x;
+            int chunkY = manager->chunkCoords[i].y;
             for (int y = 0; y < CHUNK_SIZE; y++) {
                 for (int x = 0; x < CHUNK_SIZE; x++) {
-                    int gridX = startX + x;
-                    int gridY = startY + y;
+                    int gridX = chunkX * CHUNK_SIZE + x;
+                    int gridY = chunkY * CHUNK_SIZE + y;
                     if (gridX >= 0 && gridX < GRID_SIZE && 
                         gridY >= 0 && gridY < GRID_SIZE) {
+                        // Store the current state
+                        manager->storedChunkData[chunkY][chunkX][y][x] = grid[gridY][gridX];
+                        // Mark grid as unloaded
                         grid[gridY][gridX].terrainType = TERRAIN_UNLOADED;
                         grid[gridY][gridX].isWalkable = false;
                     }
                 }
             }
+            manager->chunkHasData[chunkY][chunkX] = true;
             
             // Free and remove the chunk
             free(manager->chunks[i]);
@@ -442,7 +462,14 @@ void loadChunksAroundPlayer(ChunkManager* manager) {
 
                 initializeChunk(newChunk, cx, cy);
                 
-                if (loadedMapData) {
+                if (manager->chunkHasData[cy][cx]) {
+                    // Restore saved chunk data
+                    for (int y = 0; y < CHUNK_SIZE; y++) {
+                        for (int x = 0; x < CHUNK_SIZE; x++) {
+                            newChunk->cells[y][x] = manager->storedChunkData[cy][cx][y][x];
+                        }
+                    }
+                } else if (loadedMapData) {
                     loadMapChunk(loadedMapData, cx, cy, newChunk);
                 }
 

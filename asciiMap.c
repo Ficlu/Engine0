@@ -43,11 +43,10 @@ void loadMapChunk(const char* mapData, int chunkX, int chunkY, Chunk* chunk) {
         printf("\nLoading chunk (%d,%d):\n", chunkX, chunkY);
         printf("Chunk starting at map index: %d\n", chunkY * CHUNK_SIZE * GRID_SIZE + chunkX * CHUNK_SIZE);
         
-        // Add this debug print to see the first character of the chunk
         int startIndex = (chunkY * CHUNK_SIZE * GRID_SIZE) + (chunkX * CHUNK_SIZE);
         printf("First char in chunk: %c\n", mapData[startIndex]);
     }
-    // Debug: Print the raw map data for this chunk
+
     printf("\nLoading chunk (%d,%d) - Raw map data:\n", chunkX, chunkY);
     for (int y = 0; y < CHUNK_SIZE; y++) {
         for (int x = 0; x < CHUNK_SIZE; x++) {
@@ -61,6 +60,7 @@ void loadMapChunk(const char* mapData, int chunkX, int chunkY, Chunk* chunk) {
 
             chunk->cells[y][x].terrainType = terrain;
             chunk->cells[y][x].isWalkable = (terrain != TERRAIN_WATER);
+            chunk->cells[y][x].hasWall = false;  // Initialize wall state
 
             switch (terrain) {
                 case TERRAIN_WATER: chunk->cells[y][x].biomeType = BIOME_OCEAN; break;
@@ -72,7 +72,6 @@ void loadMapChunk(const char* mapData, int chunkX, int chunkY, Chunk* chunk) {
             }
         }
 
-        // Print each row of the chunk as we load it, but only if chunkX and chunkY are divisible by 5
         if (chunkX % 5 == 0 && chunkY % 5 == 0) {
             printf("Chunk row %d: ", y);
             for (int x = 0; x < CHUNK_SIZE; x++) {
@@ -82,7 +81,6 @@ void loadMapChunk(const char* mapData, int chunkX, int chunkY, Chunk* chunk) {
         }
     }
 }
-
 void generateTerrainFromASCII(const char* asciiMap) {
     for (int chunkY = 0; chunkY < NUM_CHUNKS; chunkY++) {
         for (int chunkX = 0; chunkX < NUM_CHUNKS; chunkX++) {
