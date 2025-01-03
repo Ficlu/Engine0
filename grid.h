@@ -39,6 +39,8 @@ typedef struct {
     BiomeType biomeType;
     bool isWalkable;
     bool hasWall;  // New field
+    float wallTexX;
+    float wallTexY;
 } GridCell;
 
 
@@ -63,6 +65,11 @@ typedef struct {
     GridCell storedChunkData[NUM_CHUNKS][NUM_CHUNKS][CHUNK_SIZE][CHUNK_SIZE];  // New storage array
     bool chunkHasData[NUM_CHUNKS][NUM_CHUNKS];  // Track which chunks have saved data
 } ChunkManager;
+
+typedef struct {
+    float texX;
+    float texY;
+} WallTextureCoords;
 
 extern GridCell grid[GRID_SIZE][GRID_SIZE];
 extern BiomeData biomeData[BIOME_COUNT];

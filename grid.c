@@ -38,9 +38,12 @@ void initializeGrid(int size) {
             grid[y][x].terrainType = TERRAIN_GRASS;
             grid[y][x].biomeType = BIOME_PLAINS;
             grid[y][x].isWalkable = true;
-            grid[y][x].hasWall = false;  // Initialize hasWall to false
+            grid[y][x].hasWall = false;
+            grid[y][x].wallTexX = 0.0f / 3.0f;  // Default wall texture coordinates
+            grid[y][x].wallTexY = 1.0f / 4.0f;  // Vertical wall texture (default)
         }
     }
+    printf("Grid initialized with size %d x %d\n", size, size);
 }
 
 /*
