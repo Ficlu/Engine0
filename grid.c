@@ -41,6 +41,8 @@ void initializeGrid(int size) {
             grid[y][x].hasWall = false;
             grid[y][x].wallTexX = 0.0f / 3.0f;  // Default wall texture coordinates
             grid[y][x].wallTexY = 1.0f / 4.0f;  // Vertical wall texture (default)
+            grid[y][x].isDoorOpen = false;  // Add this line
+
         }
     }
     printf("Grid initialized with size %d x %d\n", size, size);

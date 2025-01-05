@@ -3,14 +3,16 @@
 
 #include <stdbool.h>
 #include "grid.h"
+#include "player.h"
+#include "structure_types.h"
 
 
-typedef enum {
-    STRUCTURE_NONE = 0,
-    STRUCTURE_WALL,
-    STRUCTURE_DOOR,
-    STRUCTURE_COUNT
-} StructureType;
+
+typedef struct {
+    int x;
+    int y;
+    float distance;
+} AdjacentTile;
 
 typedef struct {
     bool active;
@@ -30,5 +32,6 @@ void updateSurroundingStructures(int gridX, int gridY);
 const char* getStructureName(StructureType type);
 void cleanupStructureSystem(void);
 bool isEntityTargetingTile(int gridX, int gridY);
-
+AdjacentTile findNearestAdjacentTile(int targetX, int targetY, int fromX, int fromY, bool requireWalkable);
+bool toggleDoor(int gridX, int gridY, Player* player);
 #endif // STRUCTURES_H

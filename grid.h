@@ -41,6 +41,8 @@ typedef struct {
     bool hasWall;  // New field
     float wallTexX;
     float wallTexY;
+    bool isDoorOpen;  // New field
+
 } GridCell;
 
 

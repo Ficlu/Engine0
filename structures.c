@@ -1,7 +1,9 @@
 #include "structures.h"
 #include <stdio.h>
+#include <math.h>
 #include "grid.h"
 #include "gameloop.h"
+#include "player.h"
 // Constants for texture coordinates from your existing system
 
 /* These defs need to be in structures.c since they incl the division operation - do not move to header file or they will break when refed*/
@@ -22,10 +24,10 @@
 #define DOOR_VERTICAL_TEX_Y (1.0f / 6.0f)    // Top row
 #define DOOR_HORIZONTAL_TEX_X (0.0f / 3.0f)  // First column 
 #define DOOR_HORIZONTAL_TEX_Y (1.0f / 6.0f)  // Top row
-#define DOOR_VERTICAL_OPEN_TEX_X (2.0f / 3.0f)    // Middle column
-#define DOOR_VERTICAL_OPEN_TEX_Y (1.0f / 6.0f)    // Top row
-#define DOOR_HORIZONTAL_OPEN_TEX_X (0.0f / 3.0f)  // First column 
-#define DOOR_HORIZONTAL_OPEN_TEX_Y (0.0f / 6.0f)  // Top row
+#define DOOR_VERTICAL_OPEN_TEX_X (0.0f / 3.0f)    // Middle column
+#define DOOR_VERTICAL_OPEN_TEX_Y (0.0f / 6.0f)    // Top row
+#define DOOR_HORIZONTAL_OPEN_TEX_X (1.0f / 3.0f)  // First column 
+#define DOOR_HORIZONTAL_OPEN_TEX_Y (1.0f / 6.0f)  // Top row
 
 void initializeStructureSystem(void) {
     printf("Structure system initialized\n");
@@ -169,6 +171,10 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
                 grid[gridY][gridX].wallTexX = DOOR_HORIZONTAL_TEX_X;
                 grid[gridY][gridX].wallTexY = DOOR_HORIZONTAL_TEX_Y;
             }
+            
+            // Initialize door as closed and unwalkable
+            grid[gridY][gridX].isDoorOpen = false;
+            grid[gridY][gridX].isWalkable = false;
 
             updateSurroundingStructures(gridX, gridY);
             break;
@@ -215,6 +221,110 @@ bool isEntityTargetingTile(int gridX, int gridY) {
             if (allEntities[i]->targetGridX == gridX && allEntities[i]->targetGridY == gridY) {
                 return true;
             }
+        }
+    }
+    return false;
+}
+
+AdjacentTile findNearestAdjacentTile(int targetX, int targetY, int fromX, int fromY, bool requireWalkable) {
+    AdjacentTile result = {-1, -1, INFINITY};
+    
+    // Check all adjacent tiles to the target position
+    for (int dy = -1; dy <= 1; dy++) {
+        for (int dx = -1; dx <= 1; dx++) {
+            if (dx == 0 && dy == 0) continue;
+            
+            int checkX = targetX + dx;
+            int checkY = targetY + dy;
+            
+            // Ensure tile is in bounds and meets walkability requirement
+            if (checkX >= 0 && checkX < GRID_SIZE && 
+                checkY >= 0 && checkY < GRID_SIZE && 
+                (!requireWalkable || grid[checkY][checkX].isWalkable)) {
+                
+                float dist = sqrtf(powf(fromX - checkX, 2) + 
+                                 powf(fromY - checkY, 2));
+                
+                if (dist < result.distance) {
+                    result.x = checkX;
+                    result.y = checkY;
+                    result.distance = dist;
+                }
+            }
+        }
+    }
+    
+    return result;
+}
+
+bool toggleDoor(int gridX, int gridY, Player* player) {
+    // Verify it's actually a door by checking texture coordinates for both closed and open states
+    bool isDoor = (
+        // Check closed door textures
+        (grid[gridY][gridX].wallTexX == DOOR_VERTICAL_TEX_X && 
+         grid[gridY][gridX].wallTexY == DOOR_VERTICAL_TEX_Y) ||
+        (grid[gridY][gridX].wallTexX == DOOR_HORIZONTAL_TEX_X &&
+         grid[gridY][gridX].wallTexY == DOOR_HORIZONTAL_TEX_Y) ||
+        // Check open door textures
+        (grid[gridY][gridX].wallTexX == DOOR_VERTICAL_OPEN_TEX_X && 
+         grid[gridY][gridX].wallTexY == DOOR_VERTICAL_OPEN_TEX_Y) ||
+        (grid[gridY][gridX].wallTexX == DOOR_HORIZONTAL_OPEN_TEX_X &&
+         grid[gridY][gridX].wallTexY == DOOR_HORIZONTAL_OPEN_TEX_Y)
+    );
+
+    if (!isDoor) return false;
+
+    bool isNearby = (
+        abs(gridX - player->entity.gridX) <= 1 && 
+        abs(gridY - player->entity.gridY) <= 1
+    );
+
+    if (isNearby) {
+        // Toggle door state
+        grid[gridY][gridX].isDoorOpen = !grid[gridY][gridX].isDoorOpen;
+        grid[gridY][gridX].isWalkable = grid[gridY][gridX].isDoorOpen;
+        
+        bool isVertical = (
+            (grid[gridY][gridX].wallTexX == DOOR_VERTICAL_TEX_X && 
+             grid[gridY][gridX].wallTexY == DOOR_VERTICAL_TEX_Y) ||
+            (grid[gridY][gridX].wallTexX == DOOR_VERTICAL_OPEN_TEX_X && 
+             grid[gridY][gridX].wallTexY == DOOR_VERTICAL_OPEN_TEX_Y)
+        );
+
+        printf("is this vertical? \n%d\n", isVertical);
+        // Then toggle between closed and open textures while maintaining orientation
+        if (isVertical) {
+            if (grid[gridY][gridX].isDoorOpen) {
+                grid[gridY][gridX].wallTexX = DOOR_VERTICAL_OPEN_TEX_X;
+                grid[gridY][gridX].wallTexY = DOOR_VERTICAL_OPEN_TEX_Y;
+            } else {
+                grid[gridY][gridX].wallTexX = DOOR_VERTICAL_TEX_X;
+                grid[gridY][gridX].wallTexY = DOOR_VERTICAL_TEX_Y;
+            }
+        } else {
+            if (grid[gridY][gridX].isDoorOpen) {
+                grid[gridY][gridX].wallTexX = DOOR_HORIZONTAL_OPEN_TEX_X;
+                grid[gridY][gridX].wallTexY = DOOR_HORIZONTAL_OPEN_TEX_Y;
+            } else {
+                grid[gridY][gridX].wallTexX = DOOR_HORIZONTAL_TEX_X;
+                grid[gridY][gridX].wallTexY = DOOR_HORIZONTAL_TEX_Y;
+            }
+        }
+        
+        return true;
+    } else {
+        // Path to nearest door-adjacent tile
+        AdjacentTile nearest = findNearestAdjacentTile(gridX, gridY,
+                                                      player->entity.gridX, 
+                                                      player->entity.gridY,
+                                                      true);
+        if (nearest.x != -1) {
+            player->entity.finalGoalX = nearest.x;
+            player->entity.finalGoalY = nearest.y;
+            player->entity.targetGridX = player->entity.gridX;
+            player->entity.targetGridY = player->entity.gridY;
+            player->entity.needsPathfinding = true;
+            return true;
         }
     }
     return false;

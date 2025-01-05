@@ -35,29 +35,33 @@ bool saveGameState(const char* filename) {
     fwrite(&posX, sizeof(float), 1, file);
     fwrite(&posY, sizeof(float), 1, file);
 
-    // Count and save walls
-    uint32_t wallCount = 0;
+    // Count and save structures (walls/doors)
+    uint32_t structureCount = 0;
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
             if (grid[y][x].hasWall) {
-                wallCount++;
+                structureCount++;
             }
         }
     }
 
-    fwrite(&wallCount, sizeof(uint32_t), 1, file);
+    fwrite(&structureCount, sizeof(uint32_t), 1, file);
 
-    // Write each wall's data
+    // Write each structure's complete data
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
             if (grid[y][x].hasWall) {
-                uint16_t wallX = (uint16_t)x;
-                uint16_t wallY = (uint16_t)y;
+                uint16_t structX = (uint16_t)x;
+                uint16_t structY = (uint16_t)y;
+                uint8_t flags = 0;
+                flags |= grid[y][x].isWalkable ? 1 : 0;
+                flags |= grid[y][x].isDoorOpen ? 2 : 0;
                 float texX = grid[y][x].wallTexX;
                 float texY = grid[y][x].wallTexY;
 
-                fwrite(&wallX, sizeof(uint16_t), 1, file);
-                fwrite(&wallY, sizeof(uint16_t), 1, file);
+                fwrite(&structX, sizeof(uint16_t), 1, file);
+                fwrite(&structY, sizeof(uint16_t), 1, file);
+                fwrite(&flags, sizeof(uint8_t), 1, file);
                 fwrite(&texX, sizeof(float), 1, file);
                 fwrite(&texY, sizeof(float), 1, file);
             }
@@ -118,32 +122,47 @@ bool loadGameState(const char* filename) {
     atomic_store(&player.cameraCurrentX, posX);
     atomic_store(&player.cameraCurrentY, posY);
 
-    // Clear all existing walls
+    // Clear any active movement/pathfinding
+    atomic_store(&player.entity.targetGridX, gridX);  // Reset target to current position
+    atomic_store(&player.entity.targetGridY, gridY);
+    atomic_store(&player.entity.finalGoalX, gridX);   // Reset final goal to current position
+    atomic_store(&player.entity.finalGoalY, gridY);
+    atomic_store(&player.entity.needsPathfinding, false);  // Turn off pathfinding
+
+    // Reset any pending build targets
+    player.hasBuildTarget = false;
+    player.targetBuildX = 0;
+    player.targetBuildY = 0;
+    // Clear all existing structures
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
             grid[y][x].hasWall = false;
             grid[y][x].isWalkable = true;
+            grid[y][x].isDoorOpen = false;
         }
     }
 
-    // Load walls
-    uint32_t wallCount;
-    fread(&wallCount, sizeof(uint32_t), 1, file);
+    // Load structures
+    uint32_t structureCount;
+    fread(&structureCount, sizeof(uint32_t), 1, file);
 
-    for (uint32_t i = 0; i < wallCount; i++) {
-        uint16_t wallX, wallY;
+    for (uint32_t i = 0; i < structureCount; i++) {
+        uint16_t structX, structY;
+        uint8_t flags;
         float texX, texY;
 
-        fread(&wallX, sizeof(uint16_t), 1, file);
-        fread(&wallY, sizeof(uint16_t), 1, file);
+        fread(&structX, sizeof(uint16_t), 1, file);
+        fread(&structY, sizeof(uint16_t), 1, file);
+        fread(&flags, sizeof(uint8_t), 1, file);
         fread(&texX, sizeof(float), 1, file);
         fread(&texY, sizeof(float), 1, file);
 
-        if (wallX < GRID_SIZE && wallY < GRID_SIZE) {
-            grid[wallY][wallX].hasWall = true;
-            grid[wallY][wallX].isWalkable = false;
-            grid[wallY][wallX].wallTexX = texX;
-            grid[wallY][wallX].wallTexY = texY;
+        if (structX < GRID_SIZE && structY < GRID_SIZE) {
+            grid[structY][structX].hasWall = true;
+            grid[structY][structX].isWalkable = (flags & 1) != 0;
+            grid[structY][structX].isDoorOpen = (flags & 2) != 0;
+            grid[structY][structX].wallTexX = texX;
+            grid[structY][structX].wallTexY = texY;
         }
     }
 

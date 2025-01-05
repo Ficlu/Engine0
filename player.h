@@ -2,7 +2,7 @@
 #define PLAYER_H
 
 #include "entity.h"
-#include "structures.h"
+#include "structure_types.h"
 typedef struct {
     Entity entity;
     float cameraTargetX;
