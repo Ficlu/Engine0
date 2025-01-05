@@ -145,6 +145,10 @@ void Initialize() {
     initChunkManager(globalChunkManager, 1); // e.g. loadRadius=2
     printf("Chunk manager initialized.\n");
 
+    // Initialize enclosure manager
+    initEnclosureManager(&globalEnclosureManager);
+    printf("Enclosure manager initialized.\n");
+
     // -----------------------------------------
     // 2) Initialize the global grid to some defaults
     // -----------------------------------------
@@ -377,7 +381,6 @@ void Initialize() {
     printf("Initialization complete.\n");
 }
 
-
 void CleanupEntities() {
     for (int i = 0; i < MAX_ENTITIES; i++) {
         if (allEntities[i]) {
@@ -420,6 +423,10 @@ void drawTargetTileOutline(int x, int y, float cameraOffsetX, float cameraOffset
 void CleanUp() {
     printf("Cleaning up...\n");
     CleanupEntities();
+
+    // Clean up enclosure manager
+    cleanupEnclosureManager(&globalEnclosureManager);
+    printf("Enclosure manager cleaned up.\n");
 
     if (gridVAO) {
         glDeleteVertexArrays(1, &gridVAO);
@@ -477,7 +484,6 @@ void CleanUp() {
     SDL_Quit();
     printf("Cleanup complete.\n");
 }
-
 
 bool westIsCorner(int x, int y) {
     if (x <= 0) return false;

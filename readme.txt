@@ -1,5 +1,3 @@
 TODO:
-- move handleInput
-- fix door rendering
-- fix render preview angles
+- prevent enemies for initing into structure walls/unwalkable tiles
 - add exp tracking

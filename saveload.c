@@ -6,7 +6,8 @@
 #include <string.h>
 #include <time.h>
 #include <stdatomic.h>
-
+#include "structures.h"
+#include <stdlib.h>
 
 extern Player player;
 
@@ -65,6 +66,34 @@ bool saveGameState(const char* filename) {
                 fwrite(&texX, sizeof(float), 1, file);
                 fwrite(&texY, sizeof(float), 1, file);
             }
+        }
+    }
+
+    // Save enclosures
+    uint32_t enclosureCount = (uint32_t)globalEnclosureManager.count;
+    fwrite(&enclosureCount, sizeof(uint32_t), 1, file);
+
+    for (int i = 0; i < globalEnclosureManager.count; i++) {
+        EnclosureData* enclosure = &globalEnclosureManager.enclosures[i];
+        
+        // Write basic enclosure data
+        fwrite(&enclosure->hash, sizeof(uint64_t), 1, file);
+        fwrite(&enclosure->boundaryCount, sizeof(int), 1, file);
+        fwrite(&enclosure->interiorCount, sizeof(int), 1, file);
+        fwrite(&enclosure->totalArea, sizeof(int), 1, file);
+        fwrite(&enclosure->centerPoint, sizeof(Point), 1, file);
+        fwrite(&enclosure->doorCount, sizeof(int), 1, file);
+        fwrite(&enclosure->wallCount, sizeof(int), 1, file);
+        fwrite(&enclosure->isValid, sizeof(bool), 1, file);
+
+        // Write boundary tiles
+        for (int j = 0; j < enclosure->boundaryCount; j++) {
+            fwrite(&enclosure->boundaryTiles[j], sizeof(Point), 1, file);
+        }
+
+        // Write interior tiles
+        for (int j = 0; j < enclosure->interiorCount; j++) {
+            fwrite(&enclosure->interiorTiles[j], sizeof(Point), 1, file);
         }
     }
 
@@ -133,6 +162,7 @@ bool loadGameState(const char* filename) {
     player.hasBuildTarget = false;
     player.targetBuildX = 0;
     player.targetBuildY = 0;
+
     // Clear all existing structures
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
@@ -164,6 +194,48 @@ bool loadGameState(const char* filename) {
             grid[structY][structX].wallTexX = texX;
             grid[structY][structX].wallTexY = texY;
         }
+    }
+
+    // Load enclosures
+    uint32_t enclosureCount;
+    fread(&enclosureCount, sizeof(uint32_t), 1, file);
+
+    // Clean up existing enclosures
+    cleanupEnclosureManager(&globalEnclosureManager);
+    initEnclosureManager(&globalEnclosureManager);
+
+    for (uint32_t i = 0; i < enclosureCount; i++) {
+        EnclosureData enclosure = {0};  // Initialize to zero
+
+        // Read basic enclosure data
+        fread(&enclosure.hash, sizeof(uint64_t), 1, file);
+        fread(&enclosure.boundaryCount, sizeof(int), 1, file);
+        fread(&enclosure.interiorCount, sizeof(int), 1, file);
+        fread(&enclosure.totalArea, sizeof(int), 1, file);
+        fread(&enclosure.centerPoint, sizeof(Point), 1, file);
+        fread(&enclosure.doorCount, sizeof(int), 1, file);
+        fread(&enclosure.wallCount, sizeof(int), 1, file);
+        fread(&enclosure.isValid, sizeof(bool), 1, file);
+
+        // Allocate and read boundary tiles
+        enclosure.boundaryTiles = malloc(enclosure.boundaryCount * sizeof(Point));
+        for (int j = 0; j < enclosure.boundaryCount; j++) {
+            fread(&enclosure.boundaryTiles[j], sizeof(Point), 1, file);
+        }
+
+        // Allocate and read interior tiles
+        enclosure.interiorTiles = malloc(enclosure.interiorCount * sizeof(Point));
+        for (int j = 0; j < enclosure.interiorCount; j++) {
+            fread(&enclosure.interiorTiles[j], sizeof(Point), 1, file);
+        }
+
+        // Add to manager
+        addEnclosure(&globalEnclosureManager, &enclosure);
+
+        // Clean up temporary allocations 
+        // (addEnclosure makes its own copy)
+        free(enclosure.boundaryTiles);
+        free(enclosure.interiorTiles);
     }
 
     fclose(file);

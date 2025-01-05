@@ -4,6 +4,8 @@
 #include "grid.h"
 #include "gameloop.h"
 #include "player.h"
+#include <stdint.h>
+#include <inttypes.h>
 // Constants for texture coordinates from your existing system
 
 /* These defs need to be in structures.c since they incl the division operation - do not move to header file or they will break when refed*/
@@ -184,6 +186,85 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
             return false;
     }
 
+    // After successful placement, check for enclosures
+    Enclosure enclosure = detectEnclosure(gridX, gridY);
+    if (enclosure.isValid) {
+        EnclosureData newEnclosure = {0};  // Initialize to zero
+        
+        // Convert boundary tiles to Points for hashing
+        Point* boundaryPoints = malloc(enclosure.tileCount * sizeof(Point));
+        int wallCount = 0;
+        int doorCount = 0;
+        
+        // Calculate center point and count structure types
+        int sumX = 0, sumY = 0;
+        for (int i = 0; i < enclosure.tileCount; i++) {
+            int tileX = enclosure.tiles[i] % GRID_SIZE;
+            int tileY = enclosure.tiles[i] / GRID_SIZE;
+            
+            boundaryPoints[i].x = tileX;
+            boundaryPoints[i].y = tileY;
+            
+            sumX += tileX;
+            sumY += tileY;
+            
+            // Count walls and doors
+            if (grid[tileY][tileX].hasWall) {
+                bool isDoor = (
+                    // Check closed door textures
+                    (grid[tileY][tileX].wallTexX == DOOR_VERTICAL_TEX_X && 
+                    grid[tileY][tileX].wallTexY == DOOR_VERTICAL_TEX_Y) ||
+                    (grid[tileY][tileX].wallTexX == DOOR_HORIZONTAL_TEX_X &&
+                    grid[tileY][tileX].wallTexY == DOOR_HORIZONTAL_TEX_Y) ||
+                    // Check open door textures
+                    (grid[tileY][tileX].wallTexX == DOOR_VERTICAL_OPEN_TEX_X && 
+                    grid[tileY][tileX].wallTexY == DOOR_VERTICAL_OPEN_TEX_Y) ||
+                    (grid[tileY][tileX].wallTexX == DOOR_HORIZONTAL_OPEN_TEX_X &&
+                    grid[tileY][tileX].wallTexY == DOOR_HORIZONTAL_OPEN_TEX_Y)
+                );
+
+                if (isDoor) {
+                    doorCount++;
+                } else {
+                    wallCount++;
+                }
+            }
+        }
+
+        // Calculate hash
+        newEnclosure.hash = calculateEnclosureHash(boundaryPoints, enclosure.tileCount, enclosure.tileCount);
+        
+        // Store enclosure data
+        newEnclosure.boundaryTiles = boundaryPoints;
+        newEnclosure.boundaryCount = enclosure.tileCount;
+        newEnclosure.totalArea = enclosure.tileCount;  // Basic area calculation for now
+        newEnclosure.centerPoint.x = sumX / enclosure.tileCount;
+        newEnclosure.centerPoint.y = sumY / enclosure.tileCount;
+        newEnclosure.doorCount = doorCount;
+        newEnclosure.wallCount = wallCount;
+        newEnclosure.isValid = true;
+
+        // Add to enclosure manager
+        addEnclosure(&globalEnclosureManager, &newEnclosure);
+
+        printf("Found enclosure with %d tiles! Hash: %" PRIu64 "\n", 
+            enclosure.tileCount, newEnclosure.hash);
+        printf("Center point: (%d, %d)\n", 
+               newEnclosure.centerPoint.x, newEnclosure.centerPoint.y);
+        printf("Walls: %d, Doors: %d\n", wallCount, doorCount);
+
+        // Debug print the enclosure path
+        for (int i = 0; i < enclosure.tileCount; i++) {
+            int tileX = enclosure.tiles[i] % GRID_SIZE;
+            int tileY = enclosure.tiles[i] / GRID_SIZE;
+            printf("Enclosure tile %d: (%d, %d)\n", i, tileX, tileY);
+        }
+
+        free(enclosure.tiles);  // Free the original tiles array
+    } else {
+        printf("No enclosure found from placement at (%d, %d)\n", gridX, gridY);
+    }
+
     printf("Placed %s at grid position: %d, %d\n", getStructureName(type), gridX, gridY);
     return true;
 }
@@ -328,4 +409,200 @@ bool toggleDoor(int gridX, int gridY, Player* player) {
         }
     }
     return false;
+}
+
+bool isWallOrDoor(int x, int y) {
+    if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) return false;
+    return grid[y][x].hasWall;
+}
+
+Enclosure detectEnclosure(int startX, int startY) {
+    Enclosure result = {NULL, 0, false, 0};  // Initialize all fields including hash
+    
+    // Keep the initial cycle detection lean
+    bool* visited = calloc(GRID_SIZE * GRID_SIZE, sizeof(bool));
+    int* wallPath = malloc(GRID_SIZE * GRID_SIZE * sizeof(int));
+    int pathLength = 0;
+    
+    // Stack for DFS
+    typedef struct {
+        int x, y;
+        int prevX, prevY;
+        int direction;
+    } PathNode;
+    
+    PathNode* stack = malloc(GRID_SIZE * GRID_SIZE * sizeof(PathNode));
+    int stackSize = 0;
+    
+    stack[stackSize++] = (PathNode){startX, startY, -1, -1, -1};
+    
+    bool foundCycle = false;
+    
+    while (stackSize > 0 && !foundCycle) {
+        PathNode current = stack[--stackSize];
+        
+        if (visited[current.y * GRID_SIZE + current.x]) continue;
+        
+        visited[current.y * GRID_SIZE + current.x] = true;
+        wallPath[pathLength++] = current.y * GRID_SIZE + current.x;
+        
+        int dx[] = {0, 1, 0, -1};
+        int dy[] = {-1, 0, 1, 0};
+        
+        for (int i = 0; i < 4; i++) {
+            int newX = current.x + dx[i];
+            int newY = current.y + dy[i];
+            
+            if (newX == current.prevX && newY == current.prevY) continue;
+            
+            if (isWallOrDoor(newX, newY)) {
+                if (newX == startX && newY == startY && pathLength > 2) {
+                    foundCycle = true;
+                    break;
+                }
+                stack[stackSize++] = (PathNode){newX, newY, current.x, current.y, i};
+            }
+        }
+    }
+
+    // Only if we found a cycle do we perform the expensive calculations
+    if (foundCycle) {
+        // Convert the path indices to Point structures for hashing
+        Point* boundaryPoints = malloc(pathLength * sizeof(Point));
+        for (int i = 0; i < pathLength; i++) {
+            boundaryPoints[i].x = wallPath[i] % GRID_SIZE;
+            boundaryPoints[i].y = wallPath[i] / GRID_SIZE;
+        }
+
+        // Basic area calculation (can be refined later)
+        int area = pathLength;  // For now just using boundary length
+
+        // Calculate hash
+        result.hash = calculateEnclosureHash(boundaryPoints, pathLength, area);
+
+        // Store in result
+        result.tiles = wallPath;
+        result.tileCount = pathLength;
+        result.isValid = true;
+
+        free(boundaryPoints);
+    } else {
+        free(wallPath);
+    }
+    
+    free(visited);
+    free(stack);
+    return result;
+}
+#define FNV_PRIME 1099511628211ULL
+#define FNV_OFFSET 14695981039346656037ULL
+
+uint64_t calculateEnclosureHash(Point* boundaryTiles, int boundaryCount, int totalArea) {
+    uint64_t hash = FNV_OFFSET;
+
+    // Sort boundary tiles for consistent hashing
+    // Using a simple bubble sort for now
+    for (int i = 0; i < boundaryCount - 1; i++) {
+        for (int j = 0; j < boundaryCount - i - 1; j++) {
+            if (boundaryTiles[j].y > boundaryTiles[j + 1].y || 
+                (boundaryTiles[j].y == boundaryTiles[j + 1].y && 
+                 boundaryTiles[j].x > boundaryTiles[j + 1].x)) {
+                Point temp = boundaryTiles[j];
+                boundaryTiles[j] = boundaryTiles[j + 1];
+                boundaryTiles[j + 1] = temp;
+            }
+        }
+    }
+
+    // Hash boundary tiles
+    for (int i = 0; i < boundaryCount; i++) {
+        hash *= FNV_PRIME;
+        hash ^= boundaryTiles[i].x;
+        hash *= FNV_PRIME;
+        hash ^= boundaryTiles[i].y;
+    }
+
+    // Incorporate area into hash
+    hash *= FNV_PRIME;
+    hash ^= totalArea;
+
+    return hash;
+}
+
+void initEnclosureManager(EnclosureManager* manager) {
+    manager->capacity = 16;  // Initial capacity
+    manager->count = 0;
+    manager->enclosures = malloc(manager->capacity * sizeof(EnclosureData));
+    if (!manager->enclosures) {
+        fprintf(stderr, "Failed to initialize enclosure manager\n");
+        exit(1);
+    }
+}
+
+void addEnclosure(EnclosureManager* manager, EnclosureData* enclosure) {
+    // Check if we need to resize
+    if (manager->count >= manager->capacity) {
+        manager->capacity *= 2;
+        EnclosureData* newArray = realloc(manager->enclosures, 
+                                         manager->capacity * sizeof(EnclosureData));
+        if (!newArray) {
+            fprintf(stderr, "Failed to resize enclosure manager\n");
+            return;
+        }
+        manager->enclosures = newArray;
+    }
+
+    // Check if enclosure already exists
+    for (int i = 0; i < manager->count; i++) {
+        if (manager->enclosures[i].hash == enclosure->hash) {
+            printf("Enclosure already exists with hash %" PRIu64 "\n", enclosure->hash);
+            return;
+        }
+    }
+
+    // Add new enclosure
+    manager->enclosures[manager->count] = *enclosure;
+    manager->count++;
+    printf("Added new enclosure with hash %" PRIu64 " (total: %d)\n",
+       enclosure->hash, manager->count);
+}
+
+EnclosureData* findEnclosure(EnclosureManager* manager, uint64_t hash) {
+    for (int i = 0; i < manager->count; i++) {
+        if (manager->enclosures[i].hash == hash) {
+            return &manager->enclosures[i];
+        }
+    }
+    return NULL;
+}
+
+void removeEnclosure(EnclosureManager* manager, uint64_t hash) {
+    for (int i = 0; i < manager->count; i++) {
+        if (manager->enclosures[i].hash == hash) {
+            // Free enclosure data
+            free(manager->enclosures[i].boundaryTiles);
+            free(manager->enclosures[i].interiorTiles);
+
+            // Move last enclosure to this position if it's not the last one
+            if (i < manager->count - 1) {
+                manager->enclosures[i] = manager->enclosures[manager->count - 1];
+            }
+            
+            manager->count--;
+            printf("Removed enclosure with hash %" PRIu64 " (remaining: %d)\n",
+       hash, manager->count);
+            return;
+        }
+    }
+}
+
+void cleanupEnclosureManager(EnclosureManager* manager) {
+    for (int i = 0; i < manager->count; i++) {
+        free(manager->enclosures[i].boundaryTiles);
+        free(manager->enclosures[i].interiorTiles);
+    }
+    free(manager->enclosures);
+    manager->enclosures = NULL;
+    manager->count = 0;
+    manager->capacity = 0;
 }
