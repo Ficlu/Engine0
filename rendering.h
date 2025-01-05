@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include "enemy.h"
 #include "gameloop.h"
+#include "structures.h"  // Add this include
 
 typedef struct {
     float* persistentBuffer;
@@ -17,6 +18,10 @@ typedef struct {
     size_t bufferCapacity;
 } TileBatchData;
 
+
+extern GLuint squareVAO;
+extern GLuint squareVBO;
+extern GLuint shaderProgram;
 extern TileBatchData tileBatchData;
 
 
@@ -43,5 +48,5 @@ GLuint loadBMP(const char* filePath);
 GLuint createShader(GLenum type, const char* source);
 void initializeEnemyBatchVAO();
 void updateEnemyBatchVBO(Enemy* enemies, int enemyCount, float cameraOffsetX, float cameraOffsetY, float zoomFactor);
-
+void renderStructurePreview(const PlacementMode* mode, float cameraOffsetX, float cameraOffsetY, float zoomFactor);
 #endif // RENDERING_H

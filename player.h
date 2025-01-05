@@ -2,7 +2,7 @@
 #define PLAYER_H
 
 #include "entity.h"
-
+#include "structures.h"
 typedef struct {
     Entity entity;
     float cameraTargetX;
@@ -16,6 +16,7 @@ typedef struct {
     int targetBuildX;      // New: Coordinates where we want to build
     int targetBuildY;      // New: Coordinates where we want to build
     bool hasBuildTarget;   // New: Flag to indicate if we have a pending build
+    StructureType pendingBuildType; 
 } Player;
 
 void InitPlayer(Player* player, int startGridX, int startGridY, float speed);

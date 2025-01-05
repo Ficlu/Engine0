@@ -95,13 +95,13 @@ void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
         );
 
         if (isNearTarget) {
-            // Place the wall
-            grid[player->targetBuildY][player->targetBuildX].hasWall = true;
-            grid[player->targetBuildY][player->targetBuildX].isWalkable = false;
-            printf("Reached build location - placed wall at: %d, %d\n", 
+            bool placed = placeStructure(player->pendingBuildType, 
+                                       player->targetBuildX, 
+                                       player->targetBuildY);
+            printf("Reached build location - placement %s at: %d, %d\n",
+                   placed ? "succeeded" : "failed",
                    player->targetBuildX, player->targetBuildY);
             
-            // Clear the build target
             player->hasBuildTarget = false;
         }
     }

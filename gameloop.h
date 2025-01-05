@@ -20,18 +20,7 @@
 #define TILE_SIZE (1.0f / GRID_SIZE)
 #define MAX_ENTITIES (MAX_ENEMIES + 1)
 #define PHYSICS_INTERVAL_MS 12
-#define WALL_VERTICAL_TEX_X (0.0f / 3.0f)
-#define WALL_VERTICAL_TEX_Y (1.0f / 4.0f)
-#define WALL_FRONT_TEX_X (1.0f / 3.0f)
-#define WALL_FRONT_TEX_Y (1.0f / 4.0f)
-#define WALL_TOP_LEFT_TEX_X (2.0f / 3.0f)
-#define WALL_TOP_LEFT_TEX_Y (1.0f / 4.0f)
-#define WALL_BOTTOM_LEFT_TEX_X (0.0f / 3.0f)
-#define WALL_BOTTOM_LEFT_TEX_Y (0.0f / 4.0f)
-#define WALL_TOP_RIGHT_TEX_X (1.0f / 3.0f)
-#define WALL_TOP_RIGHT_TEX_Y (0.0f / 4.0f)
-#define WALL_BOTTOM_RIGHT_TEX_X (2.0f / 3.0f)
-#define WALL_BOTTOM_RIGHT_TEX_Y (0.0f / 4.0f)
+
 extern GLuint outlineVAO;
 extern GLuint outlineVBO;
 extern GLuint tilesBatchVAO;

@@ -48,12 +48,13 @@ const char* fragmentShaderSource = "#version 330 core\n"
 "in vec2 TexCoord;\n"
 "out vec4 FragColor;\n"
 "uniform sampler2D textureAtlas;\n"
+"uniform float alpha = 1.0;\n"  // Add this line
 "void main() {\n"
 "    vec4 texColor = texture(textureAtlas, TexCoord);\n"
 "    if(texColor.r == 1.0 && texColor.g == 0.0 && texColor.b == 1.0) {\n"
 "        discard;\n"
 "    }\n"
-"    FragColor = texColor;\n"
+"    FragColor = vec4(texColor.rgb, texColor.a * alpha);\n"  // Modified this line
 "}\n";
 
 const char* outlineVertexShaderSource = "#version 330 core\n"
@@ -300,14 +301,15 @@ void initializeEnemyBatchVAO() {
     glBindVertexArray(0);
 }
 
+
 void updateEnemyBatchVBO(Enemy* enemies, int enemyCount, float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
     if (!entityBatchData.persistentBuffer) return;
 
     int dataIndex = 0;
     float enemyTexX = 1.0f / 3.0f;
-    float enemyTexY = 4.0f / 5.0f;
+    float enemyTexY = 5.0f / 6.0f;
     float enemyTexWidth = 1.0f / 3.0f;
-    float enemyTexHeight = 1.0f / 5.0f;
+    float enemyTexHeight = 1.0f / 6.0f;
 
     for (int i = 0; i < enemyCount; i++) {
         float enemyScreenX = (enemies[i].entity.posX - cameraOffsetX) * zoomFactor;
@@ -369,4 +371,52 @@ void cleanupTileBatchData() {
         tileBatchData.persistentBuffer = NULL;
     }
     tileBatchData.bufferCapacity = 0;
+}
+
+void renderStructurePreview(const PlacementMode* mode, float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
+    if (!mode->active) return;
+
+    // Convert grid coordinates to screen coordinates
+    float posX, posY;
+    WorldToScreenCoords(mode->previewX, mode->previewY, cameraOffsetX, cameraOffsetY, zoomFactor, &posX, &posY);
+
+    // Setup alpha blending for transparency
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    float texX, texY;
+    if (mode->currentType == STRUCTURE_DOOR) {
+        texX = 0.0f / 3.0f;
+        texY = 1.0f / 6.0f;
+    } else {
+        // Wall preview uses standard wall texture
+        texX = 1.0f / 3.0f;
+        texY = 3.0f / 6.0f;
+    }
+
+    float texWidth = 1.0f / 3.0f;
+    float texHeight = 1.0f / 6.0f;
+    float halfSize = TILE_SIZE * zoomFactor;
+
+    // Draw semi-transparent preview
+    float previewVertices[] = {
+        posX - halfSize, posY - halfSize, texX, texY + texHeight,
+        posX + halfSize, posY - halfSize, texX + texWidth, texY + texHeight,
+        posX + halfSize, posY + halfSize, texX + texWidth, texY,
+        posX - halfSize, posY + halfSize, texX, texY
+    };
+
+    glBindVertexArray(squareVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, squareVBO);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(previewVertices), previewVertices);
+
+    // Set transparency
+    GLint alphaUniform = glGetUniformLocation(shaderProgram, "alpha");
+    glUniform1f(alphaUniform, 0.5f); // 50% transparency
+
+    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+    // Reset alpha
+    glUniform1f(alphaUniform, 1.0f);
+    glDisable(GL_BLEND);
 }

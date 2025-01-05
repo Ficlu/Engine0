@@ -18,6 +18,8 @@
 #include "entity.h"
 #include "pathfinding.h"
 #include "saveload.h"
+#include "structures.h"
+#include "input.h"
 
 #define UNWALKABLE_PROBABILITY 0.04f
 GLuint outlineShaderProgram;
@@ -43,6 +45,15 @@ void setGridSize(int size);
 void generateTerrain();
 void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor);
 GLuint loadTexture(const char* filePath);  // New texture loading function
+StructureType currentStructureType = STRUCTURE_WALL;
+PlacementMode placementMode = {
+    .active = false,
+    .currentType = STRUCTURE_WALL,
+    .previewX = 0,
+    .previewY = 0,
+    .opacity = 0.5f,
+    .validPlacement = false
+};
 bool isPointVisible(float worldX, float worldY, float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
     // Transform world coordinates to screen coordinates
     float screenX = (worldX - cameraOffsetX) * zoomFactor;
@@ -467,178 +478,7 @@ void CleanUp() {
     printf("Cleanup complete.\n");
 }
 
-/*
- * HandleInput
- *
- * Processes input events such as mouse clicks and keyboard input.
- */
-void HandleInput() {
-    SDL_Event event;
-    
-    while (SDL_PollEvent(&event)) {
-        if (event.type == SDL_QUIT) {
-            atomic_store(&isRunning, false);
-        } 
-        else if (event.type == SDL_KEYDOWN) {
-            printf("Key pressed: %d\n", event.key.keysym.sym);
-            if (event.key.keysym.sym == SDLK_e) {
-                placementModeActive = !placementModeActive;
-                printf("Placement mode %s\n", placementModeActive ? "activated" : "deactivated");
-            }
-                        // Add save/load shortcuts
-            else if (event.key.keysym.sym == SDLK_s) {
-                if (saveGameState("game_save.sav")) {
-                    printf("Game saved successfully!\n");
-                } else {
-                    printf("Failed to save game!\n");
-                }
-            }
-            else if (event.key.keysym.sym == SDLK_l) {
-                if (loadGameState("game_save.sav")) {
-                    printf("Game loaded successfully!\n");
-                } else {
-                    printf("Failed to load game!\n");
-                }
-            }
-        }
-        else if (event.type == SDL_MOUSEBUTTONDOWN) {
-            int mouseX, mouseY;
-            SDL_GetMouseState(&mouseX, &mouseY);
 
-            float ndcX = (2.0f * mouseX / WINDOW_WIDTH - 1.0f) / player.zoomFactor;
-            float ndcY = (1.0f - 2.0f * mouseY / WINDOW_HEIGHT) / player.zoomFactor;
-
-            float worldX = ndcX + player.cameraCurrentX;
-            float worldY = ndcY + player.cameraCurrentY;
-
-            int gridX = (int)((worldX + 1.0f) * GRID_SIZE / 2);
-            int gridY = (int)((1.0f - worldY) * GRID_SIZE / 2);
-
-            if (gridX >= 0 && gridX < GRID_SIZE && gridY >= 0 && gridY < GRID_SIZE) {
-                if (placementModeActive) {
-                    if (event.button.button == SDL_BUTTON_LEFT) {
-                        int playerGridX = player.entity.gridX;
-                        int playerGridY = player.entity.gridY;
-                        bool isNearby = (
-                            abs(gridX - playerGridX) <= 1 && 
-                            abs(gridY - playerGridY) <= 1
-                        );
-
-                        bool isTileOccupied = (gridX == playerGridX && gridY == playerGridY);
-                        
-                        for (int i = 0; i < MAX_ENTITIES; i++) {
-                            if (allEntities[i] != NULL) {
-                                if (atomic_load(&allEntities[i]->gridX) == gridX && 
-                                    atomic_load(&allEntities[i]->gridY) == gridY) {
-                                    isTileOccupied = true;
-                                    break;
-                                }
-                            }
-                        }
-
-                        if (isNearby && !isTileOccupied) {
-                            grid[gridY][gridX].hasWall = true;
-                            grid[gridY][gridX].isWalkable = false;
-
-                            // Check surrounding walls and update textures
-                            bool hasNorth = (gridY > 0) && grid[gridY-1][gridX].hasWall;
-                            bool hasSouth = (gridY < GRID_SIZE-1) && grid[gridY+1][gridX].hasWall;
-                            bool hasEast = (gridX < GRID_SIZE-1) && grid[gridY][gridX+1].hasWall;
-                            bool hasWest = (gridX > 0) && grid[gridY][gridX-1].hasWall;
-
-                            // Vertical wall check (has connection north OR south)
-                            bool isVertical = hasNorth || hasSouth;
-
-                            // Set texture coordinates based on surrounding walls
-                            if (hasSouth && hasEast) {
-                                grid[gridY][gridX].wallTexX = 1.0f / 3.0f;
-                                grid[gridY][gridX].wallTexY = 1.0f / 5.0f;  // Top-left corner
-                            }
-                            else if (hasSouth && hasWest) {
-                                grid[gridY][gridX].wallTexX = 2.0f / 3.0f;
-                                grid[gridY][gridX].wallTexY = 2.0f / 5.0f;  // Top-right corner
-                            }
-                            else if (hasNorth && hasEast) {
-                                grid[gridY][gridX].wallTexX = 0.0f / 3.0f;
-                                grid[gridY][gridX].wallTexY = 1.0f / 5.0f;  // Bottom-left corner
-                            }
-                            else if (hasNorth && hasWest) {
-                                grid[gridY][gridX].wallTexX = 2.0f / 3.0f;
-                                grid[gridY][gridX].wallTexY = 1.0f / 5.0f;  // Bottom-right corner
-                            }
-                            else if (isVertical) {
-                                grid[gridY][gridX].wallTexX = 0.0f / 3.0f;
-                                grid[gridY][gridX].wallTexY = 2.0f / 5.0f;  // Vertical wall
-                            }
-                            else {
-                                grid[gridY][gridX].wallTexX = 1.0f / 3.0f;
-                                grid[gridY][gridX].wallTexY = 2.0f / 5.0f;  // Front wall (default)
-                            }
-
-                            printf("Placed wall at grid position: %d, %d\n", gridX, gridY);
-                        } else if (isTileOccupied) {
-                            printf("Can't place wall - tile is occupied\n");
-                        } else {
-                            if (grid[gridY][gridX].isWalkable) {
-                                player.entity.finalGoalX = gridX;
-                                player.entity.finalGoalY = gridY;
-                                player.entity.targetGridX = player.entity.gridX;
-                                player.entity.targetGridY = player.entity.gridY;
-                                player.entity.needsPathfinding = true;
-                                player.targetBuildX = gridX;
-                                player.targetBuildY = gridY;
-                                player.hasBuildTarget = true;
-                                printf("Moving to wall placement location: %d, %d\n", gridX, gridY);
-                            } else {
-                                printf("Can't move to that location - tile is not walkable\n");
-                            }
-                        }
-                    }
-else if (event.button.button == SDL_BUTTON_RIGHT) {
-    // Check if there's a wall to remove
-    if (grid[gridY][gridX].hasWall) {
-        int playerGridX = player.entity.gridX;
-        int playerGridY = player.entity.gridY;
-        bool isNearby = (
-            abs(gridX - playerGridX) <= 1 && 
-            abs(gridY - playerGridY) <= 1
-        );
-
-        if (isNearby) {
-            // Simply remove the wall
-            grid[gridY][gridX].hasWall = false;
-            grid[gridY][gridX].isWalkable = true;
-            printf("Removed wall at grid position: %d, %d\n", gridX, gridY);
-        } else {
-            printf("Can't remove wall - too far away\n");
-        }
-    }
-}
-                }
-                else if (grid[gridY][gridX].isWalkable) {
-                    player.entity.finalGoalX = gridX;
-                    player.entity.finalGoalY = gridY;
-                    player.entity.targetGridX = player.entity.gridX;
-                    player.entity.targetGridY = player.entity.gridY;
-                    player.entity.needsPathfinding = true;
-                    printf("Player final goal set: gridX = %d, gridY = %d\n", gridX, gridY);
-                }
-            }
-        } else if (event.type == SDL_MOUSEWHEEL) {
-            float zoomSpeed = 0.2f;
-            float minZoom = 0.2f;
-            float maxZoom = 20.0f;
-
-            if (event.wheel.y > 0) {
-                player.zoomFactor = fminf(player.zoomFactor + zoomSpeed, maxZoom);
-            } else if (event.wheel.y < 0) {
-                player.zoomFactor = fmaxf(player.zoomFactor - zoomSpeed, minZoom);
-            }
-
-            printf("Zoom factor: %.2f\n", player.zoomFactor);
-        }
-    }
-}
 bool westIsCorner(int x, int y) {
     if (x <= 0) return false;
     if (!grid[y][x-1].hasWall) return false;
@@ -689,6 +529,9 @@ void Render() {
 
     RenderTiles(cameraOffsetX, cameraOffsetY, zoomFactor);
     RenderEntities(cameraOffsetX, cameraOffsetY, zoomFactor);
+    
+    // Add this line to render the preview
+    renderStructurePreview(&placementMode, cameraOffsetX, cameraOffsetY, zoomFactor);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
@@ -770,24 +613,24 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
             float texX = 0.0f;
             float texY = 0.0f;
             float texWidth = 1.0f / 3.0f;
-            float texHeight = 1.0f / 5.0f;
+            float texHeight = 1.0f / 6.0f;
 
             switch (grid[y][x].terrainType) {
                 case TERRAIN_SAND:
                     texX = 0.0f / 3.0f;
-                    texY = 3.0f / 5.0f;
+                    texY = 4.0f / 6.0f;
                     break;
                 case TERRAIN_WATER:
                     texX = 1.0f / 3.0f;
-                    texY = 3.0f / 5.0f;
+                    texY = 4.0f / 6.0f;
                     break;
                 case TERRAIN_GRASS:
                     texX = 2.0f / 3.0f;
-                    texY = 3.0f / 5.0f;
+                    texY = 4.0f / 6.0f;
                     break;
                 default:
                     texX = 2.0f / 3.0f;
-                    texY = 3.0f / 5.0f;
+                    texY = 4.0f / 6.0f;
                     break;
             }
 
@@ -877,56 +720,6 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
     //printf("Tiles rendered: %d, Tiles culled: %d\n", renderedTiles, culledTiles);
 }
 
-void updateWallTextures(int x, int y) {
-    // Check all adjacent cells
-    bool hasNorth = (y > 0) && grid[y-1][x].hasWall;
-    bool hasSouth = (y < GRID_SIZE-1) && grid[y+1][x].hasWall;
-    bool hasEast = (x < GRID_SIZE-1) && grid[y][x+1].hasWall;
-    bool hasWest = (x > 0) && grid[y][x-1].hasWall;
-
-    // Update current cell
-    if (grid[y][x].hasWall) {
-        WallTextureCoords coords;
-
-        // Corner cases
-        if (hasNorth && hasEast && !hasWest && !hasSouth) {
-            coords.texX = WALL_BOTTOM_LEFT_TEX_X;
-            coords.texY = WALL_BOTTOM_LEFT_TEX_Y;
-        }
-        else if (hasNorth && hasWest && !hasEast && !hasSouth) {
-            coords.texX = WALL_BOTTOM_RIGHT_TEX_X;
-            coords.texY = WALL_BOTTOM_RIGHT_TEX_Y;
-        }
-        else if (hasSouth && hasEast && !hasWest && !hasNorth) {
-            coords.texX = WALL_TOP_LEFT_TEX_X;
-            coords.texY = WALL_TOP_LEFT_TEX_Y;
-        }
-        else if (hasSouth && hasWest && !hasEast && !hasNorth) {
-            coords.texX = WALL_TOP_RIGHT_TEX_X;
-            coords.texY = WALL_TOP_RIGHT_TEX_Y;
-        }
-        // Vertical wall (default)
-        else if (hasNorth || hasSouth) {
-            coords.texX = WALL_VERTICAL_TEX_X;
-            coords.texY = WALL_VERTICAL_TEX_Y;
-        }
-        // Front-facing wall
-        else {
-            coords.texX = WALL_FRONT_TEX_X;
-            coords.texY = WALL_FRONT_TEX_Y;
-        }
-
-        // Store texture coordinates in grid cell
-        grid[y][x].wallTexX = coords.texX;
-        grid[y][x].wallTexY = coords.texY;
-    }
-
-    // Update adjacent walls
-    if (hasNorth) updateWallTextures(x, y-1);
-    if (hasSouth) updateWallTextures(x, y+1);
-    if (hasEast) updateWallTextures(x+1, y);
-    if (hasWest) updateWallTextures(x-1, y);
-}
 
 /*
  * RenderEntities
@@ -1014,9 +807,9 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     float playerScreenX = (playerWorldX - smoothCameraOffsetX) * zoomFactor;
     float playerScreenY = (playerWorldY - smoothCameraOffsetY) * zoomFactor;
     float playerTexX = 0.0f / 3.0f;
-    float playerTexY = 4.0f / 5.0f;
+    float playerTexY = 5.0f / 6.0f;
     float playerTexWidth = 1.0f / 3.0f;
-    float playerTexHeight = 1.0f / 5.0f;
+    float playerTexHeight = 1.0f / 6.0f;
 
     float playerVertices[] = {
         playerScreenX - TILE_SIZE * zoomFactor, playerScreenY - TILE_SIZE * zoomFactor, playerTexX, playerTexY,
