@@ -57,6 +57,50 @@ const char* fragmentShaderSource = "#version 330 core\n"
 "    FragColor = vec4(texColor.rgb, texColor.a * alpha);\n"  // Modified this line
 "}\n";
 
+// Add these with your other shader sources at the top of rendering.c
+const char* uiVertexShaderSource = 
+    "#version 330 core\n"
+    "layout (location = 0) in vec2 aPos;\n"
+    "layout (location = 1) in vec2 aTexCoord;\n"  // Add this to receive tex coords
+    "out vec2 TexCoord;\n"  // Add this to pass to fragment shader
+    "void main() {\n"
+    "    gl_Position = vec4(aPos, 0.0, 1.0);\n"
+    "    TexCoord = aTexCoord;\n"  // Pass texture coordinates
+    "}\0";
+
+const char* uiFragmentShaderSource = 
+    "#version 330 core\n"
+    "in vec2 TexCoord;\n"
+    "out vec4 FragColor;\n"
+    "uniform float fillAmount;\n"
+    "uniform float flashIntensity;\n"
+    "void main() {\n"
+    "    vec4 backgroundColor = vec4(0.2, 0.2, 0.2, 0.8);\n"
+    "    vec4 fillColor = vec4(0.2, 0.7, 0.2, 0.8);\n"
+    "    vec4 borderColor = vec4(0.8, 0.8, 0.8, 0.9);\n"
+    "    vec4 flashColor = vec4(1.0, 1.0, 0.7, 0.8);\n"
+    "    \n"
+    "    float borderThickness = 0.1;\n"
+    "    \n"
+    "    bool isBorder = \n"
+    "        TexCoord.x < borderThickness ||\n"
+    "        TexCoord.x > 1.0 - borderThickness ||\n"
+    "        TexCoord.y < borderThickness ||\n"
+    "        TexCoord.y > 1.0 - borderThickness;\n"
+    "    \n"
+    "    vec4 baseColor;\n"
+    "    if (isBorder) {\n"
+    "        baseColor = borderColor;\n"
+    "    } else if (TexCoord.x <= fillAmount) {\n"
+    "        baseColor = fillColor;\n"
+    "    } else {\n"
+    "        baseColor = backgroundColor;\n"
+    "    }\n"
+    "    \n"
+    "    // Blend with flash color based on intensity\n"
+    "    FragColor = mix(baseColor, flashColor, flashIntensity);\n"
+    "}\0";
+
 const char* outlineVertexShaderSource = "#version 330 core\n"
 "layout(location = 0) in vec2 position;\n"
 "void main() {\n"
@@ -69,6 +113,29 @@ const char* outlineFragmentShaderSource = "#version 330 core\n"
 "void main() {\n"
 "    FragColor = vec4(outlineColor, 1.0);\n"
 "}\n";
+
+GLuint createUIShaderProgram() {
+    GLuint vertexShader = createShader(GL_VERTEX_SHADER, uiVertexShaderSource);
+    GLuint fragmentShader = createShader(GL_FRAGMENT_SHADER, uiFragmentShaderSource);
+
+    GLuint shaderProgram = glCreateProgram();
+    glAttachShader(shaderProgram, vertexShader);
+    glAttachShader(shaderProgram, fragmentShader);
+    glLinkProgram(shaderProgram);
+
+    int success;
+    char infoLog[512];
+    glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
+    if (!success) {
+        glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
+        printf("ERROR::UI::PROGRAM::LINKING_FAILED\n%s\n", infoLog);
+    }
+
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+
+    return shaderProgram;
+}
 
 GLuint createOutlineShaderProgram() {
     GLuint vertexShader = createShader(GL_VERTEX_SHADER, outlineVertexShaderSource);

@@ -47,6 +47,13 @@ typedef struct {
     bool isValid;               // Whether the enclosure is still valid
 } EnclosureData;
 
+// Add this after the other #includes and before the function definitions
+typedef struct {
+    int x, y;
+    int prevX, prevY;
+    int direction;
+} PathNode;
+
 typedef struct {
     EnclosureData* enclosures;  // Dynamic array of enclosures
     int count;                  // Number of active enclosures
@@ -62,7 +69,7 @@ void removeEnclosure(EnclosureManager* manager, uint64_t hash);
 void cleanupEnclosureManager(EnclosureManager* manager);
 extern EnclosureManager globalEnclosureManager; 
 
-// Function declarations
+void awardConstructionExp(Player* player, const EnclosureData* enclosure);
 void cycleStructureType(PlacementMode* mode, bool forward);
 void initializeStructureSystem(void);
 bool canPlaceStructure(StructureType type, int gridX, int gridY);

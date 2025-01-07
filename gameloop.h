@@ -13,7 +13,7 @@
 
 #define WINDOW_WIDTH 800
 #define WINDOW_HEIGHT 800
-#define MAX_ENEMIES 150
+#define MAX_ENEMIES 50
 #define MOVE_SPEED 0.001f
 #define GAME_LOGIC_INTERVAL_MS ((Uint32)600)
 #define CAMERA_ZOOM 5.00f  
@@ -27,8 +27,14 @@ extern GLuint tilesBatchVAO;
 extern GLuint tilesBatchVBO;
 extern Entity* allEntities[MAX_ENTITIES];
 extern Uint32 FRAME_TIME_MS;
-void drawTargetTileOutline(int x, int y, float cameraOffsetX, float cameraOffsetY, float zoomFactor);
+bool LoadGame(const char* filename);
 
+static GLuint uiVAO;
+static GLuint uiVBO;
+static GLuint uiShaderProgram;
+void drawTargetTileOutline(int x, int y, float cameraOffsetX, float cameraOffsetY, float zoomFactor);
+void InitializeEngine(void);
+void InitializeGameState(bool isNewGame);
 void initializeTilesBatchVAO();
 float lerp(float a, float b, float t);
 void WorldToScreenCoords(int gridX, int gridY, float cameraOffsetX, float cameraOffsetY, float zoomFactor, float* screenX, float* screenY);

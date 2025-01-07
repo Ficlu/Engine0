@@ -12,4 +12,6 @@
 bool saveGameState(const char* filename);
 bool loadGameState(const char* filename);
 
+bool InitializeFromSave(const char* filename);
+void CleanupBeforeLoad(void);
 #endif

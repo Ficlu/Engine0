@@ -15,6 +15,7 @@
 #include <stdbool.h>
 #include <stdatomic.h>
 
+
 /*
  * InitEnemy
  *
@@ -55,20 +56,37 @@ void InitEnemy(Enemy* enemy, int startGridX, int startGridY, float speed) {
     enemy->entity.isPlayer = false;
 
     int tempNearestX, tempNearestY;
-    findNearestWalkableTile(atomic_load(&enemy->entity.posX), atomic_load(&enemy->entity.posY), &tempNearestX, &tempNearestY);
+    int attempts = 0;
+    const int MAX_ATTEMPTS = 100;
+
+    do {
+        findNearestWalkableTile(atomic_load(&enemy->entity.posX), 
+                               atomic_load(&enemy->entity.posY), 
+                               &tempNearestX, &tempNearestY);
+        attempts++;
+        
+        if (attempts >= MAX_ATTEMPTS) {
+            fprintf(stderr, "Warning: Could not find valid walkable tile for enemy after %d attempts\n", 
+                    MAX_ATTEMPTS);
+            // Fall back to original position
+            tempNearestX = startGridX;
+            tempNearestY = startGridY;
+            break;
+        }
+    } while (!isWalkable(tempNearestX, tempNearestY) || 
+             grid[tempNearestY][tempNearestX].hasWall);
+
     atomic_store(&enemy->entity.gridX, tempNearestX);
     atomic_store(&enemy->entity.gridY, tempNearestY);
 
-    WorldToScreenCoords(atomic_load(&enemy->entity.gridX), atomic_load(&enemy->entity.gridY), 0, 0, 1, &tempPosX, &tempPosY);
+    WorldToScreenCoords(atomic_load(&enemy->entity.gridX), 
+                       atomic_load(&enemy->entity.gridY), 
+                       0, 0, 1, &tempPosX, &tempPosY);
     atomic_store(&enemy->entity.posX, tempPosX);
     atomic_store(&enemy->entity.posY, tempPosY);
 
-    enemy->lastPathfindingTime = 0; // Add this line
-
-    //printf("Enemy initialized at (%d, %d)\n", 
-    //     atomic_load(&enemy->entity.gridX), atomic_load(&enemy->entity.gridY));
+    enemy->lastPathfindingTime = 0;
 }
-
 /*
  * MovementAI
  *

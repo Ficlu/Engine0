@@ -22,6 +22,7 @@ typedef struct {
 extern GLuint squareVAO;
 extern GLuint squareVBO;
 extern GLuint shaderProgram;
+GLuint createUIShaderProgram(void); 
 extern TileBatchData tileBatchData;
 
 

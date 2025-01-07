@@ -6,6 +6,7 @@
 #include "player.h"
 #include <stdint.h>
 #include <inttypes.h>
+#include "ui.h"
 // Constants for texture coordinates from your existing system
 
 /* These defs need to be in structures.c since they incl the division operation - do not move to header file or they will break when refed*/
@@ -30,6 +31,7 @@
 #define DOOR_VERTICAL_OPEN_TEX_Y (0.0f / 6.0f)    // Top row
 #define DOOR_HORIZONTAL_OPEN_TEX_X (1.0f / 3.0f)  // First column 
 #define DOOR_HORIZONTAL_OPEN_TEX_Y (1.0f / 6.0f)  // Top row
+EnclosureManager globalEnclosureManager;
 
 void initializeStructureSystem(void) {
     printf("Structure system initialized\n");
@@ -213,14 +215,14 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
                 bool isDoor = (
                     // Check closed door textures
                     (grid[tileY][tileX].wallTexX == DOOR_VERTICAL_TEX_X && 
-                    grid[tileY][tileX].wallTexY == DOOR_VERTICAL_TEX_Y) ||
+                     grid[tileY][tileX].wallTexY == DOOR_VERTICAL_TEX_Y) ||
                     (grid[tileY][tileX].wallTexX == DOOR_HORIZONTAL_TEX_X &&
-                    grid[tileY][tileX].wallTexY == DOOR_HORIZONTAL_TEX_Y) ||
+                     grid[tileY][tileX].wallTexY == DOOR_HORIZONTAL_TEX_Y) ||
                     // Check open door textures
                     (grid[tileY][tileX].wallTexX == DOOR_VERTICAL_OPEN_TEX_X && 
-                    grid[tileY][tileX].wallTexY == DOOR_VERTICAL_OPEN_TEX_Y) ||
+                     grid[tileY][tileX].wallTexY == DOOR_VERTICAL_OPEN_TEX_Y) ||
                     (grid[tileY][tileX].wallTexX == DOOR_HORIZONTAL_OPEN_TEX_X &&
-                    grid[tileY][tileX].wallTexY == DOOR_HORIZONTAL_OPEN_TEX_Y)
+                     grid[tileY][tileX].wallTexY == DOOR_HORIZONTAL_OPEN_TEX_Y)
                 );
 
                 if (isDoor) {
@@ -244,14 +246,26 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
         newEnclosure.wallCount = wallCount;
         newEnclosure.isValid = true;
 
-        // Add to enclosure manager
-        addEnclosure(&globalEnclosureManager, &newEnclosure);
+        // Check if this is a new enclosure and award exp if it is
+        bool isNewEnclosure = true;
+        for (int i = 0; i < globalEnclosureManager.count; i++) {
+            if (globalEnclosureManager.enclosures[i].hash == newEnclosure.hash) {
+                isNewEnclosure = false;
+                break;
+            }
+        }
 
-        printf("Found enclosure with %d tiles! Hash: %" PRIu64 "\n", 
-            enclosure.tileCount, newEnclosure.hash);
-        printf("Center point: (%d, %d)\n", 
-               newEnclosure.centerPoint.x, newEnclosure.centerPoint.y);
-        printf("Walls: %d, Doors: %d\n", wallCount, doorCount);
+        if (isNewEnclosure) {
+            addEnclosure(&globalEnclosureManager, &newEnclosure);
+            extern Player player;  // Get pointer to player from global state
+            awardConstructionExp(&player, &newEnclosure);
+            
+            printf("Found new enclosure with %d tiles! Hash: %" PRIu64 "\n", 
+                enclosure.tileCount, newEnclosure.hash);
+            printf("Center point: (%d, %d)\n", 
+                   newEnclosure.centerPoint.x, newEnclosure.centerPoint.y);
+            printf("Walls: %d, Doors: %d\n", wallCount, doorCount);
+        }
 
         // Debug print the enclosure path
         for (int i = 0; i < enclosure.tileCount; i++) {
@@ -268,7 +282,6 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
     printf("Placed %s at grid position: %d, %d\n", getStructureName(type), gridX, gridY);
     return true;
 }
-
 void cleanupStructureSystem(void) {
     printf("Structure system cleaned up\n");
 }
@@ -417,24 +430,51 @@ bool isWallOrDoor(int x, int y) {
 }
 
 Enclosure detectEnclosure(int startX, int startY) {
-    Enclosure result = {NULL, 0, false, 0};  // Initialize all fields including hash
+    Enclosure result = {NULL, 0, false, 0};
     
-    // Keep the initial cycle detection lean
+    // Validate input coordinates first
+    if (startX < 0 || startX >= GRID_SIZE || startY < 0 || startY >= GRID_SIZE) {
+        return result;
+    }
+    
+    // Check if starting position is valid
+    if (!isWallOrDoor(startX, startY)) {
+        return result;
+    }
+    
+    // Allocate memory with null checks
     bool* visited = calloc(GRID_SIZE * GRID_SIZE, sizeof(bool));
-    int* wallPath = malloc(GRID_SIZE * GRID_SIZE * sizeof(int));
-    int pathLength = 0;
+    if (!visited) {
+        printf("Failed to allocate visited array\n");
+        return result;
+    }
     
-    // Stack for DFS
-    typedef struct {
-        int x, y;
-        int prevX, prevY;
-        int direction;
-    } PathNode;
+    int* wallPath = malloc(GRID_SIZE * GRID_SIZE * sizeof(int));
+    if (!wallPath) {
+        printf("Failed to allocate wall path array\n");
+        free(visited);
+        return result;
+    }
     
     PathNode* stack = malloc(GRID_SIZE * GRID_SIZE * sizeof(PathNode));
+    if (!stack) {
+        printf("Failed to allocate stack\n");
+        free(visited);
+        free(wallPath);
+        return result;
+    }
+
+    int pathLength = 0;
     int stackSize = 0;
     
-    stack[stackSize++] = (PathNode){startX, startY, -1, -1, -1};
+    // Initialize first node
+    PathNode firstNode;
+    firstNode.x = startX;
+    firstNode.y = startY;
+    firstNode.prevX = -1;
+    firstNode.prevY = -1;
+    firstNode.direction = -1;
+    stack[stackSize++] = firstNode;
     
     bool foundCycle = false;
     
@@ -460,27 +500,34 @@ Enclosure detectEnclosure(int startX, int startY) {
                     foundCycle = true;
                     break;
                 }
-                stack[stackSize++] = (PathNode){newX, newY, current.x, current.y, i};
+                PathNode nextNode;
+                nextNode.x = newX;
+                nextNode.y = newY;
+                nextNode.prevX = current.x;
+                nextNode.prevY = current.y;
+                nextNode.direction = i;
+                stack[stackSize++] = nextNode;
             }
         }
     }
 
+    if (!foundCycle) {
+        free(wallPath);
+        free(visited);
+        free(stack);
+        return result;
+    }
+
     // Only if we found a cycle do we perform the expensive calculations
     if (foundCycle) {
-        // Convert the path indices to Point structures for hashing
         Point* boundaryPoints = malloc(pathLength * sizeof(Point));
         for (int i = 0; i < pathLength; i++) {
             boundaryPoints[i].x = wallPath[i] % GRID_SIZE;
             boundaryPoints[i].y = wallPath[i] / GRID_SIZE;
         }
 
-        // Basic area calculation (can be refined later)
         int area = pathLength;  // For now just using boundary length
-
-        // Calculate hash
         result.hash = calculateEnclosureHash(boundaryPoints, pathLength, area);
-
-        // Store in result
         result.tiles = wallPath;
         result.tileCount = pathLength;
         result.isValid = true;
@@ -494,6 +541,7 @@ Enclosure detectEnclosure(int startX, int startY) {
     free(stack);
     return result;
 }
+
 #define FNV_PRIME 1099511628211ULL
 #define FNV_OFFSET 14695981039346656037ULL
 
@@ -605,4 +653,48 @@ void cleanupEnclosureManager(EnclosureManager* manager) {
     manager->enclosures = NULL;
     manager->count = 0;
     manager->capacity = 0;
+}
+
+void awardConstructionExp(Player* player, const EnclosureData* enclosure) {
+    // Base exp values
+    const float BASE_WALL_EXP = 10.0f;
+    const float BASE_DOOR_EXP = 25.0f;
+    const float AREA_MULTIPLIER = 5.0f;
+
+    // Calculate total exp
+    float wallExp = BASE_WALL_EXP * enclosure->wallCount;
+    float doorExp = BASE_DOOR_EXP * enclosure->doorCount;
+    float areaExp = AREA_MULTIPLIER * enclosure->totalArea;
+    
+    float totalExp = wallExp + doorExp + areaExp;
+
+    // Store old exp and level for progress calculation
+    float oldExp = player->skills.constructionExp;
+    int oldLevel = (int)(oldExp / EXP_PER_LEVEL);
+    
+    // Add new exp
+    player->skills.constructionExp += totalExp;
+    int newLevel = (int)(player->skills.constructionExp / EXP_PER_LEVEL);
+
+    // Calculate progress percentages
+    float oldProgress = fmodf(oldExp, EXP_PER_LEVEL) / EXP_PER_LEVEL * 100.0f;
+    float newProgress = fmodf(player->skills.constructionExp, EXP_PER_LEVEL) / EXP_PER_LEVEL * 100.0f;
+
+    printf("\n=== Construction Experience Award ===\n");
+    printf("Base Calculations:\n");
+    printf("- Wall exp (%.0f per wall): %.0f (walls: %d)\n", BASE_WALL_EXP, wallExp, enclosure->wallCount);
+    printf("- Door exp (%.0f per door): %.0f (doors: %d)\n", BASE_DOOR_EXP, doorExp, enclosure->doorCount);
+    printf("- Area exp (%.0f per tile): %.0f (area: %d)\n", AREA_MULTIPLIER, areaExp, enclosure->totalArea);
+    printf("Total exp awarded: %.0f\n\n", totalExp);
+
+    printf("Progress Update:\n");
+    printf("- Total exp: %.1f -> %.1f\n", oldExp, player->skills.constructionExp);
+    printf("- Level: %d -> %d\n", oldLevel, newLevel);
+    printf("- Progress to next level: %.1f%% -> %.1f%%\n", oldProgress, newProgress);
+    
+    if (newLevel > oldLevel) {
+        printf("\n*** LEVEL UP! ***\n");
+        printf("Construction level increased from %d to %d!\n", oldLevel, newLevel);
+    }
+    printf("==============================\n\n");
 }

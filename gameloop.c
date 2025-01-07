@@ -20,7 +20,7 @@
 #include "saveload.h"
 #include "structures.h"
 #include "input.h"
-
+#include "ui.h"
 #define UNWALKABLE_PROBABILITY 0.04f
 GLuint outlineShaderProgram;
 atomic_bool isRunning = true;
@@ -127,16 +127,18 @@ void GameLoop() {
  *
  * Initializes SDL, OpenGL, game objects, and other resources needed for the game.
  */
-void Initialize() {
-    printf("Initializing...\n");
+void Initialize(void) {
+    InitializeEngine();
+    InitializeGameState(true);  // true = new game
+}
+
+void InitializeGameState(bool isNewGame) {
+    printf("Initializing game state...\n");
 
     // Set grid size (still uses a fixed 40 in your code)
     setGridSize(40);
 
-    // -----------------------------------------
-    // 1) Initialize the chunk manager *first*,
-    //    but DO NOT load chunks yet
-    // -----------------------------------------
+    // Initialize the chunk manager first, but DO NOT load chunks yet
     globalChunkManager = (ChunkManager*)malloc(sizeof(ChunkManager));
     if (!globalChunkManager) {
         fprintf(stderr, "Failed to allocate chunk manager\n");
@@ -149,28 +151,96 @@ void Initialize() {
     initEnclosureManager(&globalEnclosureManager);
     printf("Enclosure manager initialized.\n");
 
-    // -----------------------------------------
-    // 2) Initialize the global grid to some defaults
-    // -----------------------------------------
+    // Initialize the global grid to some defaults
     initializeGrid(GRID_SIZE);
     printf("Grid initialized.\n");
 
-    // -----------------------------------------
-    // 3) Load ASCII map from file
-    //
-    //    -- We have removed the code from
-    //       loadASCIIMap() that did chunk loading.
-    // -----------------------------------------
-    char* asciiMap = loadASCIIMap("testmap.txt");
-    if (!asciiMap) {
-        fprintf(stderr, "Failed to load test map!\n");
-        exit(1);
-    }
-    printf("ASCII map loaded successfully.\n");
+    if (isNewGame) {
+        // Load ASCII map from file
+        char* asciiMap = loadASCIIMap("testmap.txt");
+        if (!asciiMap) {
+            fprintf(stderr, "Failed to load test map!\n");
+            exit(1);
+        }
+        printf("ASCII map loaded successfully.\n");
 
-    // -----------------------------------------
-    // 4) Initialize SDL, create Window, GL Context, etc.
-    // -----------------------------------------
+        // Initialize the player in the center for new game
+        int playerGridX = GRID_SIZE / 2;
+        int playerGridY = GRID_SIZE / 2;
+        InitPlayer(&player, playerGridX, playerGridY, MOVE_SPEED);
+        printf("Player initialized at (%d, %d).\n", playerGridX, playerGridY);
+
+        // Now that the player is placed, do the initial chunk load
+        ChunkCoord playerStartChunk = getChunkFromWorldPos(playerGridX, playerGridY);
+        globalChunkManager->playerChunk = playerStartChunk;
+        loadChunksAroundPlayer(globalChunkManager);
+        printf("Initial chunks loaded around player.\n");
+
+        // Initialize all enemies for new game
+        allEntities[0] = &player.entity;
+        for (int i = 0; i < MAX_ENEMIES; i++) {
+            int enemyGridX, enemyGridY;
+            int attempts = 0;
+            const int MAX_ATTEMPTS = 1000;
+            
+            do {
+                enemyGridX = rand() % GRID_SIZE;
+                enemyGridY = rand() % GRID_SIZE;
+                attempts++;
+                
+                if (attempts >= MAX_ATTEMPTS) {
+                    fprintf(stderr, "Warning: Could not find valid spawn location for enemy %d after %d attempts\n", 
+                            i, MAX_ATTEMPTS);
+                    enemyGridX = playerGridX;
+                    enemyGridY = playerGridY;
+                    break;
+                }
+            } while (!grid[enemyGridY][enemyGridX].isWalkable ||
+                     grid[enemyGridY][enemyGridX].hasWall ||
+                     (enemyGridX == playerGridX && enemyGridY == playerGridY));
+
+            InitEnemy(&enemies[i], enemyGridX, enemyGridY, MOVE_SPEED);
+            allEntities[i + 1] = &enemies[i].entity;
+            printf("Enemy %d initialized at (%d, %d).\n", i, enemyGridX, enemyGridY);
+        }
+    }
+    
+    // Apply initial chunk culling (needed for both new game and load)
+    ChunkCoord playerChunk = getChunkFromWorldPos(player.entity.gridX, player.entity.gridY);
+    int radius = globalChunkManager->loadRadius;
+    
+    for (int cy = 0; cy < NUM_CHUNKS; cy++) {
+        for (int cx = 0; cx < NUM_CHUNKS; cx++) {
+            int dx = abs(cx - playerChunk.x);
+            int dy = abs(cy - playerChunk.y);
+            
+            if (dx > radius || dy > radius) {
+                int startX = cx * CHUNK_SIZE;
+                int startY = cy * CHUNK_SIZE;
+                
+                for (int y = 0; y < CHUNK_SIZE; y++) {
+                    for (int x = 0; x < CHUNK_SIZE; x++) {
+                        int gridX = startX + x;
+                        int gridY = startY + y;
+                        if (gridX >= 0 && gridX < GRID_SIZE && 
+                            gridY >= 0 && gridY < GRID_SIZE) {
+                            grid[gridY][gridX].terrainType = TERRAIN_UNLOADED;
+                            grid[gridY][gridX].isWalkable = false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    printf("Initial chunk culling complete.\n");
+    printf("Game state initialization complete.\n");
+}
+// In gameloop.c
+
+void InitializeEngine(void) {
+    printf("Initializing engine systems...\n");
+    
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_EVENTS) < 0) {
         fprintf(stderr, "SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
         exit(1);
@@ -178,10 +248,10 @@ void Initialize() {
     printf("SDL initialized.\n");
 
     window = SDL_CreateWindow("2D Top-Down RPG",
-                              SDL_WINDOWPOS_CENTERED,
-                              SDL_WINDOWPOS_CENTERED, 
-                              WINDOW_WIDTH, WINDOW_HEIGHT,
-                              SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+                            SDL_WINDOWPOS_CENTERED,
+                            SDL_WINDOWPOS_CENTERED, 
+                            WINDOW_WIDTH, WINDOW_HEIGHT,
+                            SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
     if (window == NULL) {
         fprintf(stderr, "Window could not be created! SDL_Error: %s\n", SDL_GetError());
         SDL_Quit();
@@ -215,10 +285,11 @@ void Initialize() {
     }
     printf("GLEW initialized.\n");
 
-    // Create our two shader programs (main & outline)
     shaderProgram = createShaderProgram();
     outlineShaderProgram = createOutlineShaderProgram();
-    if (!shaderProgram || !outlineShaderProgram) {
+    uiShaderProgram = createUIShaderProgram();
+    
+    if (!shaderProgram || !outlineShaderProgram || !uiShaderProgram) {
         fprintf(stderr, "Failed to create shader programs\n");
         SDL_GL_DeleteContext(mainContext);
         SDL_DestroyWindow(window);
@@ -227,13 +298,17 @@ void Initialize() {
     }
     printf("Shader programs created.\n");
 
-    // Get uniform locations for color and texture
+    // Initialize UI system with its shader
+    InitializeUI(uiShaderProgram);
+    printf("UI system initialized.\n");
+
     colorUniform = glGetUniformLocation(shaderProgram, "color");
     textureUniform = glGetUniformLocation(shaderProgram, "textureAtlas");
 
-    // -----------------------------------------
-    // 5) Create grid VAO
-    // -----------------------------------------
+    // Rest of initialization code...
+    // (Grid VAO, Square VAO, texture atlas, etc.)
+    
+    // Create grid VAO
     float* vertices;
     createGridVertices(&vertices, &vertexCount, 800, 800, 800 / GRID_SIZE);
     gridVAO = createGridVAO(vertices, vertexCount);
@@ -250,9 +325,8 @@ void Initialize() {
     free(vertices);
     printf("Grid VAO created.\n");
 
-    // -----------------------------------------
-    // 6) Create Square VAO & VBO (for player, etc.)
-    // -----------------------------------------
+
+    // Create Square VAO & VBO
     glGenVertexArrays(1, &squareVAO);
     glGenBuffers(1, &squareVBO);
     glGenBuffers(1, &outlineVBO);
@@ -272,13 +346,25 @@ void Initialize() {
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
+
+    float uiVertices[] = {
+        0.7f,  0.9f,   // Bottom left  (x: halfway right, y: near top)
+        0.95f, 0.9f,   // Bottom right (x: almost right edge)
+        0.95f, 0.95f,  // Top right    
+        0.7f,  0.95f   // Top left
+    };
+
+    glBindVertexArray(uiVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, uiVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(uiVertices), uiVertices, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
     printf("Square VAO and VBO created.\n");
 
-    // -----------------------------------------
-    // 7) Load texture atlas
-    // -----------------------------------------
+    // Load texture atlas
     textureAtlas = loadBMP("texture_atlas-1.bmp");
     if (!textureAtlas) {
         fprintf(stderr, "Failed to load texture atlas\n");
@@ -293,43 +379,6 @@ void Initialize() {
         exit(1);
     }
 
-    // -----------------------------------------
-    // 8) Initialize the player in the center
-    // -----------------------------------------
-    int playerGridX = GRID_SIZE / 2;
-    int playerGridY = GRID_SIZE / 2;
-    InitPlayer(&player, playerGridX, playerGridY, MOVE_SPEED);
-    printf("Player initialized at (%d, %d).\n", playerGridX, playerGridY);
-
-    // -----------------------------------------
-    // 9) Now that the player is placed, do the
-    //    initial chunk load *once* here
-    // -----------------------------------------
-    ChunkCoord playerStartChunk = getChunkFromWorldPos(playerGridX, playerGridY);
-    globalChunkManager->playerChunk = playerStartChunk;
-    loadChunksAroundPlayer(globalChunkManager);
-    printf("Initial chunks loaded around player.\n");
-
-    // -----------------------------------------
-    // 10) Initialize all enemies
-    // -----------------------------------------
-    allEntities[0] = &player.entity;
-    for (int i = 0; i < MAX_ENEMIES; i++) {
-        int enemyGridX, enemyGridY;
-        do {
-            enemyGridX = rand() % GRID_SIZE;
-            enemyGridY = rand() % GRID_SIZE;
-        } while (!grid[enemyGridY][enemyGridX].isWalkable ||
-                 (enemyGridX == playerGridX && enemyGridY == playerGridY));
-
-        InitEnemy(&enemies[i], enemyGridX, enemyGridY, MOVE_SPEED);
-        allEntities[i + 1] = &enemies[i].entity;
-        printf("Enemy %d initialized at (%d, %d).\n", i, enemyGridX, enemyGridY);
-    }
-
-    // -----------------------------------------
-    // 11) Initialize VAOs for enemies, outlines, and tiles
-    // -----------------------------------------
     initializeEnemyBatchVAO();
     printf("Enemy batch VAO initialized.\n");
 
@@ -339,48 +388,9 @@ void Initialize() {
     initializeTilesBatchVAO();
     printf("Tiles batch VAO initialized.\n");
 
-    // -----------------------------------------
-    // 12) Initialize GPU-based pathfinding
-    // -----------------------------------------
     initializeGPUPathfinding();
     printf("GPU pathfinding initialized.\n");
-
-    // -----------------------------------------
-    // 13) Apply initial chunk culling
-    // -----------------------------------------
-    ChunkCoord playerChunk = getChunkFromWorldPos(player.entity.gridX, player.entity.gridY);
-    int radius = globalChunkManager->loadRadius;
-    
-    // Cull everything outside the initial radius
-    for (int cy = 0; cy < NUM_CHUNKS; cy++) {
-        for (int cx = 0; cx < NUM_CHUNKS; cx++) {
-            int dx = abs(cx - playerChunk.x);
-            int dy = abs(cy - playerChunk.y);
-            
-            // If chunk is outside radius, mark all its cells as unloaded
-            if (dx > radius || dy > radius) {
-                int startX = cx * CHUNK_SIZE;
-                int startY = cy * CHUNK_SIZE;
-                
-                for (int y = 0; y < CHUNK_SIZE; y++) {
-                    for (int x = 0; x < CHUNK_SIZE; x++) {
-                        int gridX = startX + x;
-                        int gridY = startY + y;
-                        if (gridX >= 0 && gridX < GRID_SIZE && 
-                            gridY >= 0 && gridY < GRID_SIZE) {
-                            grid[gridY][gridX].terrainType = TERRAIN_UNLOADED;
-                            grid[gridY][gridX].isWalkable = false;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    printf("Initial chunk culling complete.\n");
-    printf("Initialization complete.\n");
 }
-
 void CleanupEntities() {
     for (int i = 0; i < MAX_ENTITIES; i++) {
         if (allEntities[i]) {
@@ -393,6 +403,13 @@ void CleanupEntities() {
         }
     }
 }
+
+bool LoadGame(const char* filename) {
+    InitializeEngine();
+    InitializeGameState(false);  // false = loading save
+    return loadGameState(filename);
+}
+
 void drawTargetTileOutline(int x, int y, float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
     glUseProgram(outlineShaderProgram);
     glBindVertexArray(outlineVAO);
@@ -424,6 +441,9 @@ void CleanUp() {
     printf("Cleaning up...\n");
     CleanupEntities();
 
+    CleanupUI();
+    printf("UI cleaned up.\n");
+
     // Clean up enclosure manager
     cleanupEnclosureManager(&globalEnclosureManager);
     printf("Enclosure manager cleaned up.\n");
@@ -445,6 +465,15 @@ void CleanUp() {
     }
     if (outlineShaderProgram) {
         glDeleteProgram(outlineShaderProgram);
+    }
+    if (uiShaderProgram) {
+        glDeleteProgram(uiShaderProgram);
+    }
+    if (uiVAO) {
+        glDeleteVertexArrays(1, &uiVAO);
+    }
+    if (uiVBO) {
+        glDeleteBuffers(1, &uiVBO);
     }
     if (globalChunkManager) {
         cleanupChunkManager(globalChunkManager);
@@ -535,15 +564,14 @@ void Render() {
 
     RenderTiles(cameraOffsetX, cameraOffsetY, zoomFactor);
     RenderEntities(cameraOffsetX, cameraOffsetY, zoomFactor);
-    
-    // Add this line to render the preview
     renderStructurePreview(&placementMode, cameraOffsetX, cameraOffsetY, zoomFactor);
 
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
+    // Render UI elements last
+    RenderUI(&player, uiShaderProgram);
 
     SDL_GL_SwapWindow(window);
 }
+
 #define MAX_VISIBLE_TILES (GRID_SIZE * GRID_SIZE)
 void initializeTilesBatchVAO() {
     glGenVertexArrays(1, &tilesBatchVAO);
