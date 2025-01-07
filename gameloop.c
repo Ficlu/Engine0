@@ -169,40 +169,46 @@ void InitializeGameState(bool isNewGame) {
         int playerGridY = GRID_SIZE / 2;
         InitPlayer(&player, playerGridX, playerGridY, MOVE_SPEED);
         printf("Player initialized at (%d, %d).\n", playerGridX, playerGridY);
+    }
 
-        // Now that the player is placed, do the initial chunk load
-        ChunkCoord playerStartChunk = getChunkFromWorldPos(playerGridX, playerGridY);
-        globalChunkManager->playerChunk = playerStartChunk;
-        loadChunksAroundPlayer(globalChunkManager);
-        printf("Initial chunks loaded around player.\n");
+    // Now that the player is placed, do the initial chunk load
+    ChunkCoord playerStartChunk = getChunkFromWorldPos(player.entity.gridX, player.entity.gridY);
+    globalChunkManager->playerChunk = playerStartChunk;
+    loadChunksAroundPlayer(globalChunkManager);
+    printf("Initial chunks loaded around player.\n");
 
-        // Initialize all enemies for new game
-        allEntities[0] = &player.entity;
-        for (int i = 0; i < MAX_ENEMIES; i++) {
-            int enemyGridX, enemyGridY;
-            int attempts = 0;
-            const int MAX_ATTEMPTS = 1000;
+    // Initialize enemies - now handled consistently for both new game and load
+    allEntities[0] = &player.entity;
+    for (int i = 0; i < MAX_ENEMIES; i++) {
+        int enemyGridX, enemyGridY;
+        int attempts = 0;
+        const int MAX_ATTEMPTS = 1000;
+        bool validPosition = false;
+        
+        do {
+            enemyGridX = rand() % GRID_SIZE;
+            enemyGridY = rand() % GRID_SIZE;
+            attempts++;
             
-            do {
-                enemyGridX = rand() % GRID_SIZE;
-                enemyGridY = rand() % GRID_SIZE;
-                attempts++;
-                
-                if (attempts >= MAX_ATTEMPTS) {
-                    fprintf(stderr, "Warning: Could not find valid spawn location for enemy %d after %d attempts\n", 
-                            i, MAX_ATTEMPTS);
-                    enemyGridX = playerGridX;
-                    enemyGridY = playerGridY;
-                    break;
-                }
-            } while (!grid[enemyGridY][enemyGridX].isWalkable ||
-                     grid[enemyGridY][enemyGridX].hasWall ||
-                     (enemyGridX == playerGridX && enemyGridY == playerGridY));
+            // Check if position is valid (not on wall, walkable, and loaded)
+            if (isPositionInLoadedChunk(enemyGridX, enemyGridY) &&
+                !grid[enemyGridY][enemyGridX].hasWall &&
+                grid[enemyGridY][enemyGridX].isWalkable) {
+                validPosition = true;
+            }
+            
+            if (attempts >= MAX_ATTEMPTS) {
+                fprintf(stderr, "Warning: Could not find valid spawn location for enemy %d after %d attempts\n", 
+                        i, MAX_ATTEMPTS);
+                enemyGridX = player.entity.gridX + (rand() % 3) - 1;  // Near player as fallback
+                enemyGridY = player.entity.gridY + (rand() % 3) - 1;
+                break;
+            }
+        } while (!validPosition);
 
-            InitEnemy(&enemies[i], enemyGridX, enemyGridY, MOVE_SPEED);
-            allEntities[i + 1] = &enemies[i].entity;
-            printf("Enemy %d initialized at (%d, %d).\n", i, enemyGridX, enemyGridY);
-        }
+        InitEnemy(&enemies[i], enemyGridX, enemyGridY, MOVE_SPEED);
+        allEntities[i + 1] = &enemies[i].entity;
+        printf("Enemy %d initialized at (%d, %d).\n", i, enemyGridX, enemyGridY);
     }
     
     // Apply initial chunk culling (needed for both new game and load)
@@ -236,7 +242,6 @@ void InitializeGameState(bool isNewGame) {
     printf("Initial chunk culling complete.\n");
     printf("Game state initialization complete.\n");
 }
-// In gameloop.c
 
 void InitializeEngine(void) {
     printf("Initializing engine systems...\n");
@@ -405,9 +410,14 @@ void CleanupEntities() {
 }
 
 bool LoadGame(const char* filename) {
+    printf("START LoadGame sequence\n");
     InitializeEngine();
+    printf("After InitializeEngine\n");
     InitializeGameState(false);  // false = loading save
-    return loadGameState(filename);
+    printf("After InitializeGameState\n");
+    bool result = loadGameState(filename);
+    printf("After loadGameState\n");
+    return result;
 }
 
 void drawTargetTileOutline(int x, int y, float cameraOffsetX, float cameraOffsetY, float zoomFactor) {

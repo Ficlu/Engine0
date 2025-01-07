@@ -162,19 +162,28 @@ bool loadGameState(const char* filename) {
         fread(&texX, sizeof(texX), 1, file);
         fread(&texY, sizeof(texY), 1, file);
 
-        if (structX < GRID_SIZE && structY < GRID_SIZE) {
-            grid[structY][structX].hasWall = true;
-            bool isDoorOpen = (flags & 2) != 0;
-            grid[structY][structX].isDoorOpen = isDoorOpen;
-            grid[structY][structX].isWalkable = ((flags & 1) != 0) || isDoorOpen;
-            grid[structY][structX].wallTexX = texX;
-            grid[structY][structX].wallTexY = texY;
+    if (structX < GRID_SIZE && structY < GRID_SIZE) {
+        grid[structY][structX].hasWall = true;
+        bool isDoorOpen = (flags & 2) != 0;
+        grid[structY][structX].isDoorOpen = isDoorOpen;
+        grid[structY][structX].isWalkable = false;  // TODO change attrib name to differ from getter function
+        
+        if (isDoorOpen && (grid[structY][structX].wallTexY == 1.0f/6.0f)) {  // TODO: use the constant def in structures 
+            grid[structY][structX].isWalkable = true;  // Only then make it walkable
         }
+        
+        grid[structY][structX].wallTexX = texX;
+        grid[structY][structX].wallTexY = texY;
+        
+        printf("Loaded structure at (%d,%d): isDoor=%d, isWalkable=%d texY=%f\n", 
+            structX, structY, isDoorOpen, grid[structY][structX].isWalkable, texY);
+    }
     }
 
     // 4. Load enclosures
     uint32_t enclosureCount;
     fread(&enclosureCount, sizeof(enclosureCount), 1, file);
+    printf("Loading %d enclosures\n", enclosureCount);
     
     for (uint32_t i = 0; i < enclosureCount; i++) {
         EnclosureData enclosure = {0};
@@ -202,18 +211,14 @@ bool loadGameState(const char* filename) {
         fread(enclosure.interiorTiles, sizeof(Point), enclosure.interiorCount, file);
 
         addEnclosure(&globalEnclosureManager, &enclosure);
+        printf("Loaded enclosure: hash=%lu, boundaryCount=%d, isValid=%d\n",
+               enclosure.hash, enclosure.boundaryCount, enclosure.isValid);
+        
         free(enclosure.boundaryTiles);
         free(enclosure.interiorTiles);
     }
 
-    // 5. Set up chunk system for loaded world
-    if (globalChunkManager) {
-        ChunkCoord playerChunk = getChunkFromWorldPos(playerGridX, playerGridY);
-        globalChunkManager->playerChunk = playerChunk;
-        loadChunksAroundPlayer(globalChunkManager);
-    }
-
-    // 6. Apply player state
+    // 5. Apply player state
     atomic_store(&player.entity.gridX, playerGridX);
     atomic_store(&player.entity.gridY, playerGridY);
     atomic_store(&player.entity.posX, playerPosX);
@@ -234,82 +239,9 @@ bool loadGameState(const char* filename) {
     player.targetBuildX = 0;
     player.targetBuildY = 0;
 
-    // 7. Reset enemies with deterministic positions based on world state
-    const uint32_t ENEMY_SEED = timestamp;  // Use save timestamp as seed
-    srand(ENEMY_SEED);
-    
-    for (int i = 0; i < MAX_ENEMIES; i++) {
-        int attempts = 0;
-        const int MAX_ATTEMPTS = 100;
-        bool positioned = false;
-        
-        while (!positioned && attempts < MAX_ATTEMPTS) {
-            int x = rand() % GRID_SIZE;
-            int y = rand() % GRID_SIZE;
-            
-            if (!grid[y][x].hasWall && grid[y][x].isWalkable) {
-                float posX, posY;
-                WorldToScreenCoords(x, y, 0, 0, 1, &posX, &posY);
-                
-                atomic_store((_Atomic int*)&enemies[i].entity.gridX, x);
-                atomic_store((_Atomic int*)&enemies[i].entity.gridY, y);
-                atomic_store((_Atomic float*)&enemies[i].entity.posX, posX);
-                atomic_store((_Atomic float*)&enemies[i].entity.posY, posY);
-                atomic_store((_Atomic int*)&enemies[i].entity.targetGridX, x);
-                atomic_store((_Atomic int*)&enemies[i].entity.targetGridY, y);
-                atomic_store((_Atomic int*)&enemies[i].entity.finalGoalX, x);
-                atomic_store((_Atomic int*)&enemies[i].entity.finalGoalY, y);
-                
-                positioned = true;
-            }
-            attempts++;
-        }
-    }
-
-    // 8. Final chunk cleanup
-    if (globalChunkManager) {
-        printf("\nUnloading chunks outside radius %d of (%d,%d)\n", 
-               globalChunkManager->loadRadius,
-               globalChunkManager->playerChunk.x,
-               globalChunkManager->playerChunk.y);
-               
-        for (int y = 0; y < NUM_CHUNKS; y++) {
-            for (int x = 0; x < NUM_CHUNKS; x++) {
-                int dx = abs(x - globalChunkManager->playerChunk.x);
-                int dy = abs(y - globalChunkManager->playerChunk.y);
-                
-                if (dx > globalChunkManager->loadRadius || 
-                    dy > globalChunkManager->loadRadius) {
-                    printf("Unloading chunk at (%d,%d) - distance (%d,%d) exceeds radius\n",
-                           x, y, dx, dy);
-                           
-                    int startX = x * CHUNK_SIZE;
-                    int startY = y * CHUNK_SIZE;
-                    
-                    for (int cy = 0; cy < CHUNK_SIZE; cy++) {
-                        for (int cx = 0; cx < CHUNK_SIZE; cx++) {
-                            int gridX = startX + cx;
-                            int gridY = startY + cy;
-                            
-                            if (gridX < GRID_SIZE && gridY < GRID_SIZE) {
-                                grid[gridY][gridX].terrainType = TERRAIN_UNLOADED;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    allEntities[0] = &player.entity;
-    for (int i = 0; i < MAX_ENEMIES; i++) {
-        allEntities[i + 1] = &enemies[i].entity;
-    }
-
     fclose(file);
     return true;
 }
-
 void CleanupBeforeLoad(void) {
     // Cleanup existing state before loading
     CleanupEntities();

@@ -130,16 +130,30 @@ void writeChunkToGrid(const Chunk* chunk) {
     int startX = chunk->chunkX * CHUNK_SIZE;
     int startY = chunk->chunkY * CHUNK_SIZE;
     
-    printf("\nWriting chunk (%d,%d) to grid starting at position (%d,%d)\n", 
-           chunk->chunkX, chunk->chunkY, startX, startY);
-    
     for (int y = 0; y < CHUNK_SIZE; y++) {
         for (int x = 0; x < CHUNK_SIZE; x++) {
             int gridX = startX + x;
             int gridY = startY + y;
             
             if (gridX < GRID_SIZE && gridY < GRID_SIZE) {
+                // Preserve wall data if it exists
+                bool hadWall = grid[gridY][gridX].hasWall;
+                bool wasWalkable = grid[gridY][gridX].isWalkable;
+                float oldTexX = grid[gridY][gridX].wallTexX;
+                float oldTexY = grid[gridY][gridX].wallTexY;
+                bool wasDoorOpen = grid[gridY][gridX].isDoorOpen;
+                
+                // Update terrain data from chunk
                 grid[gridY][gridX] = chunk->cells[y][x];
+                
+                // Restore wall data if there was a wall
+                if (hadWall) {
+                    grid[gridY][gridX].hasWall = true;
+                    grid[gridY][gridX].isWalkable = wasWalkable;
+                    grid[gridY][gridX].wallTexX = oldTexX;
+                    grid[gridY][gridX].wallTexY = oldTexY;
+                    grid[gridY][gridX].isDoorOpen = wasDoorOpen;
+                }
             }
         }
     }
