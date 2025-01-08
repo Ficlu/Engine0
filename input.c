@@ -93,25 +93,34 @@ void HandleInput() {
                            bool placed = placeStructure(placementMode.currentType, gridX, gridY);
                            printf("Direct placement result: %s\n", placed ? "success" : "failed");
                        } else {
-                           AdjacentTile nearest = findNearestAdjacentTile(gridX, gridY,
+                            AdjacentTile nearest = findNearestAdjacentTile(gridX, gridY,
                                                                         player.entity.gridX,
                                                                         player.entity.gridY,
                                                                         true);
-                           if (nearest.x != -1) {
-                               player.entity.finalGoalX = nearest.x;
-                               player.entity.finalGoalY = nearest.y;
-                               player.entity.targetGridX = player.entity.gridX;
-                               player.entity.targetGridY = player.entity.gridY;
-                               player.entity.needsPathfinding = true;
-                               player.targetBuildX = gridX;
-                               player.targetBuildY = gridY;
-                               player.hasBuildTarget = true;
-                               player.pendingBuildType = placementMode.currentType;
-                           }
+                            if (nearest.x != -1) {
+                                // Check if we can path to the nearest tile
+                                int pathLength;
+                                Node* path = findPath(player.entity.gridX, player.entity.gridY, 
+                                                    nearest.x, nearest.y, &pathLength);
+                                
+                                if (path != NULL) {
+                                    player.entity.finalGoalX = nearest.x;
+                                    player.entity.finalGoalY = nearest.y;
+                                    player.entity.targetGridX = player.entity.gridX;
+                                    player.entity.targetGridY = player.entity.gridY;
+                                    player.entity.needsPathfinding = true;
+                                    player.targetBuildX = gridX;
+                                    player.targetBuildY = gridY;
+                                    player.hasBuildTarget = true;
+                                    player.pendingBuildType = placementMode.currentType;
+                                    free(path);
+                                }
+                            }
+                       }
                        }
                    }
                    else if (event.button.button == SDL_BUTTON_RIGHT) {
-                       if (grid[gridY][gridX].hasWall) {
+                       if (grid[gridY][gridX].structureType == STRUCTURE_WALL) {
                            int playerGridX = player.entity.gridX;
                            int playerGridY = player.entity.gridY;
                            bool isNearby = (
@@ -120,8 +129,8 @@ void HandleInput() {
                            );
 
                            if (isNearby) {
-                               grid[gridY][gridX].hasWall = false;
-                               grid[gridY][gridX].isWalkable = true;
+grid[gridY][gridX].structureType = STRUCTURE_NONE;  // Assuming STRUCTURE_NONE enum value exists
+GRIDCELL_SET_WALKABLE(grid[gridY][gridX], true);
                                updateSurroundingStructures(gridX, gridY);
                                printf("Removed structure at grid position: %d, %d\n", gridX, gridY);
                            } else {
@@ -129,23 +138,25 @@ void HandleInput() {
                            }
                        }
                    }
-               }
-               else {
-                   if (event.button.button == SDL_BUTTON_LEFT) {
-                       if (grid[gridY][gridX].hasWall) {
-                           toggleDoor(gridX, gridY, &player);
-                       }
-                       else if (grid[gridY][gridX].isWalkable) {
-                           player.entity.finalGoalX = gridX;
-                           player.entity.finalGoalY = gridY;
-                           player.entity.targetGridX = player.entity.gridX;
-                           player.entity.targetGridY = player.entity.gridY;
-                           player.entity.needsPathfinding = true;
-                           printf("Player final goal set: gridX = %d, gridY = %d\n", gridX, gridY);
-                       }
-                   }
-               }
-           }
+                else {
+        if (event.button.button == SDL_BUTTON_LEFT) {
+            printf("Click detected at grid: (%d, %d)\n", gridX, gridY);
+            printf("Structure type at clicked location: %d\n", grid[gridY][gridX].structureType);
+            
+            if (grid[gridY][gridX].structureType == STRUCTURE_DOOR) {
+                printf("Door clicked, attempting toggle\n");
+                toggleDoor(gridX, gridY, &player);
+            }
+            else if (GRIDCELL_IS_WALKABLE(grid[gridY][gridX])) {
+                player.entity.finalGoalX = gridX;
+                player.entity.finalGoalY = gridY;
+                player.entity.targetGridX = player.entity.gridX;
+                player.entity.targetGridY = player.entity.gridY;
+                player.entity.needsPathfinding = true;
+                printf("Player final goal set: gridX = %d, gridY = %d\n", gridX, gridY);
+            }
+        }
+} }
        }
        else if (event.type == SDL_MOUSEMOTION && placementMode.active) {
            int mouseX, mouseY;

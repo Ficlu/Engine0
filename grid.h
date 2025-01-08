@@ -2,7 +2,7 @@
 #define GRID_H
 
 #include <stdbool.h>
-
+#include <stdint.h>
 #define GRID_SIZE 40
 #define CHUNK_SIZE 8  // 8x8 chunks
 #define NUM_CHUNKS (GRID_SIZE / CHUNK_SIZE)
@@ -34,17 +34,34 @@ typedef struct {
     float heightThresholds[2];
 } BiomeData;
 
+// Bit manipulation helpers for GridCell
+
+// Set the `isWalkable` bit (Bit 4) in `flags` (1 if `val`, 0 otherwise)
+#define GRIDCELL_SET_WALKABLE(cell, val) \
+    (cell).flags = ((cell).flags & ~0x10) | ((val) ? 0x10 : 0)
+
+// Check if the `isWalkable` bit (Bit 4) in `flags` is set (nonzero if walkable)
+#define GRIDCELL_IS_WALKABLE(cell) \
+    ((cell).flags & 0x10)
+
+// Set the `structureOrientation` (Bits 0–3) in `flags` to `val` (masked to 4 bits)
+#define GRIDCELL_SET_ORIENTATION(cell, val) \
+    (cell).flags = ((cell).flags & ~0x0F) | ((val) & 0x0F)
+
+// Get the `structureOrientation` (Bits 0–3) from `flags` (value 0–15)
+#define GRIDCELL_GET_ORIENTATION(cell) \
+    ((cell).flags & 0x0F)
+
 typedef struct {
-    TerrainType terrainType;
-    BiomeType biomeType;
-    bool isWalkable;
-    bool hasWall;  // New field
-    float wallTexX;
-    float wallTexY;
-    bool isDoorOpen;  // New field
-
+    uint8_t flags;          // Bits 0-3: structureOrientation (N/S/E/W)
+                           // Bit 4: isWalkable
+                           // Bits 5-7: reserved
+    uint8_t terrainType;    // TerrainType enum
+    uint8_t structureType;  // StructureType enum
+    uint8_t biomeType;      // BiomeType enum
+    float wallTexX;         // Keep presentation data together
+    float wallTexY;         // as per your request
 } GridCell;
-
 
 typedef struct {
     int x;

@@ -53,7 +53,8 @@ bool canPlaceStructure(StructureType type, int gridX, int gridY) {
     }
 
     // Check if tile is already occupied
-    if (grid[gridY][gridX].hasWall) {
+if (grid[gridY][gridX].structureType != 0) {
+
         printf("Tile already occupied\n");
         return false;
     }
@@ -68,11 +69,10 @@ bool canPlaceStructure(StructureType type, int gridX, int gridY) {
             printf("Checking door at (%d,%d)\n", gridX, gridY);
             
             // Check for walls
-            bool hasNorth = (gridY > 0) && grid[gridY-1][gridX].hasWall;
-            bool hasSouth = (gridY < GRID_SIZE-1) && grid[gridY+1][gridX].hasWall;
-            bool hasEast = (gridX < GRID_SIZE-1) && grid[gridY][gridX+1].hasWall;
-            bool hasWest = (gridX > 0) && grid[gridY][gridX-1].hasWall;
-            
+bool hasNorth = (gridY > 0) && grid[gridY-1][gridX].structureType != 0;
+bool hasSouth = (gridY < GRID_SIZE-1) && grid[gridY+1][gridX].structureType != 0;
+bool hasEast = (gridX < GRID_SIZE-1) && grid[gridY][gridX+1].structureType != 0;
+bool hasWest = (gridX > 0) && grid[gridY][gridX-1].structureType != 0;
             // Debug print wall configuration
             printf("Walls: N:%d S:%d E:%d W:%d\n", hasNorth, hasSouth, hasEast, hasWest);
             
@@ -89,7 +89,7 @@ bool canPlaceStructure(StructureType type, int gridX, int gridY) {
 }
 
 void updateWallTextures(int gridX, int gridY) {
-    if (!grid[gridY][gridX].hasWall) return;
+    if (grid[gridY][gridX].structureType == 0) return;
 
     // Preserve door textures
     if ((grid[gridY][gridX].wallTexX == DOOR_VERTICAL_TEX_X && 
@@ -100,10 +100,10 @@ void updateWallTextures(int gridX, int gridY) {
     }
 
     // Get adjacent wall info
-    bool hasNorth = (gridY > 0) && grid[gridY-1][gridX].hasWall;
-    bool hasSouth = (gridY < GRID_SIZE-1) && grid[gridY+1][gridX].hasWall;
-    bool hasEast = (gridX < GRID_SIZE-1) && grid[gridY][gridX+1].hasWall;
-    bool hasWest = (gridX > 0) && grid[gridY][gridX-1].hasWall;
+    bool hasNorth = (gridY > 0) && grid[gridY-1][gridX].structureType != 0;
+    bool hasSouth = (gridY < GRID_SIZE-1) && grid[gridY+1][gridX].structureType != 0;
+    bool hasEast = (gridX < GRID_SIZE-1) && grid[gridY][gridX+1].structureType != 0;
+    bool hasWest = (gridX > 0) && grid[gridY][gridX-1].structureType != 0;
 
     // Handle corner walls
     if (hasNorth && hasEast && !hasWest && !hasSouth) {
@@ -133,7 +133,6 @@ void updateWallTextures(int gridX, int gridY) {
         grid[gridY][gridX].wallTexY = WALL_FRONT_TEX_Y;
     }
 }
-
 void updateSurroundingStructures(int gridX, int gridY) {
     // Update the placed structure and all adjacent cells
     if (gridY > 0) updateWallTextures(gridX, gridY-1);
@@ -143,6 +142,7 @@ void updateSurroundingStructures(int gridX, int gridY) {
     updateWallTextures(gridX, gridY);
 }
 
+
 bool placeStructure(StructureType type, int gridX, int gridY) {
     if (!canPlaceStructure(type, gridX, gridY)) {
         return false;
@@ -151,35 +151,41 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
     // Check if an entity is targeting the tile
     if (isEntityTargetingTile(gridX, gridY)) {
         printf("Cannot place structure at (%d, %d): entity is targeting this tile.\n", gridX, gridY);
-        return false; // Cancel the build action
+        return false;
     }
 
-    // Proceed with placing the structure
-    grid[gridY][gridX].hasWall = true;
-    grid[gridY][gridX].isWalkable = false;
+    // Set the structure type and make it unwalkable
+    grid[gridY][gridX].structureType = type;
+    GRIDCELL_SET_WALKABLE(grid[gridY][gridX], false);
 
     switch(type) {
         case STRUCTURE_WALL:
             updateSurroundingStructures(gridX, gridY);
             break;
-
         case STRUCTURE_DOOR: {
-            // Determine door orientation
-            bool hasNorth = (gridY > 0) && grid[gridY-1][gridX].hasWall;
-            bool hasSouth = (gridY < GRID_SIZE-1) && grid[gridY+1][gridX].hasWall;
+            // Determine door orientation based on adjacent walls
+            bool hasNorth = (gridY > 0) && grid[gridY-1][gridX].structureType != 0;
+            bool hasSouth = (gridY < GRID_SIZE-1) && grid[gridY+1][gridX].structureType != 0;
+            bool hasEast = (gridX < GRID_SIZE-1) && grid[gridY][gridX+1].structureType != 0;
+            bool hasWest = (gridX > 0) && grid[gridY][gridX-1].structureType != 0;
 
+            // Set door orientation based on adjacent walls
             if (hasNorth || hasSouth) {
+                // Vertical door
+                GRIDCELL_SET_ORIENTATION(grid[gridY][gridX], 0);
                 grid[gridY][gridX].wallTexX = DOOR_VERTICAL_TEX_X;
                 grid[gridY][gridX].wallTexY = DOOR_VERTICAL_TEX_Y;
             } else {
+                // Horizontal door
+                GRIDCELL_SET_ORIENTATION(grid[gridY][gridX], 1);
                 grid[gridY][gridX].wallTexX = DOOR_HORIZONTAL_TEX_X;
                 grid[gridY][gridX].wallTexY = DOOR_HORIZONTAL_TEX_Y;
             }
             
-            // Initialize door as closed and unwalkable
-            grid[gridY][gridX].isDoorOpen = false;
-            grid[gridY][gridX].isWalkable = false;
-
+            // Set door properties
+            grid[gridY][gridX].structureType = STRUCTURE_DOOR;
+            GRIDCELL_SET_WALKABLE(grid[gridY][gridX], false);
+            
             updateSurroundingStructures(gridX, gridY);
             break;
         }
@@ -191,14 +197,11 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
     // After successful placement, check for enclosures
     Enclosure enclosure = detectEnclosure(gridX, gridY);
     if (enclosure.isValid) {
-        EnclosureData newEnclosure = {0};  // Initialize to zero
-        
-        // Convert boundary tiles to Points for hashing
+        EnclosureData newEnclosure = {0};
         Point* boundaryPoints = malloc(enclosure.tileCount * sizeof(Point));
         int wallCount = 0;
         int doorCount = 0;
         
-        // Calculate center point and count structure types
         int sumX = 0, sumY = 0;
         for (int i = 0; i < enclosure.tileCount; i++) {
             int tileX = enclosure.tiles[i] % GRID_SIZE;
@@ -210,22 +213,8 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
             sumX += tileX;
             sumY += tileY;
             
-            // Count walls and doors
-            if (grid[tileY][tileX].hasWall) {
-                bool isDoor = (
-                    // Check closed door textures
-                    (grid[tileY][tileX].wallTexX == DOOR_VERTICAL_TEX_X && 
-                     grid[tileY][tileX].wallTexY == DOOR_VERTICAL_TEX_Y) ||
-                    (grid[tileY][tileX].wallTexX == DOOR_HORIZONTAL_TEX_X &&
-                     grid[tileY][tileX].wallTexY == DOOR_HORIZONTAL_TEX_Y) ||
-                    // Check open door textures
-                    (grid[tileY][tileX].wallTexX == DOOR_VERTICAL_OPEN_TEX_X && 
-                     grid[tileY][tileX].wallTexY == DOOR_VERTICAL_OPEN_TEX_Y) ||
-                    (grid[tileY][tileX].wallTexX == DOOR_HORIZONTAL_OPEN_TEX_X &&
-                     grid[tileY][tileX].wallTexY == DOOR_HORIZONTAL_OPEN_TEX_Y)
-                );
-
-                if (isDoor) {
+            if (grid[tileY][tileX].structureType != 0) {
+                if (grid[tileY][tileX].structureType == STRUCTURE_DOOR) {
                     doorCount++;
                 } else {
                     wallCount++;
@@ -233,20 +222,16 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
             }
         }
 
-        // Calculate hash
         newEnclosure.hash = calculateEnclosureHash(boundaryPoints, enclosure.tileCount, enclosure.tileCount);
-        
-        // Store enclosure data
         newEnclosure.boundaryTiles = boundaryPoints;
         newEnclosure.boundaryCount = enclosure.tileCount;
-        newEnclosure.totalArea = enclosure.tileCount;  // Basic area calculation for now
+        newEnclosure.totalArea = enclosure.tileCount;
         newEnclosure.centerPoint.x = sumX / enclosure.tileCount;
         newEnclosure.centerPoint.y = sumY / enclosure.tileCount;
         newEnclosure.doorCount = doorCount;
         newEnclosure.wallCount = wallCount;
         newEnclosure.isValid = true;
 
-        // Check if this is a new enclosure and award exp if it is
         bool isNewEnclosure = true;
         for (int i = 0; i < globalEnclosureManager.count; i++) {
             if (globalEnclosureManager.enclosures[i].hash == newEnclosure.hash) {
@@ -257,7 +242,7 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
 
         if (isNewEnclosure) {
             addEnclosure(&globalEnclosureManager, &newEnclosure);
-            extern Player player;  // Get pointer to player from global state
+            extern Player player;
             awardConstructionExp(&player, &newEnclosure);
             
             printf("Found new enclosure with %d tiles! Hash: %" PRIu64 "\n", 
@@ -267,14 +252,13 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
             printf("Walls: %d, Doors: %d\n", wallCount, doorCount);
         }
 
-        // Debug print the enclosure path
         for (int i = 0; i < enclosure.tileCount; i++) {
             int tileX = enclosure.tiles[i] % GRID_SIZE;
             int tileY = enclosure.tiles[i] / GRID_SIZE;
             printf("Enclosure tile %d: (%d, %d)\n", i, tileX, tileY);
         }
 
-        free(enclosure.tiles);  // Free the original tiles array
+        free(enclosure.tiles);
     } else {
         printf("No enclosure found from placement at (%d, %d)\n", gridX, gridY);
     }
@@ -282,6 +266,7 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
     printf("Placed %s at grid position: %d, %d\n", getStructureName(type), gridX, gridY);
     return true;
 }
+
 void cleanupStructureSystem(void) {
     printf("Structure system cleaned up\n");
 }
@@ -334,7 +319,7 @@ AdjacentTile findNearestAdjacentTile(int targetX, int targetY, int fromX, int fr
             // Ensure tile is in bounds and meets walkability requirement
             if (checkX >= 0 && checkX < GRID_SIZE && 
                 checkY >= 0 && checkY < GRID_SIZE && 
-                (!requireWalkable || grid[checkY][checkX].isWalkable)) {
+                (!requireWalkable || GRIDCELL_IS_WALKABLE(grid[checkY][checkX]))) {
                 
                 float dist = sqrtf(powf(fromX - checkX, 2) + 
                                  powf(fromY - checkY, 2));
@@ -352,21 +337,8 @@ AdjacentTile findNearestAdjacentTile(int targetX, int targetY, int fromX, int fr
 }
 
 bool toggleDoor(int gridX, int gridY, Player* player) {
-    // Verify it's actually a door by checking texture coordinates for both closed and open states
-    bool isDoor = (
-        // Check closed door textures
-        (grid[gridY][gridX].wallTexX == DOOR_VERTICAL_TEX_X && 
-         grid[gridY][gridX].wallTexY == DOOR_VERTICAL_TEX_Y) ||
-        (grid[gridY][gridX].wallTexX == DOOR_HORIZONTAL_TEX_X &&
-         grid[gridY][gridX].wallTexY == DOOR_HORIZONTAL_TEX_Y) ||
-        // Check open door textures
-        (grid[gridY][gridX].wallTexX == DOOR_VERTICAL_OPEN_TEX_X && 
-         grid[gridY][gridX].wallTexY == DOOR_VERTICAL_OPEN_TEX_Y) ||
-        (grid[gridY][gridX].wallTexX == DOOR_HORIZONTAL_OPEN_TEX_X &&
-         grid[gridY][gridX].wallTexY == DOOR_HORIZONTAL_OPEN_TEX_Y)
-    );
-
-    if (!isDoor) return false;
+    // Verify it's a door
+    if (grid[gridY][gridX].structureType != STRUCTURE_DOOR) return false;
 
     bool isNearby = (
         abs(gridX - player->entity.gridX) <= 1 && 
@@ -374,21 +346,17 @@ bool toggleDoor(int gridX, int gridY, Player* player) {
     );
 
     if (isNearby) {
-        // Toggle door state
-        grid[gridY][gridX].isDoorOpen = !grid[gridY][gridX].isDoorOpen;
-        grid[gridY][gridX].isWalkable = grid[gridY][gridX].isDoorOpen;
+        // Toggle door walkability
+        bool currentlyOpen = GRIDCELL_IS_WALKABLE(grid[gridY][gridX]);
+        GRIDCELL_SET_WALKABLE(grid[gridY][gridX], !currentlyOpen);
         
-        bool isVertical = (
-            (grid[gridY][gridX].wallTexX == DOOR_VERTICAL_TEX_X && 
-             grid[gridY][gridX].wallTexY == DOOR_VERTICAL_TEX_Y) ||
-            (grid[gridY][gridX].wallTexX == DOOR_VERTICAL_OPEN_TEX_X && 
-             grid[gridY][gridX].wallTexY == DOOR_VERTICAL_OPEN_TEX_Y)
-        );
+        // Get orientation and current state
+        bool isVertical = (GRIDCELL_GET_ORIENTATION(grid[gridY][gridX]) == 0);
+        bool willBeOpen = !currentlyOpen;  // What state it will be after toggling
 
-        printf("is this vertical? \n%d\n", isVertical);
-        // Then toggle between closed and open textures while maintaining orientation
+        // Update textures based on orientation and state
         if (isVertical) {
-            if (grid[gridY][gridX].isDoorOpen) {
+            if (willBeOpen) {
                 grid[gridY][gridX].wallTexX = DOOR_VERTICAL_OPEN_TEX_X;
                 grid[gridY][gridX].wallTexY = DOOR_VERTICAL_OPEN_TEX_Y;
             } else {
@@ -396,7 +364,7 @@ bool toggleDoor(int gridX, int gridY, Player* player) {
                 grid[gridY][gridX].wallTexY = DOOR_VERTICAL_TEX_Y;
             }
         } else {
-            if (grid[gridY][gridX].isDoorOpen) {
+            if (willBeOpen) {
                 grid[gridY][gridX].wallTexX = DOOR_HORIZONTAL_OPEN_TEX_X;
                 grid[gridY][gridX].wallTexY = DOOR_HORIZONTAL_OPEN_TEX_Y;
             } else {
@@ -407,7 +375,7 @@ bool toggleDoor(int gridX, int gridY, Player* player) {
         
         return true;
     } else {
-        // Path to nearest door-adjacent tile
+        // Path to nearest door-adjacent tile if not nearby
         AdjacentTile nearest = findNearestAdjacentTile(gridX, gridY,
                                                       player->entity.gridX, 
                                                       player->entity.gridY,
@@ -423,10 +391,10 @@ bool toggleDoor(int gridX, int gridY, Player* player) {
     }
     return false;
 }
-
 bool isWallOrDoor(int x, int y) {
     if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) return false;
-    return grid[y][x].hasWall;
+return grid[y][x].structureType != 0;
+
 }
 
 Enclosure detectEnclosure(int startX, int startY) {

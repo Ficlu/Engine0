@@ -55,32 +55,68 @@ void loadMapChunk(const char* mapData, int chunkX, int chunkY, Chunk* chunk) {
             int mapIndex = mapY * GRID_SIZE + mapX;
             printf("%c", mapData[mapIndex]);
 
+            // Initialize the entire cell to 0
+            chunk->cells[y][x].flags = 0;
+            chunk->cells[y][x].terrainType = 0;
+            chunk->cells[y][x].structureType = 0;
+            chunk->cells[y][x].biomeType = 0;
+            chunk->cells[y][x].wallTexX = 0.0f;
+            chunk->cells[y][x].wallTexY = 0.0f;
+
             char terrainChar = mapData[mapIndex];
             TerrainType terrain = charToTerrain(terrainChar);
-
-            chunk->cells[y][x].terrainType = terrain;
-            chunk->cells[y][x].isWalkable = (terrain != TERRAIN_WATER);
-            chunk->cells[y][x].hasWall = false;  // Initialize wall state
-
-            switch (terrain) {
-                case TERRAIN_WATER: chunk->cells[y][x].biomeType = BIOME_OCEAN; break;
-                case TERRAIN_SAND: chunk->cells[y][x].biomeType = BIOME_BEACH; break;
-                case TERRAIN_GRASS: chunk->cells[y][x].biomeType = BIOME_PLAINS; break;
-                case TERRAIN_DIRT: chunk->cells[y][x].biomeType = BIOME_FOREST; break;
-                case TERRAIN_STONE: chunk->cells[y][x].biomeType = BIOME_MOUNTAINS; break;
-                default: chunk->cells[y][x].biomeType = BIOME_PLAINS; break;
+            
+            // Validate terrain value
+            if ((uint8_t)terrain > UINT8_MAX) {
+                printf("ERROR: Invalid terrain value detected. Using TERRAIN_GRASS as fallback.\n");
+                terrain = TERRAIN_GRASS;
             }
+
+            chunk->cells[y][x].terrainType = (uint8_t)terrain;
+            GRIDCELL_SET_WALKABLE(chunk->cells[y][x], (terrain != TERRAIN_WATER));
+            GRIDCELL_SET_ORIENTATION(chunk->cells[y][x], 0);
+            chunk->cells[y][x].flags &= ~0xE0;  // Clear reserved bits
+
+            uint8_t biomeValue;
+            switch (terrain) {
+                case TERRAIN_WATER:
+                    biomeValue = (uint8_t)BIOME_OCEAN;
+                    break;
+                case TERRAIN_SAND:
+                    biomeValue = (uint8_t)BIOME_BEACH;
+                    break;
+                case TERRAIN_GRASS:
+                    biomeValue = (uint8_t)BIOME_PLAINS;
+                    break;
+                case TERRAIN_DIRT:
+                    biomeValue = (uint8_t)BIOME_FOREST;
+                    break;
+                case TERRAIN_STONE:
+                    biomeValue = (uint8_t)BIOME_MOUNTAINS;
+                    break;
+                default:
+                    biomeValue = (uint8_t)BIOME_PLAINS;
+                    break;
+            }
+
+            // Validate biome value
+            if (biomeValue > UINT8_MAX) {
+                printf("ERROR: Invalid biome value detected. Using BIOME_PLAINS as fallback.\n");
+                biomeValue = (uint8_t)BIOME_PLAINS;
+            }
+            chunk->cells[y][x].biomeType = biomeValue;
         }
 
         if (chunkX % 5 == 0 && chunkY % 5 == 0) {
             printf("Chunk row %d: ", y);
             for (int x = 0; x < CHUNK_SIZE; x++) {
-                printf("%c ", terrainToChar(chunk->cells[y][x].terrainType));
+                printf("%c ", terrainToChar((TerrainType)chunk->cells[y][x].terrainType));
             }
             printf("\n");
         }
     }
 }
+
 void generateTerrainFromASCII(const char* asciiMap) {
     for (int chunkY = 0; chunkY < NUM_CHUNKS; chunkY++) {
         for (int chunkX = 0; chunkX < NUM_CHUNKS; chunkX++) {
@@ -98,11 +134,11 @@ void generateTerrainFromASCII(const char* asciiMap) {
 // Keep existing functions unchanged
 TerrainType charToTerrain(char c) {
     switch(c) {
-        case CHAR_WATER: return TERRAIN_WATER; // e.g. '0' or '~'
-        case CHAR_SAND:  return TERRAIN_SAND;  // e.g. '.'
-        case CHAR_GRASS: return TERRAIN_GRASS; // e.g. '3'
-        case CHAR_STONE: return TERRAIN_STONE; // e.g. '4'
-        default:         return TERRAIN_GRASS; // fallback
+        case CHAR_WATER: return (TerrainType)TERRAIN_WATER; // e.g. '0' or '~'
+        case CHAR_SAND:  return (TerrainType)TERRAIN_SAND;  // e.g. '.'
+        case CHAR_GRASS: return (TerrainType)TERRAIN_GRASS; // e.g. '3'
+        case CHAR_STONE: return (TerrainType)TERRAIN_STONE; // e.g. '4'
+        default:         return (TerrainType)TERRAIN_GRASS; // fallback
     }
 }
 
@@ -127,7 +163,8 @@ void saveGridAsASCII(const char* filename) {
 
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
-            fputc(terrainToChar(grid[y][x].terrainType), file);
+            fputc(terrainToChar((TerrainType)grid[y][x].terrainType), file);
+
         }
         fputc('\n', file);
     }

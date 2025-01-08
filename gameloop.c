@@ -192,8 +192,8 @@ void InitializeGameState(bool isNewGame) {
             
             // Check if position is valid (not on wall, walkable, and loaded)
             if (isPositionInLoadedChunk(enemyGridX, enemyGridY) &&
-                !grid[enemyGridY][enemyGridX].hasWall &&
-                grid[enemyGridY][enemyGridX].isWalkable) {
+                grid[enemyGridY][enemyGridX].structureType != STRUCTURE_WALL &&
+                GRIDCELL_IS_WALKABLE(grid[enemyGridY][enemyGridX])) {
                 validPosition = true;
             }
             
@@ -230,8 +230,9 @@ void InitializeGameState(bool isNewGame) {
                         int gridY = startY + y;
                         if (gridX >= 0 && gridX < GRID_SIZE && 
                             gridY >= 0 && gridY < GRID_SIZE) {
-                            grid[gridY][gridX].terrainType = TERRAIN_UNLOADED;
-                            grid[gridY][gridX].isWalkable = false;
+                            grid[gridY][gridX].terrainType = (uint8_t)TERRAIN_UNLOADED;
+                            GRIDCELL_SET_WALKABLE(grid[y][x], false);
+
                         }
                     }
                 }
@@ -526,7 +527,8 @@ void CleanUp() {
 
 bool westIsCorner(int x, int y) {
     if (x <= 0) return false;
-    if (!grid[y][x-1].hasWall) return false;
+    if (grid[y][x-1].structureType != STRUCTURE_WALL) return false;
+
     
     float texY = grid[y][x-1].wallTexY;
     return (texY == 0.0f/4.0f) ||    // Top corners row
@@ -535,7 +537,7 @@ bool westIsCorner(int x, int y) {
 
 bool eastIsCorner(int x, int y) {
     if (x >= GRID_SIZE-1) return false; 
-    if (!grid[y][x+1].hasWall) return false;
+    if (grid[y][x+1].structureType != STRUCTURE_WALL) return false;
 
     float texY = grid[y][x+1].wallTexY;
     return (texY == 0.0f/4.0f) ||    // Top corners row
@@ -637,7 +639,7 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
 
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
-            if (grid[y][x].terrainType == TERRAIN_UNLOADED) {
+            if (grid[y][x].terrainType == (uint8_t)TERRAIN_UNLOADED) {
                 continue;
             }
 
@@ -660,15 +662,15 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
             float texHeight = 1.0f / 6.0f;
 
             switch (grid[y][x].terrainType) {
-                case TERRAIN_SAND:
+                case (uint8_t)TERRAIN_SAND:
                     texX = 0.0f / 3.0f;
                     texY = 4.0f / 6.0f;
                     break;
-                case TERRAIN_WATER:
+                case (uint8_t)TERRAIN_WATER:
                     texX = 1.0f / 3.0f;
                     texY = 4.0f / 6.0f;
                     break;
-                case TERRAIN_GRASS:
+                case (uint8_t)TERRAIN_GRASS:
                     texX = 2.0f / 3.0f;
                     texY = 4.0f / 6.0f;
                     break;
@@ -712,11 +714,13 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
             batchData[dataIndex++] = texX;
             batchData[dataIndex++] = texY;
 
-            if (grid[y][x].hasWall) {
+            // Render any structure (wall or door)
+            if (grid[y][x].structureType != 0) {
                 float wallTexX = grid[y][x].wallTexX;
                 float wallTexY = grid[y][x].wallTexY;
+                uint8_t orientation = GRIDCELL_GET_ORIENTATION(grid[y][x]);
 
-                // First triangle for wall
+                // First triangle for structure
                 batchData[dataIndex++] = posX - halfSize;
                 batchData[dataIndex++] = posY - halfSize;
                 batchData[dataIndex++] = wallTexX;
@@ -732,7 +736,7 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
                 batchData[dataIndex++] = wallTexX;
                 batchData[dataIndex++] = wallTexY + texHeight;
 
-                // Second triangle for wall
+                // Second triangle for structure
                 batchData[dataIndex++] = posX + halfSize;
                 batchData[dataIndex++] = posY - halfSize;
                 batchData[dataIndex++] = wallTexX + texWidth;
@@ -760,10 +764,7 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
     if (isPointVisible(player.entity.finalGoalX, player.entity.finalGoalY, playerWorldX, playerWorldY, zoomFactor)) {
         drawTargetTileOutline(player.entity.finalGoalX, player.entity.finalGoalY, cameraOffsetX, cameraOffsetY, zoomFactor);
     }
-
-    //printf("Tiles rendered: %d, Tiles culled: %d\n", renderedTiles, culledTiles);
 }
-
 
 /*
  * RenderEntities

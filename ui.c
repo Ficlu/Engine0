@@ -75,8 +75,6 @@ void RenderUI(const Player* player, GLuint shaderProgram) {
     GLint flashLoc = glGetUniformLocation(shaderProgram, "flashIntensity");
     glUniform1f(flashLoc, expGainFlashIntensity);
 
-    printf("Level %d - Progress: %.1f%%\n", currentLevel, fillAmount * 100.0f);
-
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     

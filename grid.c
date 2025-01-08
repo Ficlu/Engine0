@@ -37,12 +37,12 @@ void initializeGrid(int size) {
         for (int x = 0; x < size; x++) {
             grid[y][x].terrainType = TERRAIN_GRASS;
             grid[y][x].biomeType = BIOME_PLAINS;
-            grid[y][x].isWalkable = true;
-            grid[y][x].hasWall = false;
+            GRIDCELL_SET_WALKABLE(grid[y][x], true);
+            grid[y][x].structureType = 0; // Assuming 0 represents no structure
+            GRIDCELL_SET_ORIENTATION(grid[y][x], 0);
+            grid[y][x].flags &= 0x1F; // Clear reserved bits
             grid[y][x].wallTexX = 0.0f / 3.0f;  // Default wall texture coordinates
             grid[y][x].wallTexY = 1.0f / 4.0f;  // Vertical wall texture (default)
-            grid[y][x].isDoorOpen = false;  // Add this line
-
         }
     }
     printf("Grid initialized with size %d x %d\n", size, size);
@@ -73,7 +73,8 @@ bool isWalkable(int x, int y) {
     if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) {
         return false;
     }
-    return grid[y][x].isWalkable;
+    return GRIDCELL_IS_WALKABLE(grid[y][x]);
+
 }
 
 /*
@@ -125,7 +126,6 @@ void debugPrintGridSection(int startX, int startY, int width, int height) {
     printf("\n");
 }
 
-// Modify writeChunkToGrid in grid.c:
 void writeChunkToGrid(const Chunk* chunk) {
     int startX = chunk->chunkX * CHUNK_SIZE;
     int startY = chunk->chunkY * CHUNK_SIZE;
@@ -136,24 +136,27 @@ void writeChunkToGrid(const Chunk* chunk) {
             int gridY = startY + y;
             
             if (gridX < GRID_SIZE && gridY < GRID_SIZE) {
-                // Preserve wall data if it exists
-                bool hadWall = grid[gridY][gridX].hasWall;
-                bool wasWalkable = grid[gridY][gridX].isWalkable;
+                // Preserve existing structure data
+                uint8_t oldStructureType = grid[gridY][gridX].structureType;
+                uint8_t oldOrientation = GRIDCELL_GET_ORIENTATION(grid[gridY][gridX]);
+                bool wasWalkable = GRIDCELL_IS_WALKABLE(grid[gridY][gridX]);
                 float oldTexX = grid[gridY][gridX].wallTexX;
                 float oldTexY = grid[gridY][gridX].wallTexY;
-                bool wasDoorOpen = grid[gridY][gridX].isDoorOpen;
                 
-                // Update terrain data from chunk
+                // Update the grid cell with new chunk data
                 grid[gridY][gridX] = chunk->cells[y][x];
                 
-                // Restore wall data if there was a wall
-                if (hadWall) {
-                    grid[gridY][gridX].hasWall = true;
-                    grid[gridY][gridX].isWalkable = wasWalkable;
+                // Restore structure data if it existed
+                if (oldStructureType != 0) {
+                    grid[gridY][gridX].structureType = oldStructureType;
+                    GRIDCELL_SET_ORIENTATION(grid[gridY][gridX], oldOrientation);
+                    GRIDCELL_SET_WALKABLE(grid[gridY][gridX], wasWalkable);
                     grid[gridY][gridX].wallTexX = oldTexX;
                     grid[gridY][gridX].wallTexY = oldTexY;
-                    grid[gridY][gridX].isDoorOpen = wasDoorOpen;
                 }
+                
+                // Ensure reserved bits are clear
+                grid[gridY][gridX].flags &= 0x1F;
             }
         }
     }
@@ -179,7 +182,8 @@ void generateTerrain() {
     for (int y = centerY - 1; y <= centerY + 1; y++) {
         for (int x = centerX - 1; x <= centerX + 1; x++) {
             if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
-                grid[y][x].isWalkable = true;
+                GRIDCELL_SET_WALKABLE(grid[y][x], true);
+
                 if (grid[y][x].terrainType == TERRAIN_WATER || 
                     grid[y][x].terrainType == TERRAIN_UNWALKABLE) {
                     grid[y][x].terrainType = TERRAIN_GRASS;
@@ -299,8 +303,10 @@ void initChunkManager(ChunkManager* manager, int loadRadius) {
                 for (int x = 0; x < CHUNK_SIZE; x++) {
                     manager->storedChunkData[cy][cx][y][x].terrainType = TERRAIN_GRASS;
                     manager->storedChunkData[cy][cx][y][x].biomeType = BIOME_PLAINS;
-                    manager->storedChunkData[cy][cx][y][x].isWalkable = true;
-                    manager->storedChunkData[cy][cx][y][x].hasWall = false;
+                    GRIDCELL_SET_WALKABLE(manager->storedChunkData[cy][cx][y][x], true);
+                    manager->storedChunkData[cy][cx][y][x].structureType = 0;
+                    GRIDCELL_SET_ORIENTATION(manager->storedChunkData[cy][cx][y][x], 0);
+                    manager->storedChunkData[cy][cx][y][x].flags &= 0x1F;
                 }
             }
         }
@@ -320,8 +326,10 @@ void initializeChunk(Chunk* chunk, int chunkX, int chunkY) {
         for (int x = 0; x < CHUNK_SIZE; x++) {
             chunk->cells[y][x].terrainType = TERRAIN_GRASS;
             chunk->cells[y][x].biomeType = BIOME_PLAINS;
-            chunk->cells[y][x].isWalkable = true;
-            chunk->cells[y][x].hasWall = false;  // Initialize wall state
+            GRIDCELL_SET_WALKABLE(chunk->cells[y][x], true);
+            chunk->cells[y][x].structureType = 0;
+            GRIDCELL_SET_ORIENTATION(chunk->cells[y][x], 0);
+            chunk->cells[y][x].flags &= 0x1F; // Clear reserved bits
         }
     }
 
@@ -435,7 +443,8 @@ void loadChunksAroundPlayer(ChunkManager* manager) {
                         manager->storedChunkData[chunkY][chunkX][y][x] = grid[gridY][gridX];
                         // Mark grid as unloaded
                         grid[gridY][gridX].terrainType = TERRAIN_UNLOADED;
-                        grid[gridY][gridX].isWalkable = false;
+                        GRIDCELL_SET_WALKABLE(grid[gridY][gridX], false);
+
                     }
                 }
             }

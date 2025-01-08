@@ -42,7 +42,6 @@ bool saveGameState(const char* filename) {
     fwrite(&posX, sizeof(float), 1, file);
     fwrite(&posY, sizeof(float), 1, file);
 
-    // Save player skills
     printf("[DEBUG] Saving player skills\n");
     float constructionExp = player.skills.constructionExp;
     fwrite(&constructionExp, sizeof(float), 1, file);
@@ -51,7 +50,7 @@ bool saveGameState(const char* filename) {
     uint32_t structureCount = 0;
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
-            if (grid[y][x].hasWall) {
+            if (grid[y][x].structureType != STRUCTURE_NONE) {
                 structureCount++;
             }
         }
@@ -62,24 +61,25 @@ bool saveGameState(const char* filename) {
 
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
-            if (grid[y][x].hasWall) {
+            if (grid[y][x].structureType != STRUCTURE_NONE) {
                 uint16_t structX = (uint16_t)x;
                 uint16_t structY = (uint16_t)y;
-                uint8_t flags = 0;
-                flags |= grid[y][x].isWalkable ? 1 : 0;
-                flags |= grid[y][x].isDoorOpen ? 2 : 0;
+                uint8_t flags = grid[y][x].flags;
+                uint8_t structureType = grid[y][x].structureType;
                 float texX = grid[y][x].wallTexX;
                 float texY = grid[y][x].wallTexY;
 
                 fwrite(&structX, sizeof(uint16_t), 1, file);
                 fwrite(&structY, sizeof(uint16_t), 1, file);
                 fwrite(&flags, sizeof(uint8_t), 1, file);
+                fwrite(&structureType, sizeof(uint8_t), 1, file);
                 fwrite(&texX, sizeof(float), 1, file);
                 fwrite(&texY, sizeof(float), 1, file);
             }
         }
     }
 
+    // Rest of the enclosure saving code remains the same
     printf("[DEBUG] Saving enclosures\n");
     uint32_t enclosureCount = (uint32_t)globalEnclosureManager.count;
     fwrite(&enclosureCount, sizeof(uint32_t), 1, file);
@@ -118,7 +118,6 @@ bool loadGameState(const char* filename) {
         return false;
     }
 
-    // 1. Version check
     char magic[5] = {0};
     uint32_t version;
     uint32_t timestamp;
@@ -133,7 +132,6 @@ bool loadGameState(const char* filename) {
         return false;
     }
 
-    // 2. Load player state
     int32_t playerGridX, playerGridY;
     float playerPosX, playerPosY;
     
@@ -142,45 +140,39 @@ bool loadGameState(const char* filename) {
     fread(&playerPosX, sizeof(playerPosX), 1, file);
     fread(&playerPosY, sizeof(playerPosY), 1, file);
 
-    // Load player skills
     float constructionExp;
     fread(&constructionExp, sizeof(constructionExp), 1, file);
     player.skills.constructionExp = constructionExp;
 
-    // 3. Load all structures
     uint32_t structureCount;
     fread(&structureCount, sizeof(structureCount), 1, file);
     
     for (uint32_t i = 0; i < structureCount; i++) {
         uint16_t structX, structY;
         uint8_t flags;
+        uint8_t structureType;
         float texX, texY;
 
         fread(&structX, sizeof(structX), 1, file);
         fread(&structY, sizeof(structY), 1, file);
         fread(&flags, sizeof(flags), 1, file);
+        fread(&structureType, sizeof(structureType), 1, file);
         fread(&texX, sizeof(texX), 1, file);
         fread(&texY, sizeof(texY), 1, file);
 
-    if (structX < GRID_SIZE && structY < GRID_SIZE) {
-        grid[structY][structX].hasWall = true;
-        bool isDoorOpen = (flags & 2) != 0;
-        grid[structY][structX].isDoorOpen = isDoorOpen;
-        grid[structY][structX].isWalkable = false;  // TODO change attrib name to differ from getter function
-        
-        if (isDoorOpen && (grid[structY][structX].wallTexY == 1.0f/6.0f)) {  // TODO: use the constant def in structures 
-            grid[structY][structX].isWalkable = true;  // Only then make it walkable
+        if (structX < GRID_SIZE && structY < GRID_SIZE) {
+            grid[structY][structX].flags = flags;
+            grid[structY][structX].structureType = structureType;
+            grid[structY][structX].wallTexX = texX;
+            grid[structY][structX].wallTexY = texY;
+            
+            printf("Loaded structure at (%d,%d): structType=%d, isWalkable=%d texY=%f\n", 
+                structX, structY, structureType, 
+                GRIDCELL_IS_WALKABLE(grid[structY][structX]), texY);
         }
-        
-        grid[structY][structX].wallTexX = texX;
-        grid[structY][structX].wallTexY = texY;
-        
-        printf("Loaded structure at (%d,%d): isDoor=%d, isWalkable=%d texY=%f\n", 
-            structX, structY, isDoorOpen, grid[structY][structX].isWalkable, texY);
-    }
     }
 
-    // 4. Load enclosures
+    // Rest of enclosure loading remains the same
     uint32_t enclosureCount;
     fread(&enclosureCount, sizeof(enclosureCount), 1, file);
     printf("Loading %d enclosures\n", enclosureCount);
@@ -218,7 +210,6 @@ bool loadGameState(const char* filename) {
         free(enclosure.interiorTiles);
     }
 
-    // 5. Apply player state
     atomic_store(&player.entity.gridX, playerGridX);
     atomic_store(&player.entity.gridY, playerGridY);
     atomic_store(&player.entity.posX, playerPosX);

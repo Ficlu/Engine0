@@ -3,8 +3,8 @@
 
 typedef enum {
     STRUCTURE_NONE = 0,
-    STRUCTURE_WALL,
-    STRUCTURE_DOOR,
+    STRUCTURE_WALL = 1,
+    STRUCTURE_DOOR = 2,
     STRUCTURE_COUNT
 } StructureType;
 
