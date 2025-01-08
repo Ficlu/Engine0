@@ -5,6 +5,7 @@ typedef enum {
     STRUCTURE_NONE = 0,
     STRUCTURE_WALL = 1,
     STRUCTURE_DOOR = 2,
+    STRUCTURE_PLANT = 3,
     STRUCTURE_COUNT
 } StructureType;
 
