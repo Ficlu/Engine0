@@ -3,6 +3,20 @@
 
 #include "entity.h"
 #include "structure_types.h"
+
+// Define available skills
+typedef enum {
+    SKILL_CONSTRUCTION = 0,
+    SKILL_FORAGING = 1,
+    SKILL_COUNT
+} SkillType;
+
+// Skill data structure
+typedef struct {
+    uint32_t levels[SKILL_COUNT];     // Whole number levels for each skill
+    float experience[SKILL_COUNT];     // Fractional experience for smooth bar movement
+} Skills;
+
 typedef struct {
     Entity entity;
     float cameraTargetX;
@@ -13,18 +27,21 @@ typedef struct {
     float lookAheadX;
     float lookAheadY;
     float zoomFactor;
-    int targetBuildX;      // New: Coordinates where we want to build
-    int targetBuildY;      // New: Coordinates where we want to build
-    bool hasBuildTarget;   // New: Flag to indicate if we have a pending build
-    StructureType pendingBuildType; 
-        struct {
-        uint32_t construction;    // Using uint32_t for efficient memory alignment
-        float constructionExp;    // Fractional part for smooth bar movement
-    } skills;
+    int targetBuildX;
+    int targetBuildY;
+    bool hasBuildTarget;
+    StructureType pendingBuildType;
+    Skills skills;  // Replace the individual skill fields with unified Skills struct
 } Player;
 
 void InitPlayer(Player* player, int startGridX, int startGridY, float speed);
 void UpdatePlayer(Player* player, Entity** allEntities, int entityCount);
 void CleanupPlayer(Player* player);
+
+// New skill-related function declarations
+float getSkillExp(const Player* player, SkillType skill);
+uint32_t getSkillLevel(const Player* player, SkillType skill);
+void awardSkillExp(Player* player, SkillType skill, float amount);
+const char* getSkillName(SkillType skill);
 
 #endif // PLAYER_H

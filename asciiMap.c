@@ -38,85 +38,93 @@ char* loadASCIIMap(const char* filename) {
     return loadedMapData;
 }
 void loadMapChunk(const char* mapData, int chunkX, int chunkY, Chunk* chunk) {
-    // Only log when chunkX and chunkY are divisible by 5
-    if (chunkX % 5 == 0 && chunkY % 5 == 0) {
-        printf("\nLoading chunk (%d,%d):\n", chunkX, chunkY);
-        printf("Chunk starting at map index: %d\n", chunkY * CHUNK_SIZE * GRID_SIZE + chunkX * CHUNK_SIZE);
-        
-        int startIndex = (chunkY * CHUNK_SIZE * GRID_SIZE) + (chunkX * CHUNK_SIZE);
-        printf("First char in chunk: %c\n", mapData[startIndex]);
-    }
+   // Only log when chunkX and chunkY are divisible by 5
+   if (chunkX % 5 == 0 && chunkY % 5 == 0) {
+       printf("\nLoading chunk (%d,%d):\n", chunkX, chunkY);
+       printf("Chunk starting at map index: %d\n", chunkY * CHUNK_SIZE * GRID_SIZE + chunkX * CHUNK_SIZE);
+       
+       int startIndex = (chunkY * CHUNK_SIZE * GRID_SIZE) + (chunkX * CHUNK_SIZE);
+       printf("First char in chunk: %c (ASCII value: %d)\n", mapData[startIndex], mapData[startIndex]);
+   }
 
-    printf("\nLoading chunk (%d,%d) - Raw map data:\n", chunkX, chunkY);
-    for (int y = 0; y < CHUNK_SIZE; y++) {
-        for (int x = 0; x < CHUNK_SIZE; x++) {
-            int mapX = chunkX * CHUNK_SIZE + x;
-            int mapY = chunkY * CHUNK_SIZE + y;
-            int mapIndex = mapY * GRID_SIZE + mapX;
-            printf("%c", mapData[mapIndex]);
+   printf("\nLoading chunk (%d,%d) - Raw map data:\n", chunkX, chunkY);
+   for (int y = 0; y < CHUNK_SIZE; y++) {
+       for (int x = 0; x < CHUNK_SIZE; x++) {
+           int mapX = chunkX * CHUNK_SIZE + x;
+           int mapY = chunkY * CHUNK_SIZE + y;
+           int mapIndex = mapY * GRID_SIZE + mapX;
+           
+           char terrainChar = mapData[mapIndex];
+           printf("%c", terrainChar);
 
-            // Initialize the entire cell to 0
-            chunk->cells[y][x].flags = 0;
-            chunk->cells[y][x].terrainType = 0;
-            chunk->cells[y][x].structureType = 0;
-            chunk->cells[y][x].biomeType = 0;
-            chunk->cells[y][x].wallTexX = 0.0f;
-            chunk->cells[y][x].wallTexY = 0.0f;
+           // Initialize the cell
+           chunk->cells[y][x].flags = 0;
+           chunk->cells[y][x].structureType = 0;
+           chunk->cells[y][x].biomeType = 0;
+           chunk->cells[y][x].materialType = 0;
+           chunk->cells[y][x].wallTexX = 0.0f;
+           chunk->cells[y][x].wallTexY = 0.0f;
 
-            char terrainChar = mapData[mapIndex];
-            TerrainType terrain = charToTerrain(terrainChar);
-            
-            // Validate terrain value
-            if ((uint8_t)terrain > UINT8_MAX) {
-                printf("ERROR: Invalid terrain value detected. Using TERRAIN_GRASS as fallback.\n");
-                terrain = TERRAIN_GRASS;
-            }
+           // Add debug prints before and after terrain assignment
+           
+           // Explicitly set terrain type based on character
+           uint8_t assignedType;
+           if (terrainChar == CHAR_GRASS) {
+               assignedType = TERRAIN_GRASS;
+           }
+           else if (terrainChar == CHAR_SAND) {
+               assignedType = TERRAIN_SAND;
+           }
+           else if (terrainChar == CHAR_WATER) {
+               assignedType = TERRAIN_WATER;
+           }
+           else if (terrainChar == CHAR_STONE) {
+               assignedType = TERRAIN_STONE;
+           }
+           else {
+               printf("Warning: Unknown terrain char '%c' at (%d,%d)\n", terrainChar, mapX, mapY);
+               assignedType = TERRAIN_GRASS;
+               printf("Defaulting to GRASS terrain (%d)\n", assignedType);
+           }
 
-            chunk->cells[y][x].terrainType = (uint8_t)terrain;
-            GRIDCELL_SET_WALKABLE(chunk->cells[y][x], (terrain != TERRAIN_WATER));
-            GRIDCELL_SET_ORIENTATION(chunk->cells[y][x], 0);
-            chunk->cells[y][x].flags &= ~0xE0;  // Clear reserved bits
+           chunk->cells[y][x].terrainType = assignedType;
 
-            uint8_t biomeValue;
-            switch (terrain) {
-                case TERRAIN_WATER:
-                    biomeValue = (uint8_t)BIOME_OCEAN;
-                    break;
-                case TERRAIN_SAND:
-                    biomeValue = (uint8_t)BIOME_BEACH;
-                    break;
-                case TERRAIN_GRASS:
-                    biomeValue = (uint8_t)BIOME_PLAINS;
-                    break;
-                case TERRAIN_DIRT:
-                    biomeValue = (uint8_t)BIOME_FOREST;
-                    break;
-                case TERRAIN_STONE:
-                    biomeValue = (uint8_t)BIOME_MOUNTAINS;
-                    break;
-                default:
-                    biomeValue = (uint8_t)BIOME_PLAINS;
-                    break;
-            }
+           GRIDCELL_SET_WALKABLE(chunk->cells[y][x], (chunk->cells[y][x].terrainType != TERRAIN_WATER));
+           GRIDCELL_SET_ORIENTATION(chunk->cells[y][x], 0);
+           chunk->cells[y][x].flags &= ~0xE0;  // Clear reserved bits
 
-            // Validate biome value
-            if (biomeValue > UINT8_MAX) {
-                printf("ERROR: Invalid biome value detected. Using BIOME_PLAINS as fallback.\n");
-                biomeValue = (uint8_t)BIOME_PLAINS;
-            }
-            chunk->cells[y][x].biomeType = biomeValue;
-        }
+           uint8_t biomeValue;
+           switch (chunk->cells[y][x].terrainType) {
+               case TERRAIN_WATER:
+                   biomeValue = (uint8_t)BIOME_OCEAN;
+                   break;
+               case TERRAIN_SAND:
+                   biomeValue = (uint8_t)BIOME_BEACH;
+                   break;
+               case TERRAIN_GRASS:
+                   biomeValue = (uint8_t)BIOME_PLAINS;
+                   break;
+               case TERRAIN_DIRT:
+                   biomeValue = (uint8_t)BIOME_FOREST;
+                   break;
+               case TERRAIN_STONE:
+                   biomeValue = (uint8_t)BIOME_MOUNTAINS;
+                   break;
+               default:
+                   biomeValue = (uint8_t)BIOME_PLAINS;
+                   break;
+           }
 
-        if (chunkX % 5 == 0 && chunkY % 5 == 0) {
-            printf("Chunk row %d: ", y);
-            for (int x = 0; x < CHUNK_SIZE; x++) {
-                printf("%c ", terrainToChar((TerrainType)chunk->cells[y][x].terrainType));
-            }
-            printf("\n");
-        }
-    }
+           // Validate biome value
+           if (biomeValue > UINT8_MAX) {
+               printf("ERROR: Invalid biome value detected. Using BIOME_PLAINS as fallback.\n");
+               biomeValue = (uint8_t)BIOME_PLAINS;
+           }
+           chunk->cells[y][x].biomeType = biomeValue;
+       }
+       printf("\n");
+   }
 }
-
 void generateTerrainFromASCII(const char* asciiMap) {
     for (int chunkY = 0; chunkY < NUM_CHUNKS; chunkY++) {
         for (int chunkX = 0; chunkX < NUM_CHUNKS; chunkX++) {

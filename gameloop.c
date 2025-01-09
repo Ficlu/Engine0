@@ -134,117 +134,160 @@ void Initialize(void) {
 }
 
 void InitializeGameState(bool isNewGame) {
-    printf("Initializing game state...\n");
+   printf("Initializing game state...\n");
 
-    // Set grid size (still uses a fixed 40 in your code)
-    setGridSize(40);
+   setGridSize(40);
 
-    // Initialize the chunk manager first, but DO NOT load chunks yet
-    globalChunkManager = (ChunkManager*)malloc(sizeof(ChunkManager));
-    if (!globalChunkManager) {
-        fprintf(stderr, "Failed to allocate chunk manager\n");
-        exit(1);
-    }
-    initChunkManager(globalChunkManager, 1); // e.g. loadRadius=2
-    printf("Chunk manager initialized.\n");
+   globalChunkManager = (ChunkManager*)malloc(sizeof(ChunkManager));
+   if (!globalChunkManager) {
+       fprintf(stderr, "Failed to allocate chunk manager\n");
+       exit(1);
+   }
+   initChunkManager(globalChunkManager, 1);
+   printf("Chunk manager initialized.\n");
 
-    // Initialize enclosure manager
-    initEnclosureManager(&globalEnclosureManager);
-    printf("Enclosure manager initialized.\n");
+   initEnclosureManager(&globalEnclosureManager);
+   printf("Enclosure manager initialized.\n");
 
-    // Initialize the global grid to some defaults
-    initializeGrid(GRID_SIZE);
-    printf("Grid initialized.\n");
+   if (isNewGame) {
+       // Load and apply ASCII map first
+       char* asciiMap = loadASCIIMap("testmap.txt");
+       if (!asciiMap) {
+           fprintf(stderr, "Failed to load test map!\n");
+           exit(1);
+       }
+       printf("ASCII map loaded successfully.\n");
 
-    if (isNewGame) {
-        // Load ASCII map from file
-        char* asciiMap = loadASCIIMap("testmap.txt");
-        if (!asciiMap) {
-            fprintf(stderr, "Failed to load test map!\n");
-            exit(1);
-        }
-        printf("ASCII map loaded successfully.\n");
+       // Generate terrain from ASCII map
+       generateTerrainFromASCII(asciiMap);
+       printf("Terrain generated from ASCII map.\n");
 
-        // Initialize the player in the center for new game
-        int playerGridX = GRID_SIZE / 2;
-        int playerGridY = GRID_SIZE / 2;
-        InitPlayer(&player, playerGridX, playerGridY, MOVE_SPEED);
-        printf("Player initialized at (%d, %d).\n", playerGridX, playerGridY);
-    }
+       // Now initialize other grid properties but NOT terrain
+       for (int y = 0; y < GRID_SIZE; y++) {
+           for (int x = 0; x < GRID_SIZE; x++) {
+               // Don't touch terrainType, it's already set
+               grid[y][x].structureType = 0;
+               grid[y][x].materialType = 0;
+               grid[y][x].biomeType = BIOME_PLAINS;  // This should probably be based on terrain type
+               GRIDCELL_SET_WALKABLE(grid[y][x], grid[y][x].terrainType != TERRAIN_WATER);
+               GRIDCELL_SET_ORIENTATION(grid[y][x], 0);
+               grid[y][x].flags &= ~0xE0;  // Clear reserved bits
+               grid[y][x].wallTexX = 0.0f;
+               grid[y][x].wallTexY = 0.0f;
+           }
+       }
 
-    // Now that the player is placed, do the initial chunk load
-    ChunkCoord playerStartChunk = getChunkFromWorldPos(player.entity.gridX, player.entity.gridY);
-    globalChunkManager->playerChunk = playerStartChunk;
-    loadChunksAroundPlayer(globalChunkManager);
-    printf("Initial chunks loaded around player.\n");
+       int playerGridX = GRID_SIZE / 2;
+       int playerGridY = GRID_SIZE / 2;
+       InitPlayer(&player, playerGridX, playerGridY, MOVE_SPEED);
+       printf("Player initialized at (%d, %d).\n", playerGridX, playerGridY);
+   }
 
-    // Initialize enemies - now handled consistently for both new game and load
-    allEntities[0] = &player.entity;
-    for (int i = 0; i < MAX_ENEMIES; i++) {
-        int enemyGridX, enemyGridY;
-        int attempts = 0;
-        const int MAX_ATTEMPTS = 1000;
-        bool validPosition = false;
-        
-        do {
-            enemyGridX = rand() % GRID_SIZE;
-            enemyGridY = rand() % GRID_SIZE;
-            attempts++;
-            
-            // Check if position is valid (not on wall, walkable, and loaded)
-            if (isPositionInLoadedChunk(enemyGridX, enemyGridY) &&
-                grid[enemyGridY][enemyGridX].structureType != STRUCTURE_WALL &&
-                GRIDCELL_IS_WALKABLE(grid[enemyGridY][enemyGridX])) {
-                validPosition = true;
-            }
-            
-            if (attempts >= MAX_ATTEMPTS) {
-                fprintf(stderr, "Warning: Could not find valid spawn location for enemy %d after %d attempts\n", 
-                        i, MAX_ATTEMPTS);
-                enemyGridX = player.entity.gridX + (rand() % 3) - 1;  // Near player as fallback
-                enemyGridY = player.entity.gridY + (rand() % 3) - 1;
-                break;
-            }
-        } while (!validPosition);
+   ChunkCoord playerStartChunk = getChunkFromWorldPos(player.entity.gridX, player.entity.gridY);
+   globalChunkManager->playerChunk = playerStartChunk;
+   loadChunksAroundPlayer(globalChunkManager);
+   printf("Initial chunks loaded around player.\n");
 
-        InitEnemy(&enemies[i], enemyGridX, enemyGridY, MOVE_SPEED);
-        allEntities[i + 1] = &enemies[i].entity;
-        printf("Enemy %d initialized at (%d, %d).\n", i, enemyGridX, enemyGridY);
-    }
-    
-    // Apply initial chunk culling (needed for both new game and load)
-    ChunkCoord playerChunk = getChunkFromWorldPos(player.entity.gridX, player.entity.gridY);
-    int radius = globalChunkManager->loadRadius;
-    
-    for (int cy = 0; cy < NUM_CHUNKS; cy++) {
-        for (int cx = 0; cx < NUM_CHUNKS; cx++) {
-            int dx = abs(cx - playerChunk.x);
-            int dy = abs(cy - playerChunk.y);
-            
-            if (dx > radius || dy > radius) {
-                int startX = cx * CHUNK_SIZE;
-                int startY = cy * CHUNK_SIZE;
-                
-                for (int y = 0; y < CHUNK_SIZE; y++) {
-                    for (int x = 0; x < CHUNK_SIZE; x++) {
-                        int gridX = startX + x;
-                        int gridY = startY + y;
-                        if (gridX >= 0 && gridX < GRID_SIZE && 
-                            gridY >= 0 && gridY < GRID_SIZE) {
-                            grid[gridY][gridX].terrainType = (uint8_t)TERRAIN_UNLOADED;
-                            GRIDCELL_SET_WALKABLE(grid[y][x], false);
+   // First store all current terrain data
+   for (int cy = 0; cy < NUM_CHUNKS; cy++) {
+       for (int cx = 0; cx < NUM_CHUNKS; cx++) {
+           int startX = cx * CHUNK_SIZE;
+           int startY = cy * CHUNK_SIZE;
+           
+           for (int y = 0; y < CHUNK_SIZE; y++) {
+               for (int x = 0; x < CHUNK_SIZE; x++) {
+                   int gridX = startX + x;
+                   int gridY = startY + y;
+                   if (gridX >= 0 && gridX < GRID_SIZE && 
+                       gridY >= 0 && gridY < GRID_SIZE) {
+                       globalChunkManager->storedChunkData[cy][cx][y][x] = grid[gridY][gridX];
+                   }
+               }
+           }
+           globalChunkManager->chunkHasData[cy][cx] = true;
+       }
+   }
 
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    printf("Initial chunk culling complete.\n");
-    printf("Game state initialization complete.\n");
+   allEntities[0] = &player.entity;
+   for (int i = 0; i < MAX_ENEMIES; i++) {
+       int enemyGridX, enemyGridY;
+       int attempts = 0;
+       const int MAX_ATTEMPTS = 1000;
+       bool validPosition = false;
+       
+       do {
+           enemyGridX = rand() % GRID_SIZE;
+           enemyGridY = rand() % GRID_SIZE;
+           attempts++;
+           
+           if (isPositionInLoadedChunk(enemyGridX, enemyGridY) &&
+               grid[enemyGridY][enemyGridX].structureType != STRUCTURE_WALL &&
+               GRIDCELL_IS_WALKABLE(grid[enemyGridY][enemyGridX])) {
+               validPosition = true;
+           }
+           
+           if (attempts >= MAX_ATTEMPTS) {
+               fprintf(stderr, "Warning: Could not find valid spawn location for enemy %d after %d attempts\n", 
+                       i, MAX_ATTEMPTS);
+               enemyGridX = player.entity.gridX + (rand() % 3) - 1;
+               enemyGridY = player.entity.gridY + (rand() % 3) - 1;
+               break;
+           }
+       } while (!validPosition);
+
+       InitEnemy(&enemies[i], enemyGridX, enemyGridY, MOVE_SPEED);
+       allEntities[i + 1] = &enemies[i].entity;
+       printf("Enemy %d initialized at (%d, %d).\n", i, enemyGridX, enemyGridY);
+   }
+      // Spawn ferns on grass tiles after all terrain is set
+   for (int y = 0; y < GRID_SIZE; y++) {
+       for (int x = 0; x < GRID_SIZE; x++) {
+           if (isPositionInLoadedChunk(x, y)) {
+               if (grid[y][x].terrainType == (uint8_t)TERRAIN_GRASS) {
+                   if ((float)rand() / RAND_MAX < 0.1f) {
+                       grid[y][x].structureType = STRUCTURE_PLANT;
+                       grid[y][x].materialType = FERN;
+                       GRIDCELL_SET_WALKABLE(grid[y][x], false);
+                       grid[y][x].wallTexX = 1.0f/3.0f;
+                       grid[y][x].wallTexY = 0.0f/6.0f;
+                   }
+               }
+           }
+       }
+   }
+   ChunkCoord playerChunk = getChunkFromWorldPos(player.entity.gridX, player.entity.gridY);
+   int radius = globalChunkManager->loadRadius;
+   
+   for (int cy = 0; cy < NUM_CHUNKS; cy++) {
+       for (int cx = 0; cx < NUM_CHUNKS; cx++) {
+           int dx = abs(cx - playerChunk.x);
+           int dy = abs(cy - playerChunk.y);
+           
+           if (dx > radius || dy > radius) {
+               int startX = cx * CHUNK_SIZE;
+               int startY = cy * CHUNK_SIZE;
+               
+               for (int y = 0; y < CHUNK_SIZE; y++) {
+                   for (int x = 0; x < CHUNK_SIZE; x++) {
+                       int gridX = startX + x;
+                       int gridY = startY + y;
+                       if (gridX >= 0 && gridX < GRID_SIZE && 
+                           gridY >= 0 && gridY < GRID_SIZE) {
+                           grid[gridY][gridX].terrainType = (uint8_t)TERRAIN_UNLOADED;
+                           GRIDCELL_SET_WALKABLE(grid[gridY][gridX], false);
+                       }
+                   }
+               }
+           }
+       }
+   }
+   
+   printf("Initial chunk culling complete.\n");
+
+
+
+   printf("Game state initialization complete.\n");
 }
-
 void InitializeEngine(void) {
     printf("Initializing engine systems...\n");
     
@@ -679,6 +722,10 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
                    texX = 2.0f / 3.0f;
                    texY = 4.0f / 6.0f;
                    break;
+                case (uint8_t)TERRAIN_STONE:
+                    texX = 2.0f / 3.0f;  
+                    texY = 5.0f / 6.0f; 
+                    break;
                default:
                    texX = 2.0f / 3.0f;
                    texY = 4.0f / 6.0f;
@@ -780,6 +827,7 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
        drawTargetTileOutline(player.entity.finalGoalX, player.entity.finalGoalY, cameraOffsetX, cameraOffsetY, zoomFactor);
    }
 }
+
 /*
  * RenderEntities
  *

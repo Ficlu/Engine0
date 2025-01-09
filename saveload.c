@@ -43,8 +43,10 @@ bool saveGameState(const char* filename) {
     fwrite(&posY, sizeof(float), 1, file);
 
     printf("[DEBUG] Saving player skills\n");
-    float constructionExp = player.skills.constructionExp;
-    fwrite(&constructionExp, sizeof(float), 1, file);
+    for (int i = 0; i < SKILL_COUNT; i++) {
+        fwrite(&player.skills.levels[i], sizeof(uint32_t), 1, file);
+        fwrite(&player.skills.experience[i], sizeof(float), 1, file);
+    }
 
     printf("[DEBUG] Counting and saving structures\n");
     uint32_t structureCount = 0;
@@ -66,6 +68,7 @@ bool saveGameState(const char* filename) {
                 uint16_t structY = (uint16_t)y;
                 uint8_t flags = grid[y][x].flags;
                 uint8_t structureType = grid[y][x].structureType;
+                uint8_t materialType = grid[y][x].materialType;  // Save material type
                 float texX = grid[y][x].wallTexX;
                 float texY = grid[y][x].wallTexY;
 
@@ -73,13 +76,13 @@ bool saveGameState(const char* filename) {
                 fwrite(&structY, sizeof(uint16_t), 1, file);
                 fwrite(&flags, sizeof(uint8_t), 1, file);
                 fwrite(&structureType, sizeof(uint8_t), 1, file);
+                fwrite(&materialType, sizeof(uint8_t), 1, file);  // Write material type
                 fwrite(&texX, sizeof(float), 1, file);
                 fwrite(&texY, sizeof(float), 1, file);
             }
         }
     }
 
-    // Rest of the enclosure saving code remains the same
     printf("[DEBUG] Saving enclosures\n");
     uint32_t enclosureCount = (uint32_t)globalEnclosureManager.count;
     fwrite(&enclosureCount, sizeof(uint32_t), 1, file);
@@ -140,9 +143,11 @@ bool loadGameState(const char* filename) {
     fread(&playerPosX, sizeof(playerPosX), 1, file);
     fread(&playerPosY, sizeof(playerPosY), 1, file);
 
-    float constructionExp;
-    fread(&constructionExp, sizeof(constructionExp), 1, file);
-    player.skills.constructionExp = constructionExp;
+    // Load player skills
+    for (int i = 0; i < SKILL_COUNT; i++) {
+        fread(&player.skills.levels[i], sizeof(uint32_t), 1, file);
+        fread(&player.skills.experience[i], sizeof(float), 1, file);
+    }
 
     uint32_t structureCount;
     fread(&structureCount, sizeof(structureCount), 1, file);
@@ -151,28 +156,30 @@ bool loadGameState(const char* filename) {
         uint16_t structX, structY;
         uint8_t flags;
         uint8_t structureType;
+        uint8_t materialType;  // Load material type
         float texX, texY;
 
         fread(&structX, sizeof(structX), 1, file);
         fread(&structY, sizeof(structY), 1, file);
         fread(&flags, sizeof(flags), 1, file);
         fread(&structureType, sizeof(structureType), 1, file);
+        fread(&materialType, sizeof(materialType), 1, file);  // Read material type
         fread(&texX, sizeof(texX), 1, file);
         fread(&texY, sizeof(texY), 1, file);
 
         if (structX < GRID_SIZE && structY < GRID_SIZE) {
             grid[structY][structX].flags = flags;
             grid[structY][structX].structureType = structureType;
+            grid[structY][structX].materialType = materialType;  // Set material type
             grid[structY][structX].wallTexX = texX;
             grid[structY][structX].wallTexY = texY;
             
-            printf("Loaded structure at (%d,%d): structType=%d, isWalkable=%d texY=%f\n", 
-                structX, structY, structureType, 
+            printf("Loaded structure at (%d,%d): structType=%d, material=%d, isWalkable=%d texY=%f\n", 
+                structX, structY, structureType, materialType,
                 GRIDCELL_IS_WALKABLE(grid[structY][structX]), texY);
         }
     }
 
-    // Rest of enclosure loading remains the same
     uint32_t enclosureCount;
     fread(&enclosureCount, sizeof(enclosureCount), 1, file);
     printf("Loading %d enclosures\n", enclosureCount);

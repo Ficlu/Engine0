@@ -53,8 +53,7 @@ bool canPlaceStructure(StructureType type, int gridX, int gridY) {
     }
 
     // Check if tile is already occupied
-if (grid[gridY][gridX].structureType != 0) {
-
+    if (grid[gridY][gridX].structureType != 0) {
         printf("Tile already occupied\n");
         return false;
     }
@@ -65,20 +64,17 @@ if (grid[gridY][gridX].structureType != 0) {
             return true;
 
         case STRUCTURE_DOOR: {
-            // Debug print current position
             printf("Checking door at (%d,%d)\n", gridX, gridY);
             
-            // Check for walls
-bool hasNorth = (gridY > 0) && grid[gridY-1][gridX].structureType != 0;
-bool hasSouth = (gridY < GRID_SIZE-1) && grid[gridY+1][gridX].structureType != 0;
-bool hasEast = (gridX < GRID_SIZE-1) && grid[gridY][gridX+1].structureType != 0;
-bool hasWest = (gridX > 0) && grid[gridY][gridX-1].structureType != 0;
-            // Debug print wall configuration
+            // Check specifically for WALLS (not just any structure)
+            bool hasNorth = (gridY > 0) && grid[gridY-1][gridX].structureType == STRUCTURE_WALL;
+            bool hasSouth = (gridY < GRID_SIZE-1) && grid[gridY+1][gridX].structureType == STRUCTURE_WALL;
+            bool hasEast = (gridX < GRID_SIZE-1) && grid[gridY][gridX+1].structureType == STRUCTURE_WALL;
+            bool hasWest = (gridX > 0) && grid[gridY][gridX-1].structureType == STRUCTURE_WALL;
+            
             printf("Walls: N:%d S:%d E:%d W:%d\n", hasNorth, hasSouth, hasEast, hasWest);
             
-            // Check for at least one wall
             bool valid = hasNorth || hasSouth || hasEast || hasWest;
-
             printf("Door placement: %s\n", valid ? "valid" : "invalid");
             return valid;
         }
@@ -87,7 +83,6 @@ bool hasWest = (gridX > 0) && grid[gridY][gridX-1].structureType != 0;
             return false;
     }
 }
-
 void updateWallTextures(int gridX, int gridY) {
     if (grid[gridY][gridX].structureType == 0) return;
 
@@ -144,129 +139,122 @@ void updateSurroundingStructures(int gridX, int gridY) {
 
 
 bool placeStructure(StructureType type, int gridX, int gridY) {
-    if (!canPlaceStructure(type, gridX, gridY)) {
-        return false;
-    }
+   if (!canPlaceStructure(type, gridX, gridY)) {
+       return false;
+   }
 
-    // Check if an entity is targeting the tile
-    if (isEntityTargetingTile(gridX, gridY)) {
-        printf("Cannot place structure at (%d, %d): entity is targeting this tile.\n", gridX, gridY);
-        return false;
-    }
+   // Check if an entity is targeting the tile
+   if (isEntityTargetingTile(gridX, gridY)) {
+       printf("Cannot place structure at (%d, %d): entity is targeting this tile.\n", gridX, gridY);
+       return false;
+   }
 
-    // Set the structure type and make it unwalkable
-    grid[gridY][gridX].structureType = type;
-    GRIDCELL_SET_WALKABLE(grid[gridY][gridX], false);
+   // Set the structure type and make it unwalkable
+   grid[gridY][gridX].structureType = type;
+   grid[gridY][gridX].materialType = MATERIAL_WOOD; // Default to wood for now
+   GRIDCELL_SET_WALKABLE(grid[gridY][gridX], false);
 
-    switch(type) {
-        case STRUCTURE_WALL:
-            updateSurroundingStructures(gridX, gridY);
-            break;
-        case STRUCTURE_DOOR: {
-            // Determine door orientation based on adjacent walls
-            bool hasNorth = (gridY > 0) && grid[gridY-1][gridX].structureType != 0;
-            bool hasSouth = (gridY < GRID_SIZE-1) && grid[gridY+1][gridX].structureType != 0;
-            bool hasEast = (gridX < GRID_SIZE-1) && grid[gridY][gridX+1].structureType != 0;
-            bool hasWest = (gridX > 0) && grid[gridY][gridX-1].structureType != 0;
+   switch(type) {
+       case STRUCTURE_WALL:
+           updateSurroundingStructures(gridX, gridY);
+           break;
+           
+       case STRUCTURE_DOOR: {
+           // Determine door orientation based on adjacent walls
+           bool hasNorth = (gridY > 0) && grid[gridY-1][gridX].structureType != 0;
+           bool hasSouth = (gridY < GRID_SIZE-1) && grid[gridY+1][gridX].structureType != 0;
 
-            // Set door orientation based on adjacent walls
-            if (hasNorth || hasSouth) {
-                // Vertical door
-                GRIDCELL_SET_ORIENTATION(grid[gridY][gridX], 0);
-                grid[gridY][gridX].wallTexX = DOOR_VERTICAL_TEX_X;
-                grid[gridY][gridX].wallTexY = DOOR_VERTICAL_TEX_Y;
-            } else {
-                // Horizontal door
-                GRIDCELL_SET_ORIENTATION(grid[gridY][gridX], 1);
-                grid[gridY][gridX].wallTexX = DOOR_HORIZONTAL_TEX_X;
-                grid[gridY][gridX].wallTexY = DOOR_HORIZONTAL_TEX_Y;
-            }
-            
-            // Set door properties
-            grid[gridY][gridX].structureType = STRUCTURE_DOOR;
-            GRIDCELL_SET_WALKABLE(grid[gridY][gridX], false);
-            
-            updateSurroundingStructures(gridX, gridY);
-            break;
-        }
+           // Set door orientation based on adjacent walls
+           if (hasNorth || hasSouth) {
+               // Vertical door
+               GRIDCELL_SET_ORIENTATION(grid[gridY][gridX], 0);
+               grid[gridY][gridX].wallTexX = DOOR_VERTICAL_TEX_X;
+               grid[gridY][gridX].wallTexY = DOOR_VERTICAL_TEX_Y;
+           } else {
+               // Horizontal door
+               GRIDCELL_SET_ORIENTATION(grid[gridY][gridX], 1);
+               grid[gridY][gridX].wallTexX = DOOR_HORIZONTAL_TEX_X;
+               grid[gridY][gridX].wallTexY = DOOR_HORIZONTAL_TEX_Y;
+           }
+           
+           updateSurroundingStructures(gridX, gridY);
+           break;
+       }
 
-        default:
-            return false;
-    }
+       case STRUCTURE_PLANT:
+           // Plants start as unwalkable but could become walkable when harvested
+           GRIDCELL_SET_WALKABLE(grid[gridY][gridX], false);
+           grid[gridY][gridX].materialType = FERN; // Default plant type for now
+           break;
 
-    // After successful placement, check for enclosures
-    Enclosure enclosure = detectEnclosure(gridX, gridY);
-    if (enclosure.isValid) {
-        EnclosureData newEnclosure = {0};
-        Point* boundaryPoints = malloc(enclosure.tileCount * sizeof(Point));
-        int wallCount = 0;
-        int doorCount = 0;
-        
-        int sumX = 0, sumY = 0;
-        for (int i = 0; i < enclosure.tileCount; i++) {
-            int tileX = enclosure.tiles[i] % GRID_SIZE;
-            int tileY = enclosure.tiles[i] / GRID_SIZE;
-            
-            boundaryPoints[i].x = tileX;
-            boundaryPoints[i].y = tileY;
-            
-            sumX += tileX;
-            sumY += tileY;
-            
-            if (grid[tileY][tileX].structureType != 0) {
-                if (grid[tileY][tileX].structureType == STRUCTURE_DOOR) {
-                    doorCount++;
-                } else {
-                    wallCount++;
-                }
-            }
-        }
+       default:
+           return false;
+   }
 
-        newEnclosure.hash = calculateEnclosureHash(boundaryPoints, enclosure.tileCount, enclosure.tileCount);
-        newEnclosure.boundaryTiles = boundaryPoints;
-        newEnclosure.boundaryCount = enclosure.tileCount;
-        newEnclosure.totalArea = enclosure.tileCount;
-        newEnclosure.centerPoint.x = sumX / enclosure.tileCount;
-        newEnclosure.centerPoint.y = sumY / enclosure.tileCount;
-        newEnclosure.doorCount = doorCount;
-        newEnclosure.wallCount = wallCount;
-        newEnclosure.isValid = true;
+   // After successful placement, check for enclosures
+   Enclosure enclosure = detectEnclosure(gridX, gridY);
+   if (enclosure.isValid) {
+       EnclosureData newEnclosure = {0};
+       Point* boundaryPoints = malloc(enclosure.tileCount * sizeof(Point));
+       int wallCount = 0;
+       int doorCount = 0;
+       
+       int sumX = 0, sumY = 0;
+       for (int i = 0; i < enclosure.tileCount; i++) {
+           int tileX = enclosure.tiles[i] % GRID_SIZE;
+           int tileY = enclosure.tiles[i] / GRID_SIZE;
+           
+           boundaryPoints[i].x = tileX;
+           boundaryPoints[i].y = tileY;
+           
+           sumX += tileX;
+           sumY += tileY;
+           
+           if (grid[tileY][tileX].structureType != 0) {
+               if (grid[tileY][tileX].structureType == STRUCTURE_DOOR) {
+                   doorCount++;
+               } else {
+                   wallCount++;
+               }
+           }
+       }
 
-        bool isNewEnclosure = true;
-        for (int i = 0; i < globalEnclosureManager.count; i++) {
-            if (globalEnclosureManager.enclosures[i].hash == newEnclosure.hash) {
-                isNewEnclosure = false;
-                break;
-            }
-        }
+       newEnclosure.hash = calculateEnclosureHash(boundaryPoints, enclosure.tileCount, enclosure.tileCount);
+       newEnclosure.boundaryTiles = boundaryPoints;
+       newEnclosure.boundaryCount = enclosure.tileCount;
+       newEnclosure.totalArea = enclosure.tileCount;
+       newEnclosure.centerPoint.x = sumX / enclosure.tileCount;
+       newEnclosure.centerPoint.y = sumY / enclosure.tileCount;
+       newEnclosure.doorCount = doorCount;
+       newEnclosure.wallCount = wallCount;
+       newEnclosure.isValid = true;
 
-        if (isNewEnclosure) {
-            addEnclosure(&globalEnclosureManager, &newEnclosure);
-            extern Player player;
-            awardConstructionExp(&player, &newEnclosure);
-            
-            printf("Found new enclosure with %d tiles! Hash: %" PRIu64 "\n", 
-                enclosure.tileCount, newEnclosure.hash);
-            printf("Center point: (%d, %d)\n", 
-                   newEnclosure.centerPoint.x, newEnclosure.centerPoint.y);
-            printf("Walls: %d, Doors: %d\n", wallCount, doorCount);
-        }
+       bool isNewEnclosure = true;
+       for (int i = 0; i < globalEnclosureManager.count; i++) {
+           if (globalEnclosureManager.enclosures[i].hash == newEnclosure.hash) {
+               isNewEnclosure = false;
+               break;
+           }
+       }
 
-        for (int i = 0; i < enclosure.tileCount; i++) {
-            int tileX = enclosure.tiles[i] % GRID_SIZE;
-            int tileY = enclosure.tiles[i] / GRID_SIZE;
-            printf("Enclosure tile %d: (%d, %d)\n", i, tileX, tileY);
-        }
+       if (isNewEnclosure) {
+           addEnclosure(&globalEnclosureManager, &newEnclosure);
+           extern Player player;
+           awardConstructionExp(&player, &newEnclosure);
+           
+           printf("Found new enclosure with %d tiles! Hash: %" PRIu64 "\n", 
+               enclosure.tileCount, newEnclosure.hash);
+           printf("Center point: (%d, %d)\n", 
+                  newEnclosure.centerPoint.x, newEnclosure.centerPoint.y);
+           printf("Walls: %d, Doors: %d\n", wallCount, doorCount);
+       }
 
-        free(enclosure.tiles);
-    } else {
-        printf("No enclosure found from placement at (%d, %d)\n", gridX, gridY);
-    }
+       free(enclosure.tiles);
+   }
 
-    printf("Placed %s at grid position: %d, %d\n", getStructureName(type), gridX, gridY);
-    return true;
+   printf("Placed %s at grid position: %d, %d\n", getStructureName(type), gridX, gridY);
+   return true;
 }
-
 void cleanupStructureSystem(void) {
     printf("Structure system cleaned up\n");
 }
@@ -275,15 +263,15 @@ void cycleStructureType(PlacementMode* mode, bool forward) {
     if (!mode) return;
 
     if (forward) {
-        mode->currentType = (mode->currentType + 1) % STRUCTURE_COUNT;
+        mode->currentType = (mode->currentType + 1);
+        if (mode->currentType >= STRUCTURE_PLANT) {  // Skip plant and wrap back to wall
+            mode->currentType = STRUCTURE_WALL;
+        }
     } else {
-        // Add STRUCTURE_COUNT before subtraction to handle negative values
-        mode->currentType = (mode->currentType - 1 + STRUCTURE_COUNT) % STRUCTURE_COUNT;
-    }
-
-    // Skip STRUCTURE_NONE in the cycle
-    if (mode->currentType == STRUCTURE_NONE) {
-        mode->currentType = forward ? STRUCTURE_WALL : STRUCTURE_DOOR;
+        mode->currentType = (mode->currentType - 1);
+        if (mode->currentType <= STRUCTURE_NONE) {  // If we hit NONE or below, wrap to door
+            mode->currentType = STRUCTURE_DOOR;
+        }
     }
 
     printf("Selected structure: %s\n", getStructureName(mode->currentType));
@@ -637,16 +625,17 @@ void awardConstructionExp(Player* player, const EnclosureData* enclosure) {
     float totalExp = wallExp + doorExp + areaExp;
 
     // Store old exp and level for progress calculation
-    float oldExp = player->skills.constructionExp;
-    int oldLevel = (int)(oldExp / EXP_PER_LEVEL);
+    float oldExp = player->skills.experience[SKILL_CONSTRUCTION];
+    int oldLevel = player->skills.levels[SKILL_CONSTRUCTION];
     
     // Add new exp
-    player->skills.constructionExp += totalExp;
-    int newLevel = (int)(player->skills.constructionExp / EXP_PER_LEVEL);
+    player->skills.experience[SKILL_CONSTRUCTION] += totalExp;
+    int newLevel = (int)(player->skills.experience[SKILL_CONSTRUCTION] / EXP_PER_LEVEL);
+    player->skills.levels[SKILL_CONSTRUCTION] = newLevel;
 
     // Calculate progress percentages
     float oldProgress = fmodf(oldExp, EXP_PER_LEVEL) / EXP_PER_LEVEL * 100.0f;
-    float newProgress = fmodf(player->skills.constructionExp, EXP_PER_LEVEL) / EXP_PER_LEVEL * 100.0f;
+    float newProgress = fmodf(player->skills.experience[SKILL_CONSTRUCTION], EXP_PER_LEVEL) / EXP_PER_LEVEL * 100.0f;
 
     printf("\n=== Construction Experience Award ===\n");
     printf("Base Calculations:\n");
@@ -656,7 +645,7 @@ void awardConstructionExp(Player* player, const EnclosureData* enclosure) {
     printf("Total exp awarded: %.0f\n\n", totalExp);
 
     printf("Progress Update:\n");
-    printf("- Total exp: %.1f -> %.1f\n", oldExp, player->skills.constructionExp);
+    printf("- Total exp: %.1f -> %.1f\n", oldExp, player->skills.experience[SKILL_CONSTRUCTION]);
     printf("- Level: %d -> %d\n", oldLevel, newLevel);
     printf("- Progress to next level: %.1f%% -> %.1f%%\n", oldProgress, newProgress);
     

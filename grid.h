@@ -59,6 +59,7 @@ typedef struct {
     uint8_t terrainType;    // TerrainType enum
     uint8_t structureType;  // StructureType enum
     uint8_t biomeType;      // BiomeType enum
+    uint8_t materialType;
     float wallTexX;         // Keep presentation data together
     float wallTexY;         // as per your request
 } GridCell;

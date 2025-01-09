@@ -37,17 +37,17 @@ void initializeGrid(int size) {
         for (int x = 0; x < size; x++) {
             grid[y][x].terrainType = TERRAIN_GRASS;
             grid[y][x].biomeType = BIOME_PLAINS;
+            grid[y][x].structureType = 0;
+            grid[y][x].materialType = 0;  // Initialize material
             GRIDCELL_SET_WALKABLE(grid[y][x], true);
-            grid[y][x].structureType = 0; // Assuming 0 represents no structure
             GRIDCELL_SET_ORIENTATION(grid[y][x], 0);
-            grid[y][x].flags &= 0x1F; // Clear reserved bits
-            grid[y][x].wallTexX = 0.0f / 3.0f;  // Default wall texture coordinates
-            grid[y][x].wallTexY = 1.0f / 4.0f;  // Vertical wall texture (default)
+            grid[y][x].flags &= ~0xE0;  // Clear reserved bits
+            grid[y][x].wallTexX = 0.0f / 3.0f;  
+            grid[y][x].wallTexY = 1.0f / 4.0f;  
         }
     }
     printf("Grid initialized with size %d x %d\n", size, size);
 }
-
 /*
  * cleanupGrid
  *
@@ -154,7 +154,7 @@ void writeChunkToGrid(const Chunk* chunk) {
                     grid[gridY][gridX].wallTexX = oldTexX;
                     grid[gridY][gridX].wallTexY = oldTexY;
                 }
-                
+
                 // Ensure reserved bits are clear
                 grid[gridY][gridX].flags &= 0x1F;
             }

@@ -9,4 +9,28 @@ typedef enum {
     STRUCTURE_COUNT
 } StructureType;
 
+typedef enum {
+    MATERIAL_NONE = 0,
+    // Building materials
+    MATERIAL_WOOD = 1,
+    RES2 = 2,
+    RES1 = 3,
+    RES3 = 4,
+    RES4 = 5,
+    RES5 = 6,
+    RES6 = 7,
+    RES7 = 8,
+    RES8 = 9,
+    RES9 = 10,
+    RES10 = 11, 
+    RES11 = 12,
+    // Plant /types
+    FERN = 13,
+    MATERIAL_COUNT
+} MaterialType;
+
+// Helper function declarations
+const char* getStructureName(StructureType type);
+const char* getMaterialName(MaterialType type);
+
 #endif // STRUCTURE_TYPES_H
