@@ -5,7 +5,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
-
+#include "structures.h"
 /*
  * InitPlayer
  *
@@ -41,7 +41,7 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
     player->zoomFactor = 3.0f;
     player->entity.isPlayer = true;
 
-    // Initialize new build-related fields
+    // Initialize build-related fields
     player->targetBuildX = 0;
     player->targetBuildY = 0;
     player->hasBuildTarget = false;
@@ -51,6 +51,22 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
     atomic_store(&player->cameraCurrentX, atomic_load(&player->entity.posX));
     atomic_store(&player->cameraCurrentY, atomic_load(&player->entity.posY));
     player->cameraSpeed = 0.1f;
+
+    // Initialize inventory
+    player->inventory = CreateInventory();
+    if (!player->inventory) {
+        fprintf(stderr, "Failed to create player inventory\n");
+        exit(1);
+    }
+
+    // Add starting items
+    Item* woodItem = CreateItem(ITEM_WOOD);
+    if (woodItem) {
+        woodItem->count = 10;
+        if (!AddItem(player->inventory, woodItem)) {
+            DestroyItem(woodItem);
+        }
+    }
 
     int tempNearestX, tempNearestY;
     findNearestWalkableTile(atomic_load(&player->entity.posX), atomic_load(&player->entity.posY), &tempNearestX, &tempNearestY);
@@ -66,8 +82,9 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
     atomic_store(&player->cameraCurrentX, atomic_load(&player->entity.posX));
     atomic_store(&player->cameraCurrentY, atomic_load(&player->entity.posY));
 
-    printf("Player initialized at (%d, %d)\n", atomic_load(&player->entity.gridX), atomic_load(&player->entity.gridY));
+    printf("Player initialized at (%d, %d) with inventory\n", atomic_load(&player->entity.gridX), atomic_load(&player->entity.gridY));
 }
+
 /*
  * UpdatePlayer
  *
@@ -143,4 +160,11 @@ void CleanupPlayer(Player* player) {
         free(player->entity.cachedPath);
         player->entity.cachedPath = NULL;
     }
+
+    if (player->inventory) {
+        DestroyInventory(player->inventory);
+        player->inventory = NULL;
+    }
+
+    printf("Player cleanup completed\n");
 }

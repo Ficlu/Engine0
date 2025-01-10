@@ -2,7 +2,7 @@
 CC = gcc
 CFLAGS = -Isrc/include -Wall -Wextra -g -std=c11
 LDFLAGS = -Lsrc/lib -lmingw32 -Isrc/include/cglm/include -lSDL2main -lSDL2 -lSDL2_ttf -lglew32 -lglfw3 -mconsole -lopengl32 -lm -latomic
-OBJS = gameloop.o rendering.o player.o enemy.o grid.o pathfinding.o entity.o asciiMap.o saveload.o structures.o input.o ui.o
+OBJS = gameloop.o rendering.o player.o enemy.o grid.o pathfinding.o entity.o asciiMap.o saveload.o structures.o input.o ui.o inventory.o item.c
 
 gameloop.exe: $(OBJS)
 	$(CC) -o $@ $(OBJS) $(LDFLAGS)

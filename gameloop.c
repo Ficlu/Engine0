@@ -180,6 +180,14 @@ void InitializeGameState(bool isNewGame) {
        int playerGridX = GRID_SIZE / 2;
        int playerGridY = GRID_SIZE / 2;
        InitPlayer(&player, playerGridX, playerGridY, MOVE_SPEED);
+        if (player.inventory) {
+        Item* testItem = CreateItem(ITEM_WOOD);
+        if (testItem) {
+            testItem->count = 10;
+            AddItem(player.inventory, testItem);
+        }
+    }
+
        printf("Player initialized at (%d, %d).\n", playerGridX, playerGridY);
    }
 
@@ -626,7 +634,10 @@ void Render() {
     RenderEntities(cameraOffsetX, cameraOffsetY, zoomFactor);
     renderStructurePreview(&placementMode, cameraOffsetX, cameraOffsetY, zoomFactor);
 
-    // Render UI elements last
+    // Ensure we bind UI resources before rendering UI
+    glUseProgram(uiShaderProgram);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, textureAtlas);  // Or your UI texture
     RenderUI(&player, uiShaderProgram);
 
     SDL_GL_SwapWindow(window);

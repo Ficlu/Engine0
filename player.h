@@ -17,6 +17,9 @@ typedef struct {
     float experience[SKILL_COUNT];     // Fractional experience for smooth bar movement
 } Skills;
 
+
+#include "inventory.h"  // Add this
+
 typedef struct {
     Entity entity;
     float cameraTargetX;
@@ -31,12 +34,19 @@ typedef struct {
     int targetBuildY;
     bool hasBuildTarget;
     StructureType pendingBuildType;
-    Skills skills;  // Replace the individual skill fields with unified Skills struct
+    Skills skills;
+    Inventory* inventory;  // Add this
 } Player;
 
+// Add these new function declarations
+void InitPlayerInventory(Player* player);
+void CleanupPlayerInventory(Player* player);
+
+// Existing declarations
 void InitPlayer(Player* player, int startGridX, int startGridY, float speed);
 void UpdatePlayer(Player* player, Entity** allEntities, int entityCount);
 void CleanupPlayer(Player* player);
+
 
 // New skill-related function declarations
 float getSkillExp(const Player* player, SkillType skill);

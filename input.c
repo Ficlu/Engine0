@@ -10,12 +10,13 @@
 #include "structures.h"
 #include "saveload.h"
 #include "gameloop.h"
+#include "ui.h"
 
 // Declare external variables
 extern atomic_bool isRunning;
 extern Player player;
 extern PlacementMode placementMode;
-
+extern UIState uiState;
 void HandleInput() {
     SDL_Event event;
    
@@ -46,21 +47,29 @@ void HandleInput() {
                 }
             }
            
-            // Then handle placement mode toggle
-            if (event.key.keysym.sym == SDLK_e) {
-                placementMode.active = !placementMode.active;
-                printf("Placement mode %s\n", placementMode.active ? "activated" : "deactivated");
-            }
-            // Then handle placement mode specific controls
-            else if (placementMode.active) {
-                switch (event.key.keysym.sym) {
-                    case SDLK_RIGHT:
+            // Handle mode toggles
+            switch(event.key.keysym.sym) {
+                case SDLK_e:
+                    placementMode.active = !placementMode.active;
+                    printf("Placement mode %s\n", placementMode.active ? "activated" : "deactivated");
+                    break;
+                    
+                case SDLK_i:
+                    uiState.inventoryOpen = !uiState.inventoryOpen;
+                    printf("Inventory %s\n", uiState.inventoryOpen ? "opened" : "closed");
+                    break;
+                    
+                case SDLK_RIGHT:
+                    if (placementMode.active) {
                         cycleStructureType(&placementMode, true);
-                        break;
-                    case SDLK_LEFT:
+                    }
+                    break;
+                    
+                case SDLK_LEFT:
+                    if (placementMode.active) {
                         cycleStructureType(&placementMode, false);
-                        break;
-                }
+                    }
+                    break;
             }
         }
         else if (event.type == SDL_MOUSEBUTTONDOWN) {
@@ -96,7 +105,6 @@ void HandleInput() {
                                                                          player.entity.gridY,
                                                                          true);
                             if (nearest.x != -1) {
-                                // Check if we can path to the nearest tile
                                 int pathLength;
                                 Node* path = findPath(player.entity.gridX, player.entity.gridY, 
                                                     nearest.x, nearest.y, &pathLength);
@@ -117,7 +125,6 @@ void HandleInput() {
                         }
                     }
                     else if (event.button.button == SDL_BUTTON_RIGHT) {
-                        // Allow destroying both walls and doors
                         if (grid[gridY][gridX].structureType == STRUCTURE_WALL || 
                             grid[gridY][gridX].structureType == STRUCTURE_DOOR) {
                             int playerGridX = player.entity.gridX;

@@ -73,8 +73,7 @@ void InitEnemy(Enemy* enemy, int startGridX, int startGridY, float speed) {
             tempNearestY = startGridY;
             break;
         }
-    } while (!isWalkable(tempNearestX, tempNearestY) || 
-             grid[tempNearestY][tempNearestX].hasWall);
+    } while (!isWalkable(tempNearestX, tempNearestY));
 
     atomic_store(&enemy->entity.gridX, tempNearestX);
     atomic_store(&enemy->entity.gridY, tempNearestY);
