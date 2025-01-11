@@ -5,6 +5,7 @@
 #include <SDL2/SDL.h>
 #include <stdio.h>
 #include <math.h>
+#include "rendering.h"
 
 static GLuint inventorySlotTexture;
 static float expGainFlashIntensity = 0.0f;
@@ -14,10 +15,10 @@ static GLuint uiShaderProgram;
 
 UIState uiState = {0};
 
-#define HOTBAR_SLOT_SIZE 50.0f
+#define HOTBAR_SLOT_SIZE 5.0f
 #define HOTBAR_PADDING 5.0f
-#define INVENTORY_SLOTS_X 8
-#define INVENTORY_SLOTS_Y 4
+#define INVENTORY_SLOTS_X 6
+#define INVENTORY_SLOTS_Y 5
 
 // Forward declarations for static functions
 static void RenderItem(const Item* item, float x, float y, float size);
@@ -54,16 +55,17 @@ static GLuint GetItemTexture(ItemType type) {
 void InitializeUI(GLuint shaderProgram) {
     uiShaderProgram = shaderProgram;
     
-    // Initialize exp bar
+    // Initialize exp bar with sidebar coordinates
     glGenVertexArrays(1, &uiState.expBar.vao);
     glGenBuffers(1, &uiState.expBar.vbo);
     
+    // Position the exp bar at the top of the sidebar
+    // Using normalized device coordinates for the sidebar viewport
     const float expBarVertices[] = {
-        // Positions           // TexCoords
-        0.70f,  0.80f,        0.0f, 0.0f,
-        0.95f,  0.80f,        1.0f, 0.0f,
-        0.95f,  0.85f,        1.0f, 1.0f,
-        0.70f,  0.85f,        0.0f, 1.0f
+        -0.8f,  0.8f,         0.0f, 0.0f,  // Bottom left
+         0.8f,  0.8f,         1.0f, 0.0f,  // Bottom right
+         0.8f,  0.9f,         1.0f, 1.0f,  // Top right
+        -0.8f,  0.9f,         0.0f, 1.0f   // Top left
     };
 
     glBindVertexArray(uiState.expBar.vao);
@@ -75,13 +77,13 @@ void InitializeUI(GLuint shaderProgram) {
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
-    // Initialize inventory with same vertex format as exp bar
+    // Initialize inventory with coordinates for sidebar
     glGenVertexArrays(1, &uiState.inventory.vao);
     glGenBuffers(1, &uiState.inventory.vbo);
     
     glBindVertexArray(uiState.inventory.vao);
     glBindBuffer(GL_ARRAY_BUFFER, uiState.inventory.vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 16, NULL, GL_DYNAMIC_DRAW); // 4 vertices * 4 components
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 16, NULL, GL_DYNAMIC_DRAW);
 
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
@@ -93,7 +95,7 @@ void InitializeUI(GLuint shaderProgram) {
     
     inventorySlotTexture = loadTexture("inventory_slot.bmp");
     
-    uiState.inventoryOpen = false;
+    uiState.inventoryOpen = true;
     uiState.hoveredSlot = -1;
     uiState.draggedSlot = -1;
     uiState.isDragging = false;
@@ -111,6 +113,10 @@ void RenderUI(const Player* player, GLuint shaderProgram) {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+    // Switch to sidebar viewport
+    applyViewport(&sidebarViewport);
+
+    // Calculate exp bar values
     float totalExp = player->skills.experience[SKILL_CONSTRUCTION];
     
     if (totalExp > lastKnownExp) {
@@ -132,23 +138,29 @@ void RenderUI(const Player* player, GLuint shaderProgram) {
     float expProgress = fmodf(totalExp, EXP_PER_LEVEL);
     float fillAmount = expProgress / EXP_PER_LEVEL;
     
+    // First render exp bar with its special uniforms
     GLint fillLoc = glGetUniformLocation(shaderProgram, "fillAmount");
-    glUniform1f(fillLoc, fillAmount);
-    
     GLint flashLoc = glGetUniformLocation(shaderProgram, "flashIntensity");
+    
+    // Set exp bar specific uniforms
+    glUniform1f(fillLoc, fillAmount);
     glUniform1f(flashLoc, expGainFlashIntensity);
     
-    // Render exp bar first
+    // Render exp bar
     glBindVertexArray(uiState.expBar.vao);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-    // Render inventory if open
+    // Reset uniforms for other UI elements
+    glUniform1f(fillLoc, 0.0f);
+    glUniform1f(flashLoc, 0.0f);
+
+    // Render inventory below exp bar if open
     if (uiState.inventoryOpen) {
         RenderInventoryUI(player, &uiState);
     }
 
-    // Render hotbar last
-    RenderHotbar(player, &uiState);
+    // Render hotbar at bottom of sidebar
+    //RenderHotbar(player, &uiState);
 
     // Restore GL state
     if (!blendWasEnabled) glDisable(GL_BLEND);
@@ -157,103 +169,143 @@ void RenderUI(const Player* player, GLuint shaderProgram) {
     glBindVertexArray(0);
     glUseProgram(0);
 }
+
 void RenderHotbar(const Player* player, const UIState* state) {
-    (void)state; // Unused for now
+    (void)state;
     
     glUseProgram(uiShaderProgram);
     glBindVertexArray(uiState.inventory.vao);
     
-    float totalWidth = INVENTORY_HOTBAR_SIZE * (HOTBAR_SLOT_SIZE + HOTBAR_PADDING) - HOTBAR_PADDING;
-    float startX = (2.0f - totalWidth) * 0.5f;
-    float startY = -0.9f;
+    // Position hotbar at bottom of sidebar
+    float totalWidth = 1.6f;  // In normalized device coordinates
+    float slotSize = totalWidth / INVENTORY_HOTBAR_SIZE;
+    float padding = slotSize * 0.1f;
+    float startX = -0.8f;  // Center in sidebar
+    float startY = -0.9f;  // Near bottom of sidebar
 
     for (int i = 0; i < INVENTORY_HOTBAR_SIZE; i++) {
-        float x = startX + i * (HOTBAR_SLOT_SIZE + HOTBAR_PADDING);
+        float x = startX + i * (slotSize + padding);
         
         glBindTexture(GL_TEXTURE_2D, inventorySlotTexture);
         
         float vertices[] = {
-            x, startY,                         0.0f, 0.0f,
-            x + HOTBAR_SLOT_SIZE, startY,      1.0f, 0.0f,
-            x + HOTBAR_SLOT_SIZE, startY + HOTBAR_SLOT_SIZE, 1.0f, 1.0f,
-            x, startY + HOTBAR_SLOT_SIZE,      0.0f, 1.0f
+            x, startY,                    0.0f, 0.0f,
+            x + slotSize, startY,         1.0f, 0.0f,
+            x + slotSize, startY + slotSize, 1.0f, 1.0f,
+            x, startY + slotSize,         0.0f, 1.0f
         };
         
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-        Item* item = player->inventory->slots[i];
-        if (item) {
-            RenderItem(item, x, startY, HOTBAR_SLOT_SIZE);
+        if (player->inventory->slots[i]) {
+            RenderItem(player->inventory->slots[i], x, startY, slotSize);
         }
 
         if (i == player->inventory->selectedSlot) {
-            RenderSlotHighlight(x, startY, HOTBAR_SLOT_SIZE);
+            RenderSlotHighlight(x, startY, slotSize);
         }
     }
 }
-
 void RenderInventoryUI(const Player* player, const UIState* state) {
     if (!player || !state) return;
-    
+
     glBindVertexArray(uiState.inventory.vao);
     glBindBuffer(GL_ARRAY_BUFFER, uiState.inventory.vbo);
 
     // Define panel dimensions
-    float panelLeft = 0.5f;
-    float panelRight = 0.9f;
-    float panelTop = 0.4f;
-    float panelBottom = -0.4f;
-    
-    // Calculate panel dimensions
+    float sidePadding = 0.0f; // Space between the panel and screen edge
+    float panelLeft = -1.0f;
+    float panelRight = 1.0f;
+    float panelTop = 0.7f;
+    float panelBottom = -0.7f;
+
+    // --- Calculate Actual Border Thickness ---
+    float borderThicknessNormalized = 0.1f; // From the fragment shader
     float panelWidth = panelRight - panelLeft;
     float panelHeight = panelTop - panelBottom;
 
-    // Draw the panel background
+    // Convert border thickness from texture space to screen space
+    float borderThicknessX = borderThicknessNormalized * panelWidth;
+    float borderThicknessY = borderThicknessNormalized * panelHeight;
+
+    // Use the larger of the two to ensure consistency
+    float borderThickness = fmaxf(borderThicknessX, borderThicknessY);
+    
+    // Adjust panel dimensions to account for borders
+    float usablePanelLeft = panelLeft;
+    float usablePanelRight = panelRight;
+    float usablePanelTop = panelTop - borderThickness;
+    float usablePanelBottom = panelBottom + borderThickness;
+
+    // Calculate usable panel width and height
+    float usablePanelWidth = usablePanelRight - usablePanelLeft;
+    float usablePanelHeight = usablePanelTop - usablePanelBottom;
+
+    // Define internal padding (space between grid and panel edges)
+    float internalPadding = 0.0f * fminf(usablePanelWidth, usablePanelHeight);
+
+    // Calculate usable grid dimensions (after padding)
+    float usableWidth = usablePanelWidth - 2.0f * internalPadding;
+    float usableHeight = usablePanelHeight - 2.0f * internalPadding;
+
+    // Determine slot size and enforce square slots
+    int rows = INVENTORY_SLOTS_X; // Number of rows
+    int cols = INVENTORY_SLOTS_Y; // Number of columns
+    float slotSize = fminf(usableWidth / cols, usableHeight / rows); // Maximum square slot size
+
+    // Adjust the usable grid area to reflect the actual grid size with square slots
+    float gridWidth = cols * slotSize;
+    float gridHeight = rows * slotSize;
+
+    // Center the grid within the usable panel area
+    float startX = usablePanelLeft + (usableWidth - gridWidth) / 2.0f;
+    float startY = usablePanelTop - internalPadding - (usableHeight - gridHeight) / 2.0f;
+
+    // Render panel background
     float vertices[] = {
-        // Positions     // TexCoords
-        panelLeft,  panelTop,     0.0f, 0.0f,   
-        panelRight, panelTop,     1.0f, 0.0f,   
-        panelRight, panelBottom,  1.0f, 1.0f,   
-        panelLeft,  panelBottom,  0.0f, 1.0f    
+        panelLeft,  panelTop,     0.0f, 0.0f,
+        panelRight, panelTop,     1.0f, 0.0f,
+        panelRight, panelBottom,  1.0f, 1.0f,
+        panelLeft,  panelBottom,  0.0f, 1.0f
     };
-        
+
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
-    glUniform4f(glGetUniformLocation(uiShaderProgram, "color"), 0.2f, 0.2f, 0.2f, 0.9f);
+    glUniform4f(glGetUniformLocation(uiShaderProgram, "color"), 0.3f, 0.3f, 0.3f, 0.9f); // Panel color
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-    // Calculate slot dimensions based on panel size
-    float margin = panelWidth * 0.1f;  // 10% margin
-    float usableWidth = panelWidth - (2 * margin);
-    float usableHeight = panelHeight - (2 * margin);
-    
-    float slotSize = usableWidth / INVENTORY_SLOTS_Y;  // Using Y for horizontal slots
-    float padding = slotSize * 0.1f;  // 10% of slot size for padding
-    slotSize -= padding;  // Adjust slot size to account for padding
+    // Render slots
+    for (int y = 0; y < rows; y++) {
+        float rowY = startY - y * slotSize; // Calculate Y position for the row
+        for (int x = 0; x < cols; x++) {
+            float posX = startX + x * slotSize; // Calculate X position for the column
 
-    // Calculate starting position to center the grid
-    float slotStartX = panelLeft + margin;
-    float slotStartY = panelTop - margin;
-    
-    // Draw slots
-    for (int x = 0; x < INVENTORY_SLOTS_Y; x++) {
-        for (int y = 0; y < INVENTORY_SLOTS_X; y++) {
-            float posX = slotStartX + x * (slotSize + padding);
-            float posY = slotStartY - y * (slotSize + padding);
-
+            // Draw slot background
             float slotVertices[] = {
-                posX,            posY,            0.0f, 0.0f,
-                posX + slotSize, posY,            1.0f, 0.0f,
-                posX + slotSize, posY - slotSize, 1.0f, 1.0f,
-                posX,            posY - slotSize, 0.0f, 1.0f
+                posX,            rowY,            0.0f, 0.0f,
+                posX + slotSize, rowY,            1.0f, 0.0f,
+                posX + slotSize, rowY - slotSize, 1.0f, 1.0f,
+                posX,            rowY - slotSize, 0.0f, 1.0f
             };
-            
+
             glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(slotVertices), slotVertices);
-            glUniform4f(glGetUniformLocation(uiShaderProgram, "color"), 0.3f, 0.3f, 0.3f, 1.0f);
+            glUniform4f(glGetUniformLocation(uiShaderProgram, "color"), 0.4f, 0.4f, 0.4f, 1.0f);
             glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+            // Draw slot border
+            glLineWidth(1.0f);
+            glUniform4f(glGetUniformLocation(uiShaderProgram, "color"), 0.5f, 0.5f, 0.5f, 1.0f);
+            glDrawArrays(GL_LINE_LOOP, 0, 4);
+
+            // Render item if present
+            int slotIndex = y * cols + x;
+            if (player->inventory->slots[slotIndex]) {
+                RenderItem(player->inventory->slots[slotIndex], posX, rowY - slotSize, slotSize);
+            }
         }
     }
 }
+
 static void RenderItem(const Item* item, float x, float y, float size) {
     if (!item) return;
 

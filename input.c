@@ -11,12 +11,24 @@
 #include "saveload.h"
 #include "gameloop.h"
 #include "ui.h"
-
+#include "rendering.h"
 // Declare external variables
 extern atomic_bool isRunning;
 extern Player player;
 extern PlacementMode placementMode;
 extern UIState uiState;
+
+static void HandleSidebarClick(int mouseX, int mouseY) {
+    // Convert window coordinates to sidebar-local coordinates
+    int localX = mouseX - GAME_VIEW_WIDTH;
+    int localY = mouseY;
+    
+    // Test button region (for now, let's say top 100 pixels of sidebar)
+    if (localY < 100) {
+        printf("Test button clicked in sidebar!\n");
+        // Add your button handling logic here
+    }
+}
 void HandleInput() {
     SDL_Event event;
    
@@ -75,8 +87,8 @@ void HandleInput() {
         else if (event.type == SDL_MOUSEBUTTONDOWN) {
             int mouseX, mouseY;
             SDL_GetMouseState(&mouseX, &mouseY);
-
-            float ndcX = (2.0f * mouseX / WINDOW_WIDTH - 1.0f) / player.zoomFactor;
+            if (isPointInGameView(mouseX, mouseY)) {
+            float ndcX = (2.0f * mouseX / GAME_VIEW_WIDTH - 1.0f) / player.zoomFactor;
             float ndcY = (1.0f - 2.0f * mouseY / WINDOW_HEIGHT) / player.zoomFactor;
 
             float worldX = ndcX + player.cameraCurrentX;
@@ -165,12 +177,15 @@ void HandleInput() {
                     }
                 }
             }
-        }
-        else if (event.type == SDL_MOUSEMOTION && placementMode.active) {
+            } else if (isPointInSidebar(mouseX, mouseY)) {
+        HandleSidebarClick(mouseX, mouseY);
+    }
+        
+        } else if (event.type == SDL_MOUSEMOTION && placementMode.active) {
             int mouseX, mouseY;
             SDL_GetMouseState(&mouseX, &mouseY);
-           
-            float ndcX = (2.0f * mouseX / WINDOW_WIDTH - 1.0f) / player.zoomFactor;
+            if (isPointInGameView(mouseX, mouseY)) {
+            float ndcX = (2.0f * mouseX / GAME_VIEW_WIDTH - 1.0f) / player.zoomFactor;
             float ndcY = (1.0f - 2.0f * mouseY / WINDOW_HEIGHT) / player.zoomFactor;
 
             float worldX = ndcX + player.cameraCurrentX;
@@ -178,6 +193,9 @@ void HandleInput() {
 
             placementMode.previewX = (int)((worldX + 1.0f) * GRID_SIZE / 2);
             placementMode.previewY = (int)((1.0f - worldY) * GRID_SIZE / 2);
+            }     else if (isPointInSidebar(mouseX, mouseY)) {
+        HandleSidebarClick(mouseX, mouseY);
+    }
         }
         else if (event.type == SDL_MOUSEWHEEL) {
             float zoomSpeed = 0.2f;

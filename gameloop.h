@@ -11,7 +11,9 @@
 #include "pathfinding.h"
 #include "asciiMap.h"  // Add this line
 
-#define WINDOW_WIDTH 800
+#define GAME_VIEW_WIDTH 800
+#define SIDEBAR_WIDTH 300
+#define WINDOW_WIDTH (GAME_VIEW_WIDTH + SIDEBAR_WIDTH)
 #define WINDOW_HEIGHT 800
 #define MAX_ENEMIES 50
 #define MOVE_SPEED 0.001f

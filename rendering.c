@@ -15,6 +15,59 @@ GLuint enemyBatchVBO = 0;
 GLuint enemyBatchVAO = 0;
 EntityBatchData entityBatchData = {NULL, 0};
 TileBatchData tileBatchData = {NULL, 0};
+// Add at top of rendering.c with other globals
+Viewport gameViewport;
+Viewport sidebarViewport;
+void renderSidebarButton(float x, float y, float width, float height) {
+    float vertices[] = {
+        x,        y,
+        x+width,  y,
+        x+width,  y+height,
+        x,        y+height
+    };
+
+    glBindVertexArray(uiVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, uiVBO);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+    
+    // Draw button background
+    GLint colorLoc = glGetUniformLocation(uiShaderProgram, "color");
+    glUniform4f(colorLoc, 0.4f, 0.4f, 0.4f, 1.0f);  // Gray background
+    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    
+    // Draw button border
+    glUniform4f(colorLoc, 0.8f, 0.8f, 0.8f, 1.0f);  // Light gray border
+    glDrawArrays(GL_LINE_LOOP, 0, 4);
+}
+void initializeViewports(void) {
+    // Initialize game viewport
+    gameViewport.x = 0;
+    gameViewport.y = 0;
+    gameViewport.width = GAME_VIEW_WIDTH;
+    gameViewport.height = WINDOW_HEIGHT;
+
+    // Initialize sidebar viewport
+    sidebarViewport.x = GAME_VIEW_WIDTH;
+    sidebarViewport.y = 0;
+    sidebarViewport.width = SIDEBAR_WIDTH;
+    sidebarViewport.height = WINDOW_HEIGHT;
+}
+bool isPointInGameView(int x, int y) {
+    return x >= gameViewport.x && 
+           x < gameViewport.x + gameViewport.width && 
+           y >= gameViewport.y && 
+           y < gameViewport.y + gameViewport.height;
+}
+
+bool isPointInSidebar(int x, int y) {
+    return x >= sidebarViewport.x && 
+           x < sidebarViewport.x + sidebarViewport.width && 
+           y >= sidebarViewport.y && 
+           y < sidebarViewport.y + sidebarViewport.height;
+}
+void applyViewport(const Viewport* viewport) {
+    glViewport(viewport->x, viewport->y, viewport->width, viewport->height);
+}
 void initRendering() {
     if (SDL_Init(SDL_INIT_VIDEO) < 0) {
         printf("SDL could not initialize! SDL_Error: %s\n", SDL_GetError());
@@ -439,7 +492,13 @@ void cleanupTileBatchData() {
     }
     tileBatchData.bufferCapacity = 0;
 }
+void setupGameViewport(void) {
+    glViewport(0, 0, GAME_VIEW_WIDTH, WINDOW_HEIGHT);
+}
 
+void setupSidebarViewport(void) {
+    glViewport(GAME_VIEW_WIDTH, 0, SIDEBAR_WIDTH, WINDOW_HEIGHT);
+}
 void renderStructurePreview(const PlacementMode* mode, float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
     if (!mode->active) return;
 

@@ -18,6 +18,22 @@ typedef struct {
     size_t bufferCapacity;
 } TileBatchData;
 
+typedef struct {
+    int x;
+    int y;
+    int width;
+    int height;
+} Viewport;
+void renderSidebarButton(float x, float y, float width, float height);
+
+
+extern Viewport gameViewport;
+extern Viewport sidebarViewport;
+bool isPointInGameView(int x, int y);
+bool isPointInSidebar(int x, int y);
+// Add function declarations
+void initializeViewports(void);
+void applyViewport(const Viewport* viewport);
 
 extern GLuint squareVAO;
 extern GLuint squareVBO;
@@ -38,6 +54,8 @@ extern GLuint enemyBatchVBO;
 extern GLuint enemyBatchVAO;
 extern GLuint outlineVBO;
 // Function declarations
+void setupGameViewport(void);
+void setupSidebarViewport(void);
 void initRendering();
 GLuint createShaderProgram();
 void createGridVertices(float** vertices, int* vertexCount, int width, int height, int cellSize);

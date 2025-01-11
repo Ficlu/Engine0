@@ -305,11 +305,11 @@ void InitializeEngine(void) {
     }
     printf("SDL initialized.\n");
 
-    window = SDL_CreateWindow("2D Top-Down RPG",
-                            SDL_WINDOWPOS_CENTERED,
-                            SDL_WINDOWPOS_CENTERED, 
-                            WINDOW_WIDTH, WINDOW_HEIGHT,
-                            SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+window = SDL_CreateWindow("2D Top-Down RPG",
+                         SDL_WINDOWPOS_CENTERED,
+                         SDL_WINDOWPOS_CENTERED, 
+                         WINDOW_WIDTH, WINDOW_HEIGHT,  // This will use the new total width
+                         SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
     if (window == NULL) {
         fprintf(stderr, "Window could not be created! SDL_Error: %s\n", SDL_GetError());
         SDL_Quit();
@@ -356,16 +356,9 @@ void InitializeEngine(void) {
     }
     printf("Shader programs created.\n");
 
-    // Initialize UI system with its shader
-    InitializeUI(uiShaderProgram);
-    printf("UI system initialized.\n");
-
     colorUniform = glGetUniformLocation(shaderProgram, "color");
     textureUniform = glGetUniformLocation(shaderProgram, "textureAtlas");
 
-    // Rest of initialization code...
-    // (Grid VAO, Square VAO, texture atlas, etc.)
-    
     // Create grid VAO
     float* vertices;
     createGridVertices(&vertices, &vertexCount, 800, 800, 800 / GRID_SIZE);
@@ -382,7 +375,6 @@ void InitializeEngine(void) {
     }
     free(vertices);
     printf("Grid VAO created.\n");
-
 
     // Create Square VAO & VBO
     glGenVertexArrays(1, &squareVAO);
@@ -404,23 +396,20 @@ void InitializeEngine(void) {
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
+    // Initialize UI VAO and VBO
+    glGenVertexArrays(1, &uiVAO);
+    glGenBuffers(1, &uiVBO);
 
-    float uiVertices[] = {
-        0.7f,  0.9f,   // Bottom left  (x: halfway right, y: near top)
-        0.95f, 0.9f,   // Bottom right (x: almost right edge)
-        0.95f, 0.95f,  // Top right    
-        0.7f,  0.95f   // Top left
-    };
-
+    // Allocate buffer space for UI elements (8 vertices * 2 floats each)
     glBindVertexArray(uiVAO);
     glBindBuffer(GL_ARRAY_BUFFER, uiVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(uiVertices), uiVertices, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, 16 * sizeof(float), NULL, GL_DYNAMIC_DRAW);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
 
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
-    printf("Square VAO and VBO created.\n");
+    printf("UI VAO and VBO created.\n");
 
     // Load texture atlas
     textureAtlas = loadBMP("texture_atlas-1.bmp");
@@ -448,6 +437,13 @@ void InitializeEngine(void) {
 
     initializeGPUPathfinding();
     printf("GPU pathfinding initialized.\n");
+
+    // Initialize UI system with its shader
+    InitializeUI(uiShaderProgram);
+    printf("UI system initialized.\n");
+
+    initializeViewports();
+    printf("Viewports initialized.\n");
 }
 void CleanupEntities() {
     for (int i = 0; i < MAX_ENTITIES; i++) {
@@ -621,6 +617,8 @@ void UpdateGameLogic() {
 void Render() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
+    // 1. Render game view
+    applyViewport(&gameViewport);
     glUseProgram(shaderProgram);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, textureAtlas);
@@ -634,15 +632,33 @@ void Render() {
     RenderEntities(cameraOffsetX, cameraOffsetY, zoomFactor);
     renderStructurePreview(&placementMode, cameraOffsetX, cameraOffsetY, zoomFactor);
 
-    // Ensure we bind UI resources before rendering UI
+    // 2. Render UI elements in sidebar
+    applyViewport(&sidebarViewport);
     glUseProgram(uiShaderProgram);
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, textureAtlas);  // Or your UI texture
+    glBindTexture(GL_TEXTURE_2D, textureAtlas);
+
+    // Draw sidebar background
+    float sidebarVertices[] = {
+        -1.0f, -1.0f,  // Bottom left
+         1.0f, -1.0f,  // Bottom right
+         1.0f,  1.0f,  // Top right
+        -1.0f,  1.0f   // Top left
+    };
+
+    glBindVertexArray(uiVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, uiVBO);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(sidebarVertices), sidebarVertices);
+    
+    GLint colorLoc = glGetUniformLocation(uiShaderProgram, "color");
+    glUniform4f(colorLoc, 0.2f, 0.2f, 0.2f, 1.0f);  // Dark gray background
+    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+    // Render UI components (exp bar, inventory, hotbar)
     RenderUI(&player, uiShaderProgram);
 
     SDL_GL_SwapWindow(window);
 }
-
 #define MAX_VISIBLE_TILES (GRID_SIZE * GRID_SIZE)
 void initializeTilesBatchVAO() {
     glGenVertexArrays(1, &tilesBatchVAO);
