@@ -8,6 +8,7 @@ typedef enum {
     ITEM_WOOD,
     ITEM_STONE,
     ITEM_TOOL,
+    ITEM_FERN,
     // Add more as needed
     ITEM_TYPE_COUNT
 } ItemType;

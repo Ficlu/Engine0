@@ -23,10 +23,10 @@ Item* CreateItem(ItemType type) {
     item->durability = 100;
     item->flags = 0;
 
-    // Set default flags based on type
     switch(type) {
         case ITEM_WOOD:
         case ITEM_STONE:
+        case ITEM_FERN:  // Add fern case
             item->flags |= ITEM_FLAG_STACKABLE;
             break;
         case ITEM_TOOL:
@@ -39,6 +39,19 @@ Item* CreateItem(ItemType type) {
     return item;
 }
 
+// Modify GetMaxStack():
+uint16_t GetMaxStack(ItemType type) {
+    switch(type) {
+        case ITEM_WOOD:
+        case ITEM_STONE:
+        case ITEM_FERN:  // Add fern case
+            return 1;
+        case ITEM_TOOL:
+            return 1;
+        default:
+            return 1;
+    }
+}
 /*
  * DestroyItem
  * 
@@ -71,14 +84,3 @@ bool IsStackable(const Item* item) {
  * @param[in] type ItemType to check
  * @return Maximum stack size
  */
-uint16_t GetMaxStack(ItemType type) {
-    switch(type) {
-        case ITEM_WOOD:
-        case ITEM_STONE:
-            return 64;
-        case ITEM_TOOL:
-            return 1;
-        default:
-            return 1;
-    }
-}

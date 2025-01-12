@@ -26,6 +26,7 @@ typedef struct {
 } Viewport;
 void renderSidebarButton(float x, float y, float width, float height);
 
+extern GLuint itemShaderProgram;
 
 extern Viewport gameViewport;
 extern Viewport sidebarViewport;
@@ -54,6 +55,7 @@ extern GLuint enemyBatchVBO;
 extern GLuint enemyBatchVAO;
 extern GLuint outlineVBO;
 // Function declarations
+GLuint createItemShaderProgram(void);
 void setupGameViewport(void);
 void setupSidebarViewport(void);
 void initRendering();

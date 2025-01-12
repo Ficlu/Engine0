@@ -184,7 +184,10 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
        case STRUCTURE_PLANT:
            // Plants start as unwalkable but could become walkable when harvested
            GRIDCELL_SET_WALKABLE(grid[gridY][gridX], false);
-           grid[gridY][gridX].materialType = FERN; // Default plant type for now
+           grid[gridY][gridX].materialType = MATERIAL_FERN; // Default plant type for now
+               printf("Placed plant: structureType=%d, materialType=%d\n", 
+           grid[gridY][gridX].structureType, 
+           grid[gridY][gridX].materialType);
            break;
 
        default:

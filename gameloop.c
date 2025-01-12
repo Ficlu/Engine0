@@ -180,13 +180,6 @@ void InitializeGameState(bool isNewGame) {
        int playerGridX = GRID_SIZE / 2;
        int playerGridY = GRID_SIZE / 2;
        InitPlayer(&player, playerGridX, playerGridY, MOVE_SPEED);
-        if (player.inventory) {
-        Item* testItem = CreateItem(ITEM_WOOD);
-        if (testItem) {
-            testItem->count = 10;
-            AddItem(player.inventory, testItem);
-        }
-    }
 
        printf("Player initialized at (%d, %d).\n", playerGridX, playerGridY);
    }
@@ -254,7 +247,7 @@ void InitializeGameState(bool isNewGame) {
                if (grid[y][x].terrainType == (uint8_t)TERRAIN_GRASS) {
                    if ((float)rand() / RAND_MAX < 0.1f) {
                        grid[y][x].structureType = STRUCTURE_PLANT;
-                       grid[y][x].materialType = FERN;
+                       grid[y][x].materialType = MATERIAL_FERN;
                        GRIDCELL_SET_WALKABLE(grid[y][x], false);
                        grid[y][x].wallTexX = 1.0f/3.0f;
                        grid[y][x].wallTexY = 0.0f/6.0f;
@@ -354,6 +347,17 @@ window = SDL_CreateWindow("2D Top-Down RPG",
         SDL_Quit();
         exit(1);
     }
+
+    // Add this after creating other shader programs
+itemShaderProgram = createItemShaderProgram();
+if (!itemShaderProgram) {
+    fprintf(stderr, "Failed to create item shader program\n");
+    SDL_GL_DeleteContext(mainContext);
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+    exit(1);
+}
+printf("Item shader program created.\n");
     printf("Shader programs created.\n");
 
     colorUniform = glGetUniformLocation(shaderProgram, "color");

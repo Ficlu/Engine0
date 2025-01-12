@@ -15,6 +15,7 @@ GLuint enemyBatchVBO = 0;
 GLuint enemyBatchVAO = 0;
 EntityBatchData entityBatchData = {NULL, 0};
 TileBatchData tileBatchData = {NULL, 0};
+GLuint itemShaderProgram = 0;  // Initialize to 0
 // Add at top of rendering.c with other globals
 Viewport gameViewport;
 Viewport sidebarViewport;
@@ -166,6 +167,45 @@ const char* outlineFragmentShaderSource = "#version 330 core\n"
 "void main() {\n"
 "    FragColor = vec4(outlineColor, 1.0);\n"
 "}\n";
+
+// In rendering.c add the shader source:
+const char* itemVertexShaderSource = "#version 330 core\n"
+"layout (location = 0) in vec2 aPos;\n"
+"layout (location = 1) in vec2 aTexCoord;\n"
+"out vec2 TexCoord;\n"
+"void main() {\n"
+"    gl_Position = vec4(aPos, 0.0, 1.0);\n"
+"    TexCoord = aTexCoord;\n"
+"}\0";
+
+const char* itemFragmentShaderSource = "#version 330 core\n"
+"in vec2 TexCoord;\n"
+"out vec4 FragColor;\n"
+"uniform sampler2D textureAtlas;\n"
+"uniform vec4 color;\n"
+"void main() {\n"
+"    vec4 texColor = texture(textureAtlas, TexCoord);\n"
+"    if(texColor.r == 1.0 && texColor.g == 0.0 && texColor.b == 1.0) {\n"
+"        discard;\n"
+"    }\n"
+"    FragColor = texColor * color;\n"
+"}\0";
+
+// Add function to create item shader:
+GLuint createItemShaderProgram() {
+    GLuint vertexShader = createShader(GL_VERTEX_SHADER, itemVertexShaderSource);
+    GLuint fragmentShader = createShader(GL_FRAGMENT_SHADER, itemFragmentShaderSource);
+    
+    GLuint program = glCreateProgram();
+    glAttachShader(program, vertexShader);
+    glAttachShader(program, fragmentShader);
+    glLinkProgram(program);
+    
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+    
+    return program;
+}
 
 GLuint createUIShaderProgram() {
     GLuint vertexShader = createShader(GL_VERTEX_SHADER, uiVertexShaderSource);

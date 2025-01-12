@@ -202,9 +202,7 @@ void RenderHotbar(const Player* player, const UIState* state) {
             RenderItem(player->inventory->slots[i], x, startY, slotSize);
         }
 
-        if (i == player->inventory->selectedSlot) {
-            RenderSlotHighlight(x, startY, slotSize);
-        }
+
     }
 }
 void RenderInventoryUI(const Player* player, const UIState* state) {
@@ -250,8 +248,8 @@ void RenderInventoryUI(const Player* player, const UIState* state) {
     float usableHeight = usablePanelHeight - 2.0f * internalPadding;
 
     // Determine slot size and enforce square slots
-    int rows = INVENTORY_SLOTS_X; // Number of rows
-    int cols = INVENTORY_SLOTS_Y; // Number of columns
+    int rows = INVENTORY_SLOTS_Y; // Number of rows
+    int cols = INVENTORY_SLOTS_X; // Number of columns
     float slotSize = fminf(usableWidth / cols, usableHeight / rows); // Maximum square slot size
 
     // Adjust the usable grid area to reflect the actual grid size with square slots
@@ -309,17 +307,46 @@ void RenderInventoryUI(const Player* player, const UIState* state) {
 static void RenderItem(const Item* item, float x, float y, float size) {
     if (!item) return;
 
+    // Switch to item shader
+    glUseProgram(itemShaderProgram);
+    
+    float texX = 0.0f;
+    float texY = 0.0f;
+    float texWidth = 1.0f/3.0f;
+    float texHeight = 1.0f/6.0f;
+
+    switch(item->type) {
+        case ITEM_FERN:
+            texX = 1.0f/3.0f;
+            texY = 0.0f/6.0f;
+            break;
+        case ITEM_WOOD:
+            texX = 2.0f/3.0f;
+            texY = 5.0f/6.0f;
+            break;
+        default:
+            texX = 0.0f/3.0f;
+            texY = 5.0f/6.0f;
+            break;
+    }
+
     float vertices[] = {
-        // Positions           // TexCoords
-        x,          y,         0.0f, 0.0f,
-        x + size,   y,         1.0f, 0.0f,
-        x + size,   y + size,  1.0f, 1.0f,
-        x,          y + size,  0.0f, 1.0f
+        // Position         // TexCoords
+        x,          y,         texX,               texY,                // Bottom left
+        x + size,   y,         texX + texWidth,    texY,                // Bottom right
+        x + size,   y + size,  texX + texWidth,    texY + texHeight,    // Top right
+        x,          y + size,  texX,               texY + texHeight     // Top left
     };
     
-    glUniform4f(glGetUniformLocation(uiShaderProgram, "color"), 0.8f, 0.3f, 0.3f, 1.0f);
+    glUniform4f(glGetUniformLocation(itemShaderProgram, "color"), 1.0f, 1.0f, 1.0f, 1.0f);
+    GLint texUniform = glGetUniformLocation(itemShaderProgram, "textureAtlas");
+    glUniform1i(texUniform, 0);
+    
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    
+    // Switch back to UI shader
+    glUseProgram(uiShaderProgram);
 }
 static void RenderSlotHighlight(float x, float y, float size) {
     // Draw slot background first

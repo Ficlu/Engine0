@@ -138,6 +138,7 @@ void writeChunkToGrid(const Chunk* chunk) {
             if (gridX < GRID_SIZE && gridY < GRID_SIZE) {
                 // Preserve existing structure data
                 uint8_t oldStructureType = grid[gridY][gridX].structureType;
+                uint8_t oldMaterialType = grid[gridY][gridX].materialType;
                 uint8_t oldOrientation = GRIDCELL_GET_ORIENTATION(grid[gridY][gridX]);
                 bool wasWalkable = GRIDCELL_IS_WALKABLE(grid[gridY][gridX]);
                 float oldTexX = grid[gridY][gridX].wallTexX;
@@ -149,6 +150,7 @@ void writeChunkToGrid(const Chunk* chunk) {
                 // Restore structure data if it existed
                 if (oldStructureType != 0) {
                     grid[gridY][gridX].structureType = oldStructureType;
+                    grid[gridY][gridX].materialType = oldMaterialType;
                     GRIDCELL_SET_ORIENTATION(grid[gridY][gridX], oldOrientation);
                     GRIDCELL_SET_WALKABLE(grid[gridY][gridX], wasWalkable);
                     grid[gridY][gridX].wallTexX = oldTexX;
@@ -161,7 +163,6 @@ void writeChunkToGrid(const Chunk* chunk) {
         }
     }
 }
-
 void generateTerrain() {
     printf("Generating initial terrain...\n");
     

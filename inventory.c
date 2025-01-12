@@ -35,11 +35,12 @@ Inventory* CreateInventory(void) {
 void DestroyInventory(Inventory* inv) {
     if (!inv) return;
 
-    for (int i = 0; i < INVENTORY_SIZE; i++) {
-        if (inv->slots[i]) {
-            DestroyItem(inv->slots[i]);
-        }
+printf("DEBUG - After inventory creation:\n");
+for (int i = 0; i < INVENTORY_SIZE; i++) {
+    if (inv->slots[i] != NULL) {
+        printf("ERROR: Slot %d is not NULL!\n", i);
     }
+}
     free(inv);
 }
 
@@ -88,10 +89,18 @@ static int FindEmptySlot(const Inventory* inv, const Item* item) {
  * @return true if added successfully
  */
 bool AddItem(Inventory* inv, Item* item) {
-    if (!inv || !item) return false;
+    if (!inv || !item) {
+        printf("AddItem failed: NULL inventory or item\n");
+        return false;
+    }
 
     int slot = FindEmptySlot(inv, item);
-    if (slot == -1) return false;
+    if (slot == -1) {
+        printf("AddItem failed: No empty slot found (total slots: %d)\n", inv->slotCount);
+        return false;
+    }
+
+    printf("Found slot %d for item type %d\n", slot, item->type);
 
     if (inv->slots[slot]) {
         // Stack with existing item

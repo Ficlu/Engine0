@@ -59,14 +59,6 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
         exit(1);
     }
 
-    // Add starting items
-    Item* woodItem = CreateItem(ITEM_WOOD);
-    if (woodItem) {
-        woodItem->count = 10;
-        if (!AddItem(player->inventory, woodItem)) {
-            DestroyItem(woodItem);
-        }
-    }
 
     int tempNearestX, tempNearestY;
     findNearestWalkableTile(atomic_load(&player->entity.posX), atomic_load(&player->entity.posY), &tempNearestX, &tempNearestY);

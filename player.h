@@ -33,6 +33,7 @@ typedef struct {
     int targetBuildX;
     int targetBuildY;
     bool hasBuildTarget;
+    
     StructureType pendingBuildType;
     Skills skills;
     Inventory* inventory;  // Add this
