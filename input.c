@@ -116,29 +116,30 @@ void HandleInput() {
                                 abs(gridY - playerGridY) <= 1
                             );
 
-                            if (isNearby) {
-                                // Create new fern item
-                                Item* fernItem = CreateItem(ITEM_FERN);
-                                if (!fernItem) {
-                                    printf("Failed to create fern item\n");
-                                    return;
-                                }
-                                
-                                // Try to add to inventory
-                                if (AddItem(player.inventory, fernItem)) {
-                                    printf("Fern added to inventory successfully\n");
-                                    
-                                    // Clear the grid cell
-                                    grid[gridY][gridX].structureType = STRUCTURE_NONE;
-                                    grid[gridY][gridX].materialType = MATERIAL_NONE;
-                                    GRIDCELL_SET_WALKABLE(grid[gridY][gridX], true);
-                                    
-                                    printf("Grid cell cleared after harvesting\n");
-                                } else {
-                                    printf("Inventory full - couldn't add fern\n");
-                                    DestroyItem(fernItem); // Clean up if we couldn't add it
-                                }
-                            } else {
+if (isNearby) {
+    // Create new fern item
+    Item* fernItem = CreateItem(ITEM_FERN);
+    if (!fernItem) {
+        printf("Failed to create fern item\n");
+        return;
+    }
+    
+    printf("Created fern item successfully, adding to inventory...\n");
+    
+    bool added = AddItem(player.inventory, fernItem);
+    printf("AddItem result: %d\n", added);
+    
+    if (added) {
+        // Clear the grid cell
+        grid[gridY][gridX].structureType = STRUCTURE_NONE;
+        grid[gridY][gridX].materialType = MATERIAL_NONE;
+        GRIDCELL_SET_WALKABLE(grid[gridY][gridX], true);
+        printf("Grid cell cleared after successful harvest\n");
+    } else {
+        printf("Failed to add item to inventory - destroying item\n");
+        DestroyItem(fernItem);
+    }
+} else {
                                 // If not nearby, pathfind to the fern
                                 AdjacentTile nearest = findNearestAdjacentTile(gridX, gridY,
                                                                              player.entity.gridX,

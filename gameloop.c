@@ -298,11 +298,11 @@ void InitializeEngine(void) {
     }
     printf("SDL initialized.\n");
 
-window = SDL_CreateWindow("2D Top-Down RPG",
-                         SDL_WINDOWPOS_CENTERED,
-                         SDL_WINDOWPOS_CENTERED, 
-                         WINDOW_WIDTH, WINDOW_HEIGHT,  // This will use the new total width
-                         SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
+    window = SDL_CreateWindow("2D Top-Down RPG",
+                            SDL_WINDOWPOS_CENTERED,
+                            SDL_WINDOWPOS_CENTERED, 
+                            WINDOW_WIDTH, WINDOW_HEIGHT,
+                            SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN);
     if (window == NULL) {
         fprintf(stderr, "Window could not be created! SDL_Error: %s\n", SDL_GetError());
         SDL_Quit();
@@ -336,30 +336,37 @@ window = SDL_CreateWindow("2D Top-Down RPG",
     }
     printf("GLEW initialized.\n");
 
+    // Create shader programs
     shaderProgram = createShaderProgram();
     outlineShaderProgram = createOutlineShaderProgram();
     uiShaderProgram = createUIShaderProgram();
+    itemShaderProgram = createItemShaderProgram();
     
-    if (!shaderProgram || !outlineShaderProgram || !uiShaderProgram) {
+    if (!shaderProgram || !outlineShaderProgram || !uiShaderProgram || !itemShaderProgram) {
         fprintf(stderr, "Failed to create shader programs\n");
         SDL_GL_DeleteContext(mainContext);
         SDL_DestroyWindow(window);
         SDL_Quit();
         exit(1);
     }
-
-    // Add this after creating other shader programs
-itemShaderProgram = createItemShaderProgram();
-if (!itemShaderProgram) {
-    fprintf(stderr, "Failed to create item shader program\n");
-    SDL_GL_DeleteContext(mainContext);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
-    exit(1);
-}
-printf("Item shader program created.\n");
     printf("Shader programs created.\n");
 
+    // Load texture atlas first
+    textureAtlas = loadBMP("texture_atlas-1.bmp");
+    if (!textureAtlas) {
+        fprintf(stderr, "Failed to load texture atlas\n");
+        glDeleteProgram(shaderProgram);
+        glDeleteProgram(outlineShaderProgram);
+        glDeleteProgram(uiShaderProgram);
+        glDeleteProgram(itemShaderProgram);
+        SDL_GL_DeleteContext(mainContext);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        exit(1);
+    }
+    printf("Texture atlas loaded with ID: %u\n", textureAtlas);
+
+    // Set up uniform locations
     colorUniform = glGetUniformLocation(shaderProgram, "color");
     textureUniform = glGetUniformLocation(shaderProgram, "textureAtlas");
 
@@ -404,7 +411,6 @@ printf("Item shader program created.\n");
     glGenVertexArrays(1, &uiVAO);
     glGenBuffers(1, &uiVBO);
 
-    // Allocate buffer space for UI elements (8 vertices * 2 floats each)
     glBindVertexArray(uiVAO);
     glBindBuffer(GL_ARRAY_BUFFER, uiVBO);
     glBufferData(GL_ARRAY_BUFFER, 16 * sizeof(float), NULL, GL_DYNAMIC_DRAW);
@@ -415,21 +421,7 @@ printf("Item shader program created.\n");
     glBindVertexArray(0);
     printf("UI VAO and VBO created.\n");
 
-    // Load texture atlas
-    textureAtlas = loadBMP("texture_atlas-1.bmp");
-    if (!textureAtlas) {
-        fprintf(stderr, "Failed to load texture atlas\n");
-        glDeleteVertexArrays(1, &gridVAO);
-        glDeleteVertexArrays(1, &squareVAO);
-        glDeleteBuffers(1, &squareVBO);
-        glDeleteProgram(shaderProgram);
-        glDeleteProgram(outlineShaderProgram);
-        SDL_GL_DeleteContext(mainContext);
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        exit(1);
-    }
-
+    // Initialize specialized VAOs
     initializeEnemyBatchVAO();
     printf("Enemy batch VAO initialized.\n");
 
@@ -442,12 +434,21 @@ printf("Item shader program created.\n");
     initializeGPUPathfinding();
     printf("GPU pathfinding initialized.\n");
 
-    // Initialize UI system with its shader
+    // Initialize UI system with shader and texture atlas
     InitializeUI(uiShaderProgram);
-    printf("UI system initialized.\n");
+    glUseProgram(uiShaderProgram);
+    GLint uiTextureLoc = glGetUniformLocation(uiShaderProgram, "textureAtlas");
+    glUniform1i(uiTextureLoc, 0);  // Use texture unit 0
+    printf("UI system initialized with texture atlas.\n");
 
     initializeViewports();
     printf("Viewports initialized.\n");
+
+    // Check for any GL errors after initialization
+    GLenum err;
+    while ((err = glGetError()) != GL_NO_ERROR) {
+        printf("GL error after initialization: 0x%x\n", err);
+    }
 }
 void CleanupEntities() {
     for (int i = 0; i < MAX_ENTITIES; i++) {

@@ -115,46 +115,36 @@ const char* fragmentShaderSource = "#version 330 core\n"
 const char* uiVertexShaderSource = 
     "#version 330 core\n"
     "layout (location = 0) in vec2 aPos;\n"
-    "layout (location = 1) in vec2 aTexCoord;\n"  // Add this to receive tex coords
-    "out vec2 TexCoord;\n"  // Add this to pass to fragment shader
+    "layout (location = 1) in vec2 aTexCoord;\n"
+    "out vec2 TexCoord;\n"  // Add this output
     "void main() {\n"
     "    gl_Position = vec4(aPos, 0.0, 1.0);\n"
-    "    TexCoord = aTexCoord;\n"  // Pass texture coordinates
+    "    TexCoord = aTexCoord;\n"  // Pass texture coordinates to fragment shader
     "}\0";
-
+// Update the UI fragment shader source
 const char* uiFragmentShaderSource = 
     "#version 330 core\n"
     "in vec2 TexCoord;\n"
     "out vec4 FragColor;\n"
-    "uniform float fillAmount;\n"
-    "uniform float flashIntensity;\n"
+    "uniform vec4 uColor;\n"
+    "uniform vec4 uBorderColor;\n"
+    "uniform float uBorderWidth;\n"
+    "uniform bool uHasTexture;\n"
+    "uniform sampler2D textureAtlas;\n"
     "void main() {\n"
-    "    vec4 backgroundColor = vec4(0.2, 0.2, 0.2, 0.8);\n"
-    "    vec4 fillColor = vec4(0.2, 0.7, 0.2, 0.8);\n"
-    "    vec4 borderColor = vec4(0.8, 0.8, 0.8, 0.9);\n"
-    "    vec4 flashColor = vec4(1.0, 1.0, 0.7, 0.8);\n"
-    "    \n"
-    "    float borderThickness = 0.1;\n"
-    "    \n"
-    "    bool isBorder = \n"
-    "        TexCoord.x < borderThickness ||\n"
-    "        TexCoord.x > 1.0 - borderThickness ||\n"
-    "        TexCoord.y < borderThickness ||\n"
-    "        TexCoord.y > 1.0 - borderThickness;\n"
-    "    \n"
-    "    vec4 baseColor;\n"
-    "    if (isBorder) {\n"
-    "        baseColor = borderColor;\n"
-    "    } else if (TexCoord.x <= fillAmount) {\n"
-    "        baseColor = fillColor;\n"
+    "    if (uHasTexture) {\n"
+    "        vec4 texColor = texture(textureAtlas, TexCoord);\n"
+    "        if(texColor.r >= 0.99 && texColor.g <= 0.01 && texColor.b >= 0.99) {\n"
+    "            discard;\n"
+    "        }\n"
+    "        FragColor = texColor;\n"
     "    } else {\n"
-    "        baseColor = backgroundColor;\n"
+    "        FragColor = uColor;\n"
+    "        if (uBorderWidth > 0.0) {\n"
+    "            FragColor = mix(FragColor, uBorderColor, uBorderWidth);\n"
+    "        }\n"
     "    }\n"
-    "    \n"
-    "    // Blend with flash color based on intensity\n"
-    "    FragColor = mix(baseColor, flashColor, flashIntensity);\n"
     "}\0";
-
 const char* outlineVertexShaderSource = "#version 330 core\n"
 "layout(location = 0) in vec2 position;\n"
 "void main() {\n"
@@ -182,14 +172,17 @@ const char* itemFragmentShaderSource = "#version 330 core\n"
 "in vec2 TexCoord;\n"
 "out vec4 FragColor;\n"
 "uniform sampler2D textureAtlas;\n"
-"uniform vec4 color;\n"
+"uniform vec4 uColor;\n"
+"uniform bool uHasTexture;\n"
 "void main() {\n"
-"    vec4 texColor = texture(textureAtlas, TexCoord);\n"
-"    if(texColor.r == 1.0 && texColor.g == 0.0 && texColor.b == 1.0) {\n"
-"        discard;\n"
+"    if (uHasTexture) {\n"
+"        vec4 texColor = texture(textureAtlas, TexCoord);\n"
+"        if(texColor.a < 0.1) discard;\n"
+"        FragColor = texColor;\n"
+"    } else {\n"
+"        FragColor = uColor;\n"
 "    }\n"
-"    FragColor = texColor * color;\n"
-"}\0";
+"}\n";
 
 // Add function to create item shader:
 GLuint createItemShaderProgram() {
@@ -208,21 +201,61 @@ GLuint createItemShaderProgram() {
 }
 
 GLuint createUIShaderProgram() {
+    // Add debug prints for shader source
+    printf("UI Vertex Shader Source:\n%s\n", uiVertexShaderSource);
+    printf("UI Fragment Shader Source:\n%s\n", uiFragmentShaderSource);
+
     GLuint vertexShader = createShader(GL_VERTEX_SHADER, uiVertexShaderSource);
     GLuint fragmentShader = createShader(GL_FRAGMENT_SHADER, uiFragmentShaderSource);
+
+    // Add error checking for shader compilation
+    GLint success;
+    char infoLog[512];
+    
+    glGetShaderiv(vertexShader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        glGetShaderInfoLog(vertexShader, 512, NULL, infoLog);
+        printf("ERROR::VERTEX::SHADER::COMPILATION_FAILED\n%s\n", infoLog);
+    }
+
+    glGetShaderiv(fragmentShader, GL_COMPILE_STATUS, &success);
+    if (!success) {
+        glGetShaderInfoLog(fragmentShader, 512, NULL, infoLog);
+        printf("ERROR::FRAGMENT::SHADER::COMPILATION_FAILED\n%s\n", infoLog);
+    }
 
     GLuint shaderProgram = glCreateProgram();
     glAttachShader(shaderProgram, vertexShader);
     glAttachShader(shaderProgram, fragmentShader);
     glLinkProgram(shaderProgram);
 
-    int success;
-    char infoLog[512];
     glGetProgramiv(shaderProgram, GL_LINK_STATUS, &success);
     if (!success) {
         glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
         printf("ERROR::UI::PROGRAM::LINKING_FAILED\n%s\n", infoLog);
+    } else {
+        // Add validation check
+        glValidateProgram(shaderProgram);
+        glGetProgramiv(shaderProgram, GL_VALIDATE_STATUS, &success);
+        if (!success) {
+            glGetProgramInfoLog(shaderProgram, 512, NULL, infoLog);
+            printf("ERROR::UI::PROGRAM::VALIDATION_FAILED\n%s\n", infoLog);
+        }
     }
+
+    // After linking, verify uniform locations
+    printf("Checking UI shader uniforms:\n");
+    GLint colorLoc = glGetUniformLocation(shaderProgram, "uColor");
+    GLint borderColorLoc = glGetUniformLocation(shaderProgram, "uBorderColor");
+    GLint borderWidthLoc = glGetUniformLocation(shaderProgram, "uBorderWidth");
+    GLint hasTextureLoc = glGetUniformLocation(shaderProgram, "uHasTexture");
+    GLint hasBorderLoc = glGetUniformLocation(shaderProgram, "uHasBorder");
+    
+    printf("uColor location: %d\n", colorLoc);
+    printf("uBorderColor location: %d\n", borderColorLoc);
+    printf("uBorderWidth location: %d\n", borderWidthLoc);
+    printf("uHasTexture location: %d\n", hasTextureLoc);
+    printf("uHasBorder location: %d\n", hasBorderLoc);
 
     glDeleteShader(vertexShader);
     glDeleteShader(fragmentShader);

@@ -34,13 +34,15 @@ Inventory* CreateInventory(void) {
  */
 void DestroyInventory(Inventory* inv) {
     if (!inv) return;
-
-printf("DEBUG - After inventory creation:\n");
-for (int i = 0; i < INVENTORY_SIZE; i++) {
-    if (inv->slots[i] != NULL) {
-        printf("ERROR: Slot %d is not NULL!\n", i);
+    
+    // Clean up all items before freeing the inventory
+    for (int i = 0; i < INVENTORY_SIZE; i++) {
+        if (inv->slots[i]) {
+            DestroyItem(inv->slots[i]);
+            inv->slots[i] = NULL;
+        }
     }
-}
+
     free(inv);
 }
 
