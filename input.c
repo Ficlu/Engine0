@@ -124,13 +124,16 @@ if (isNearby) {
     bool added = AddItem(player.inventory, fernItem);
     printf("AddItem result: %d\n", added);
     
-    if (added) {
-        // Clear the grid cell
-        grid[gridY][gridX].structureType = STRUCTURE_NONE;
-        grid[gridY][gridX].materialType = MATERIAL_NONE;
-        GRIDCELL_SET_WALKABLE(grid[gridY][gridX], true);
-        printf("Grid cell cleared after successful harvest\n");
-    } else {
+if (added) {
+    // Award foraging experience BEFORE any cleanup
+    awardForagingExp(&player, fernItem);  // Do this first
+    
+    // Now safe to clear the grid cell
+    grid[gridY][gridX].structureType = STRUCTURE_NONE;
+    grid[gridY][gridX].materialType = MATERIAL_NONE;
+    GRIDCELL_SET_WALKABLE(grid[gridY][gridX], true);
+    printf("Grid cell cleared after successful harvest\n");
+} else {
         printf("Failed to add item to inventory - destroying item\n");
         DestroyItem(fernItem);
     }

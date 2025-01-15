@@ -1,18 +1,34 @@
+// structures.h
 #ifndef STRUCTURES_H
 #define STRUCTURES_H
 
 #include <stdint.h>
 #include <stdbool.h>
 #include "grid.h"
-#include "player.h"
 #include "structure_types.h"
+
+typedef struct {
+    int x, y;
+} Point;
+
+typedef struct {
+    Point* boundaryTiles;
+    int boundaryCount;
+    Point* interiorTiles;
+    int interiorCount;
+    Point centerPoint;
+    uint64_t hash;
+    int totalArea;
+    int wallCount;
+    int doorCount;
+    bool isValid;
+} EnclosureData;
 
 typedef struct {
     int* tiles;  // Array of tile indices within the enclosure
     int tileCount;
     bool isValid;
     uint64_t hash; 
-
 } Enclosure;
 
 typedef struct {
@@ -30,24 +46,6 @@ typedef struct {
     bool validPlacement;
 } PlacementMode;
 
-typedef struct {
-    int x, y;
-} Point;
-
-typedef struct {
-    uint64_t hash;               // Combined hash of boundary and area
-    Point* boundaryTiles;        // Array of wall/door positions
-    int boundaryCount;           // Number of boundary tiles
-    Point* interiorTiles;        // Array of interior positions
-    int interiorCount;           // Number of interior tiles
-    int totalArea;              // Total enclosed area
-    Point centerPoint;          // Center point of the enclosure
-    int doorCount;              // Number of doors
-    int wallCount;              // Number of walls
-    bool isValid;               // Whether the enclosure is still valid
-} EnclosureData;
-
-// Add this after the other #includes and before the function definitions
 typedef struct {
     int x, y;
     int prevX, prevY;
@@ -69,7 +67,7 @@ void removeEnclosure(EnclosureManager* manager, uint64_t hash);
 void cleanupEnclosureManager(EnclosureManager* manager);
 extern EnclosureManager globalEnclosureManager; 
 
-void awardConstructionExp(Player* player, const EnclosureData* enclosure);
+struct Player;  // Forward declaration
 void cycleStructureType(PlacementMode* mode, bool forward);
 void initializeStructureSystem(void);
 bool canPlaceStructure(StructureType type, int gridX, int gridY);
@@ -79,7 +77,8 @@ const char* getStructureName(StructureType type);
 void cleanupStructureSystem(void);
 bool isEntityTargetingTile(int gridX, int gridY);
 AdjacentTile findNearestAdjacentTile(int targetX, int targetY, int fromX, int fromY, bool requireWalkable);
-bool toggleDoor(int gridX, int gridY, Player* player);
+bool toggleDoor(int gridX, int gridY, struct Player* player);
 bool isWallOrDoor(int x, int y);
 Enclosure detectEnclosure(int startX, int startY);
+
 #endif // STRUCTURES_H

@@ -89,14 +89,14 @@ void UI_BatchQuad(UIContext* ctx,
     
     if (ctx->batchRenderer.vertexCount >= MAX_BATCH_VERTICES - 6) {
         needsFlush = true;
-        printf("DEBUG: Flushing batch: buffer full\n");
+        //printf("DEBUG: Flushing batch: buffer full\n");
     } else if (ctx->batchRenderer.vertexCount > 0) {
         bool currentBatchTextured = (ctx->batchRenderer.vertices[0].texCoords[0] != 0.0f || 
                                    ctx->batchRenderer.vertices[0].texCoords[1] != 0.0f);
         if (currentBatchTextured != isTextured) {
             needsFlush = true;
-            printf("DEBUG: Flushing batch: texture state change from %d to %d\n", 
-                   currentBatchTextured, isTextured);
+            //printf("DEBUG: Flushing batch: texture state change from %d to %d\n", 
+             //      currentBatchTextured, isTextured);
         }
     }
 
@@ -104,8 +104,8 @@ void UI_BatchQuad(UIContext* ctx,
         UI_FlushBatch(ctx);
     }
 
-    printf("DEBUG: Adding to batch: textured=%d, vertices=%d\n", 
-           isTextured, ctx->batchRenderer.vertexCount);
+    //printf("DEBUG: Adding to batch: textured=%d, vertices=%d\n", 
+    //       isTextured, ctx->batchRenderer.vertexCount);
 
     BatchVertex* v = &ctx->batchRenderer.vertices[ctx->batchRenderer.vertexCount];
 
@@ -158,35 +158,35 @@ void UI_BeginBatch(UIContext* ctx) {
         return;
     }
 
-    printf("\nDEBUG: === BATCH BEGIN STATE ===\n");
+    //printf("\nDEBUG: === BATCH BEGIN STATE ===\n");
     
     // Check initial GL state
     GLint previousVAO, previousProgram;
     glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previousVAO);
     glGetIntegerv(GL_CURRENT_PROGRAM, &previousProgram);
-    printf("DEBUG: Initial GL State - VAO: %d, Program: %d\n", previousVAO, previousProgram);
+    //printf("DEBUG: Initial GL State - VAO: %d, Program: %d\n", previousVAO, previousProgram);
 
     // Set and verify shader program
     glUseProgram(ctx->shaderProgram);
     GLint currentProgram;
     glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
-    printf("DEBUG: Setting shader program ID: %d (Verified: %d)\n", 
-           ctx->shaderProgram, currentProgram);
+    //printf("DEBUG: Setting shader program ID: %d (Verified: %d)\n", 
+    //       ctx->shaderProgram, currentProgram);
 
     // Explicitly bind VAO and verify
     glBindVertexArray(ctx->batchRenderer.vao);
     GLint boundVAO;
     glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &boundVAO);
-    printf("DEBUG: Binding VAO ID: %d (Verified: %d)\n", 
-           ctx->batchRenderer.vao, boundVAO);
+    //printf("DEBUG: Binding VAO ID: %d (Verified: %d)\n", 
+    //       ctx->batchRenderer.vao, boundVAO);
 
     // Verify attribute enables after VAO binding
     GLint positionEnabled, texCoordEnabled, colorEnabled;
     glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &positionEnabled);
     glGetVertexAttribiv(1, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &texCoordEnabled);
     glGetVertexAttribiv(2, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &colorEnabled);
-    printf("DEBUG: Attribute States - Position: %d, TexCoord: %d, Color: %d\n",
-           positionEnabled, texCoordEnabled, colorEnabled);
+    //printf("DEBUG: Attribute States - Position: %d, TexCoord: %d, Color: %d\n",
+    //       positionEnabled, texCoordEnabled, colorEnabled);
 
     // Set up blending
     glEnable(GL_BLEND);
@@ -196,22 +196,22 @@ void UI_BeginBatch(UIContext* ctx) {
     glActiveTexture(GL_TEXTURE0);
     GLint activeTexture;
     glGetIntegerv(GL_ACTIVE_TEXTURE, &activeTexture);
-    printf("DEBUG: Active Texture Unit: %d (Expected: %d)\n", 
-           activeTexture - GL_TEXTURE0, 0);
+    // printf("DEBUG: Active Texture Unit: %d (Expected: %d)\n", 
+    //       activeTexture - GL_TEXTURE0, 0);
 
     glBindTexture(GL_TEXTURE_2D, textureAtlas);
     GLint boundTexture;
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &boundTexture);
-    printf("DEBUG: Binding texture atlas ID: %d (Verified: %d)\n", 
-           textureAtlas, boundTexture);
+    // printf("DEBUG: Binding texture atlas ID: %d (Verified: %d)\n", 
+    //       textureAtlas, boundTexture);
 
     // Set and verify uniforms
     GLint textureLoc = glGetUniformLocation(ctx->shaderProgram, "textureAtlas");
     if (textureLoc >= 0) {
         glUniform1i(textureLoc, 0);
-        printf("DEBUG: Setting texture uniform location: %d\n", textureLoc);
+        // printf("DEBUG: Setting texture uniform location: %d\n", textureLoc);
     } else {
-        printf("WARNING: textureAtlas uniform not found\n");
+        // printf("WARNING: textureAtlas uniform not found\n");
     }
 
     GLint hasTextureLoc = glGetUniformLocation(ctx->shaderProgram, "uHasTexture");
@@ -219,10 +219,10 @@ void UI_BeginBatch(UIContext* ctx) {
         glUniform1i(hasTextureLoc, 0);  // Default to no texture
         GLint verifiedValue;
         glGetUniformiv(ctx->shaderProgram, hasTextureLoc, &verifiedValue);
-        printf("DEBUG: Setting uHasTexture uniform: %d (Verified: %d)\n", 
-               0, verifiedValue);
+        // printf("DEBUG: Setting uHasTexture uniform: %d (Verified: %d)\n", 
+        //       0, verifiedValue);
     } else {
-        printf("WARNING: uHasTexture uniform not found\n");
+        // printf("WARNING: uHasTexture uniform not found\n");
     }
 
     // Reset vertex count
@@ -231,10 +231,10 @@ void UI_BeginBatch(UIContext* ctx) {
     // Check for any GL errors
     GLenum err;
     while ((err = glGetError()) != GL_NO_ERROR) {
-        printf("ERROR: GL error in BeginBatch: 0x%x\n", err);
+        // printf("ERROR: GL error in BeginBatch: 0x%x\n", err);
     }
 
-    printf("DEBUG: === BATCH BEGIN COMPLETE ===\n\n");
+    // printf("DEBUG: === BATCH BEGIN COMPLETE ===\n\n");
 }
 
 /**
@@ -251,13 +251,13 @@ void UI_FlushBatch(UIContext* ctx) {
         return;
     }
 
-    printf("\nDEBUG: === BATCH FLUSH START ===\n");
+    // printf("\nDEBUG: === BATCH FLUSH START ===\n");
     
     // Verify shader state
     GLint currentProgram;
     glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
-    printf("DEBUG: Current shader program: %d (Expected: %d)\n", 
-           currentProgram, ctx->shaderProgram);
+    // printf("DEBUG: Current shader program: %d (Expected: %d)\n", 
+    //       currentProgram, ctx->shaderProgram);
 
     // Ensure proper shader is bound
     glUseProgram(ctx->shaderProgram);
@@ -265,8 +265,8 @@ void UI_FlushBatch(UIContext* ctx) {
     // Verify VAO state
     GLint currentVAO;
     glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &currentVAO);
-    printf("DEBUG: Current VAO: %d (Expected: %d)\n", 
-           currentVAO, ctx->batchRenderer.vao);
+    // printf("DEBUG: Current VAO: %d (Expected: %d)\n", 
+    //       currentVAO, ctx->batchRenderer.vao);
 
     glBindVertexArray(ctx->batchRenderer.vao);
 
@@ -276,8 +276,8 @@ void UI_FlushBatch(UIContext* ctx) {
     glGetVertexAttribiv(1, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &texCoordEnabled);
     glGetVertexAttribiv(2, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &colorEnabled);
     
-    printf("DEBUG: Attribute enables - Position: %d, TexCoord: %d, Color: %d\n",
-           positionEnabled, texCoordEnabled, colorEnabled);
+    // printf("DEBUG: Attribute enables - Position: %d, TexCoord: %d, Color: %d\n",
+    //       positionEnabled, texCoordEnabled, colorEnabled);
 
     // Bind texture atlas
     glActiveTexture(GL_TEXTURE0);
@@ -295,15 +295,15 @@ void UI_FlushBatch(UIContext* ctx) {
     
     GLint verifiedTexture;
     glGetUniformiv(ctx->shaderProgram, hasTextureLoc, &verifiedTexture);
-    printf("DEBUG: Texture state in flush - Required: %d, Actual: %d\n",
-           isTexturedBatch ? 1 : 0, verifiedTexture);
+    // printf("DEBUG: Texture state in flush - Required: %d, Actual: %d\n",
+        //   isTexturedBatch ? 1 : 0, verifiedTexture);
 
     glBindBuffer(GL_ARRAY_BUFFER, ctx->batchRenderer.vbo);
 
     // Sample some vertex data before upload
     BatchVertex* lastVertex = &ctx->batchRenderer.vertices[ctx->batchRenderer.vertexCount - 1];
     
-    printf("DEBUG: First vertex color: R=%.2f G=%.2f B=%.2f A=%.2f tex(%.2f, %.2f)\n",
+    /* printf("DEBUG: First vertex color: R=%.2f G=%.2f B=%.2f A=%.2f tex(%.2f, %.2f)\n",
            firstVertex->color[0], firstVertex->color[1], 
            firstVertex->color[2], firstVertex->color[3],
            firstVertex->texCoords[0], firstVertex->texCoords[1]);
@@ -316,7 +316,7 @@ void UI_FlushBatch(UIContext* ctx) {
     printf("DEBUG: Uploading %d vertices (%zu bytes)\n", 
            ctx->batchRenderer.vertexCount,
            ctx->batchRenderer.vertexCount * sizeof(BatchVertex));
-
+*/
     glBufferSubData(GL_ARRAY_BUFFER, 0,
                    ctx->batchRenderer.vertexCount * sizeof(BatchVertex),
                    ctx->batchRenderer.vertices);
@@ -324,18 +324,18 @@ void UI_FlushBatch(UIContext* ctx) {
     // Check for GL errors
     GLenum err;
     while ((err = glGetError()) != GL_NO_ERROR) {
-        printf("DEBUG: GL error before draw: 0x%x\n", err);
+    //    printf("DEBUG: GL error before draw: 0x%x\n", err);
     }
 
     glDrawArrays(GL_TRIANGLES, 0, ctx->batchRenderer.vertexCount);
 
     while ((err = glGetError()) != GL_NO_ERROR) {
-        printf("DEBUG: GL error after draw: 0x%x\n", err);
+    //    printf("DEBUG: GL error after draw: 0x%x\n", err);
     }
 
     ctx->batchRenderer.vertexCount = 0;
 
-    printf("DEBUG: === BATCH FLUSH END ===\n\n");
+    //printf("DEBUG: === BATCH FLUSH END ===\n\n");
 }
 
 /**
@@ -352,17 +352,17 @@ void UI_EndBatch(UIContext* ctx) {
         return;
     }
 
-    printf("\nDEBUG: === BATCH END STATE ===\n");
+    // printf("\nDEBUG: === BATCH END STATE ===\n");
 
     // Verify final state before cleanup
     GLint currentVAO, currentProgram, currentTexture;
     glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &currentVAO);
     glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
     glGetIntegerv(GL_TEXTURE_BINDING_2D, &currentTexture);
-    
+    /*
     printf("DEBUG: Final GL State - VAO: %d, Program: %d, Texture: %d\n",
            currentVAO, currentProgram, currentTexture);
-
+*/
     UI_FlushBatch(ctx);
 
     // Verify attribute states before unbinding
@@ -370,10 +370,10 @@ void UI_EndBatch(UIContext* ctx) {
     glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &positionEnabled);
     glGetVertexAttribiv(1, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &texCoordEnabled);
     glGetVertexAttribiv(2, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &colorEnabled);
-    
+ /*   
     printf("DEBUG: Final Attribute States - Position: %d, TexCoord: %d, Color: %d\n",
            positionEnabled, texCoordEnabled, colorEnabled);
-
+*/
     glDisable(GL_BLEND);
     
     // Explicit cleanup of bindings
@@ -385,16 +385,16 @@ void UI_EndBatch(UIContext* ctx) {
     glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &currentVAO);
     glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
     
-    printf("DEBUG: Cleanup State - VAO: %d, Program: %d\n",
-           currentVAO, currentProgram);
+    // printf("DEBUG: Cleanup State - VAO: %d, Program: %d\n",
+    //       currentVAO, currentProgram);
 
     // Check for any GL errors
     GLenum err;
     while ((err = glGetError()) != GL_NO_ERROR) {
-        printf("ERROR: GL error in EndBatch: 0x%x\n", err);
+    //    printf("ERROR: GL error in EndBatch: 0x%x\n", err);
     }
 
-    printf("DEBUG: === BATCH END COMPLETE ===\n\n");
+    // printf("DEBUG: === BATCH END COMPLETE ===\n\n");
 }
 
 /**
@@ -415,7 +415,7 @@ void UI_RenderElement(UIContext* ctx, UIElement* element) {
    float x2 = x1 + (2.0f * element->size.x / ctx->viewportWidth);
    float y2 = y1 - (2.0f * element->size.y / ctx->viewportHeight);
 
-   printf("Rendering element at screen coordinates: (%.2f, %.2f) to (%.2f, %.2f)\n", x1, y1, x2, y2);
+   // printf("Rendering element at screen coordinates: (%.2f, %.2f) to (%.2f, %.2f)\n", x1, y1, x2, y2);
 
    if (element->type == ELEMENT_BAR) {
        // Draw background
@@ -454,8 +454,8 @@ void UI_RenderElement(UIContext* ctx, UIElement* element) {
                float ncx2 = ncx1 + (2.0f * cellWidth / ctx->viewportWidth);
                float ncy2 = ncy1 - (2.0f * cellHeight / ctx->viewportHeight);
 
-               printf("Rendering grid cell (%d, %d) at normalized coordinates: (%.2f, %.2f) to (%.2f, %.2f)\n",
-                      x, y, ncx1, ncy1, ncx2, ncy2);
+        //       printf("Rendering grid cell (%d, %d) at normalized coordinates: (%.2f, %.2f) to (%.2f, %.2f)\n",
+                //      x, y, ncx1, ncy1, ncx2, ncy2);
 
                // Draw cell background
                UIVec4f cellColor = {0.2f, 0.2f, 0.2f, 0.9f};
@@ -504,12 +504,12 @@ void UI_RenderElement(UIContext* ctx, UIElement* element) {
                        ncy1 -= normalizedExcess * 0.5f;
                        ncy2 += normalizedExcess * 0.5f;
                    }
-
+/*
                    printf("DEBUG: Item rendering details:\n");
                    printf("  Cell size (pixels): %.2f x %.2f\n", cellWidthPixels, cellHeightPixels);
                    printf("  Texture aspect: %.2f, Cell aspect: %.2f\n", textureAspect, cellAspect);
                    printf("  Final coords: (%.2f, %.2f) to (%.2f, %.2f)\n", ncx1, ncy1, ncx2, ncy2);
-
+*/
                    UI_BatchQuad(ctx, ncx1, ncy1, ncx2, ncy2,
                                texX, texY,             
                                texX + texWidth,        
@@ -517,9 +517,9 @@ void UI_RenderElement(UIContext* ctx, UIElement* element) {
                                (UIVec4f){1.0f, 1.0f, 1.0f, 1.0f},
                                true);
 
-                   printf("DEBUG: Post-render item bounds:\n");
-                   printf("  Screen: (%.2f, %.2f) to (%.2f, %.2f)\n",
-                          ncx1, ncy1, ncx2, ncy2);
+                //   printf("DEBUG: Post-render item bounds:\n");
+                //   printf("  Screen: (%.2f, %.2f) to (%.2f, %.2f)\n",
+                //          ncx1, ncy1, ncx2, ncy2);
                }
            }
        }
@@ -632,6 +632,7 @@ void UI_UpdateInventoryGrid(UIElement* grid, const Inventory* inv) {
     printf("\n=== INVENTORY UPDATE ===\n");
     printf("Grid dimensions: %dx%d\n", grid->specific.grid.rows, grid->specific.grid.cols);
     printf("Inventory slots: %d\n", inv->slotCount);
+
     float cellWidth = grid->size.x / grid->specific.grid.cols;
     float cellHeight = grid->size.y / grid->specific.grid.rows;
 
@@ -639,7 +640,12 @@ void UI_UpdateInventoryGrid(UIElement* grid, const Inventory* inv) {
          i < (grid->specific.grid.rows * grid->specific.grid.cols); i++) {
         
         const Item* item = inv->slots[i];
-         printf("Slot %d has item of type %d\n", i, item->type);
+        // Add defensive check here
+        if (item) {
+            printf("Slot %d has item of type %d\n", i, item->type);
+        } else {
+            printf("Slot %d is empty\n", i);
+        }
 
         int row = i / grid->specific.grid.cols;
         int col = i % grid->specific.grid.cols;
@@ -649,7 +655,7 @@ void UI_UpdateInventoryGrid(UIElement* grid, const Inventory* inv) {
         cell->position.y = grid->position.y + (row * cellHeight);
         cell->size.x = cellWidth;
         cell->size.y = cellHeight;
-        cell->item = item;  // Store direct reference to item
+        cell->item = item;  // This is safe now as item can be NULL
 
         if (item) {
             switch(item->type) {
@@ -667,6 +673,7 @@ void UI_UpdateInventoryGrid(UIElement* grid, const Inventory* inv) {
         } else {
             cell->itemTexX = 0.0f;
             cell->itemTexY = 0.0f;
+            printf("Cell %d,%d: Empty\n", row, col);
         }
     }
 }
@@ -725,18 +732,28 @@ void RenderUI(const Player* player) {
     // Draw sidebar background first
     UI_RenderSidebarBackground(gContext);
     
-    if (uiState.expBar) {
-        UIElement* expBar = (UIElement*)uiState.expBar;
-        float constructionExp = player->skills.experience[SKILL_CONSTRUCTION];
-        uint32_t constructionLevel = player->skills.levels[SKILL_CONSTRUCTION];
-        float currentLevelExp = constructionExp - (constructionLevel * EXP_PER_LEVEL);
-        float progress = currentLevelExp / EXP_PER_LEVEL;
-        
-        expBar->specific.bar.value = progress;
-        expBar->specific.bar.maxValue = 1.0f;
-        
-        UI_RenderElement(gContext, expBar);
-    }
+if (uiState.expBar) {
+    UIElement* expBar = (UIElement*)uiState.expBar;
+    
+    // Use the last updated skill
+    SkillType skillToShow = player->skills.lastUpdatedSkill;
+    float skillExp = player->skills.experience[skillToShow];
+    uint32_t skillLevel = player->skills.levels[skillToShow];
+    float currentLevelExp = skillExp - (skillLevel * EXP_PER_LEVEL);
+    float progress = currentLevelExp / EXP_PER_LEVEL;
+    
+    expBar->specific.bar.value = progress;
+    expBar->specific.bar.maxValue = 1.0f;
+    
+    UI_RenderElement(gContext, expBar);
+    
+    // Add some debug output to verify
+    printf("Rendering exp bar for skill %s: %.1f/%.1f (%.1f%%)\n", 
+           getSkillName(skillToShow), 
+           currentLevelExp, 
+           EXP_PER_LEVEL, 
+           progress * 100.0f);
+}
     
     if (uiState.inventory) {
         UIElement* grid = (UIElement*)uiState.inventory;

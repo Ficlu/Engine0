@@ -1,8 +1,11 @@
+// player.h
 #ifndef PLAYER_H
 #define PLAYER_H
 
 #include "entity.h"
 #include "structure_types.h"
+#include "structures.h"
+#include "inventory.h"
 
 // Define available skills
 typedef enum {
@@ -15,12 +18,10 @@ typedef enum {
 typedef struct {
     uint32_t levels[SKILL_COUNT];     // Whole number levels for each skill
     float experience[SKILL_COUNT];     // Fractional experience for smooth bar movement
+    SkillType lastUpdatedSkill;       // Tracks which skill most recently gained exp
 } Skills;
 
-
-#include "inventory.h"  // Add this
-
-typedef struct {
+typedef struct Player {
     Entity entity;
     float cameraTargetX;
     float cameraTargetY;
@@ -36,23 +37,21 @@ typedef struct {
     
     StructureType pendingBuildType;
     Skills skills;
-    Inventory* inventory;  // Add this
+    Inventory* inventory;
 } Player;
 
-// Add these new function declarations
+// Function declarations
 void InitPlayerInventory(Player* player);
 void CleanupPlayerInventory(Player* player);
-
-// Existing declarations
 void InitPlayer(Player* player, int startGridX, int startGridY, float speed);
 void UpdatePlayer(Player* player, Entity** allEntities, int entityCount);
 void CleanupPlayer(Player* player);
-
-
-// New skill-related function declarations
+void awardForagingExp(Player* player, const Item* item);
+// Skill-related function declarations
 float getSkillExp(const Player* player, SkillType skill);
 uint32_t getSkillLevel(const Player* player, SkillType skill);
 void awardSkillExp(Player* player, SkillType skill, float amount);
 const char* getSkillName(SkillType skill);
+void awardConstructionExp(Player* player, const EnclosureData* enclosure);
 
 #endif // PLAYER_H
