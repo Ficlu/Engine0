@@ -22,13 +22,8 @@ static void HandleSidebarClick(int mouseX, int mouseY) {
     // Convert window coordinates to sidebar-local coordinates
     int localX = mouseX - GAME_VIEW_WIDTH;
     int localY = mouseY;
-    
-    // Test button region (for now, let's say top 100 pixels of sidebar)
-    if (localY < 100) {
-        printf("Test button clicked in sidebar!\n");
-        // Add your button handling logic here
-    }
 }
+
 void HandleInput() {
     SDL_Event event;
    

@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include "enemy.h"
 #include "gameloop.h"
-#include "structures.h"  // Add this include
+#include "structures.h"
 
 typedef struct {
     float* persistentBuffer;
@@ -24,15 +24,22 @@ typedef struct {
     int width;
     int height;
 } Viewport;
+
+// UI Resource getters
+GLuint getUIShaderProgram(void);
+GLuint getUIVAO(void);
+GLuint getUIVBO(void);
+void initUIResources(void);
+
 void renderSidebarButton(float x, float y, float width, float height);
 
 extern GLuint itemShaderProgram;
-
 extern Viewport gameViewport;
 extern Viewport sidebarViewport;
+
 bool isPointInGameView(int x, int y);
 bool isPointInSidebar(int x, int y);
-// Add function declarations
+
 void initializeViewports(void);
 void applyViewport(const Viewport* viewport);
 
@@ -42,19 +49,16 @@ extern GLuint shaderProgram;
 GLuint createUIShaderProgram(void); 
 extern TileBatchData tileBatchData;
 
-
 extern EntityBatchData entityBatchData;
 void cleanupEntityBatchData(void);
-
 void cleanupTileBatchData(void);
-void cleanupEntityBatchData(void);
 
 extern GLuint textureAtlas;
 extern GLuint textureUniform;
 extern GLuint enemyBatchVBO;
 extern GLuint enemyBatchVAO;
 extern GLuint outlineVBO;
-// Function declarations
+void cleanupUIResources(void);
 GLuint createItemShaderProgram(void);
 void setupGameViewport(void);
 void setupSidebarViewport(void);
@@ -70,4 +74,5 @@ GLuint createShader(GLenum type, const char* source);
 void initializeEnemyBatchVAO();
 void updateEnemyBatchVBO(Enemy* enemies, int enemyCount, float cameraOffsetX, float cameraOffsetY, float zoomFactor);
 void renderStructurePreview(const PlacementMode* mode, float cameraOffsetX, float cameraOffsetY, float zoomFactor);
+
 #endif // RENDERING_H

@@ -10,7 +10,8 @@
 #include <stdatomic.h>
 #include "pathfinding.h"
 #include "asciiMap.h"  // Add this line
-
+#include "rendering.h"
+#include "ui.h"
 #define GAME_VIEW_WIDTH 800
 #define SIDEBAR_WIDTH 300
 #define WINDOW_WIDTH (GAME_VIEW_WIDTH + SIDEBAR_WIDTH)
@@ -23,6 +24,8 @@
 #define MAX_ENTITIES (MAX_ENEMIES + 1)
 #define PHYSICS_INTERVAL_MS 12
 
+
+
 extern GLuint outlineVAO;
 extern GLuint outlineVBO;
 extern GLuint tilesBatchVAO;
@@ -31,9 +34,7 @@ extern Entity* allEntities[MAX_ENTITIES];
 extern Uint32 FRAME_TIME_MS;
 bool LoadGame(const char* filename);
 
-static GLuint uiVAO;
-static GLuint uiVBO;
-static GLuint uiShaderProgram;
+
 void drawTargetTileOutline(int x, int y, float cameraOffsetX, float cameraOffsetY, float zoomFactor);
 void InitializeEngine(void);
 void InitializeGameState(bool isNewGame);

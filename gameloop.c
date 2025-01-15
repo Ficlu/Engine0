@@ -32,6 +32,7 @@ GLuint tilesBatchVAO;
 GLuint tilesBatchVBO;
 GLuint squareVAO;
 GLuint squareVBO;
+
 int vertexCount;
 GLuint colorUniform;
 bool placementModeActive = false;
@@ -143,7 +144,7 @@ void InitializeGameState(bool isNewGame) {
        fprintf(stderr, "Failed to allocate chunk manager\n");
        exit(1);
    }
-   initChunkManager(globalChunkManager, 1);
+   initChunkManager(globalChunkManager, 1); // chunk radius
    printf("Chunk manager initialized.\n");
 
    initEnclosureManager(&globalEnclosureManager);
@@ -339,10 +340,10 @@ void InitializeEngine(void) {
     // Create shader programs
     shaderProgram = createShaderProgram();
     outlineShaderProgram = createOutlineShaderProgram();
-    uiShaderProgram = createUIShaderProgram();
+    initUIResources();  // Initialize UI resources
     itemShaderProgram = createItemShaderProgram();
     
-    if (!shaderProgram || !outlineShaderProgram || !uiShaderProgram || !itemShaderProgram) {
+    if (!shaderProgram || !outlineShaderProgram || !getUIShaderProgram() || !itemShaderProgram) {
         fprintf(stderr, "Failed to create shader programs\n");
         SDL_GL_DeleteContext(mainContext);
         SDL_DestroyWindow(window);
@@ -357,7 +358,7 @@ void InitializeEngine(void) {
         fprintf(stderr, "Failed to load texture atlas\n");
         glDeleteProgram(shaderProgram);
         glDeleteProgram(outlineShaderProgram);
-        glDeleteProgram(uiShaderProgram);
+        glDeleteProgram(getUIShaderProgram());
         glDeleteProgram(itemShaderProgram);
         SDL_GL_DeleteContext(mainContext);
         SDL_DestroyWindow(window);
@@ -407,20 +408,6 @@ void InitializeEngine(void) {
     glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
-    // Initialize UI VAO and VBO
-    glGenVertexArrays(1, &uiVAO);
-    glGenBuffers(1, &uiVBO);
-
-    glBindVertexArray(uiVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, uiVBO);
-    glBufferData(GL_ARRAY_BUFFER, 16 * sizeof(float), NULL, GL_DYNAMIC_DRAW);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-    glBindVertexArray(0);
-    printf("UI VAO and VBO created.\n");
-
     // Initialize specialized VAOs
     initializeEnemyBatchVAO();
     printf("Enemy batch VAO initialized.\n");
@@ -435,9 +422,9 @@ void InitializeEngine(void) {
     printf("GPU pathfinding initialized.\n");
 
     // Initialize UI system with shader and texture atlas
-    InitializeUI(uiShaderProgram);
-    glUseProgram(uiShaderProgram);
-    GLint uiTextureLoc = glGetUniformLocation(uiShaderProgram, "textureAtlas");
+    InitializeUI(getUIShaderProgram());
+    glUseProgram(getUIShaderProgram());
+    GLint uiTextureLoc = glGetUniformLocation(getUIShaderProgram(), "textureAtlas");
     glUniform1i(uiTextureLoc, 0);  // Use texture unit 0
     printf("UI system initialized with texture atlas.\n");
 
@@ -500,7 +487,6 @@ void drawTargetTileOutline(int x, int y, float cameraOffsetX, float cameraOffset
 
     glUseProgram(shaderProgram);
 }
-
 void CleanUp() {
     printf("Cleaning up...\n");
     CleanupEntities();
@@ -530,15 +516,10 @@ void CleanUp() {
     if (outlineShaderProgram) {
         glDeleteProgram(outlineShaderProgram);
     }
-    if (uiShaderProgram) {
-        glDeleteProgram(uiShaderProgram);
-    }
-    if (uiVAO) {
-        glDeleteVertexArrays(1, &uiVAO);
-    }
-    if (uiVBO) {
-        glDeleteBuffers(1, &uiVBO);
-    }
+
+    // Add cleanup function to rendering.h/c instead of direct access
+    cleanupUIResources();  // This will handle UI resource cleanup internally
+
     if (globalChunkManager) {
         cleanupChunkManager(globalChunkManager);
         free(globalChunkManager);
@@ -577,7 +558,6 @@ void CleanUp() {
     SDL_Quit();
     printf("Cleanup complete.\n");
 }
-
 bool westIsCorner(int x, int y) {
     if (x <= 0) return false;
     if (grid[y][x-1].structureType != STRUCTURE_WALL) return false;
@@ -639,28 +619,7 @@ void Render() {
 
     // 2. Render UI elements in sidebar
     applyViewport(&sidebarViewport);
-    glUseProgram(uiShaderProgram);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, textureAtlas);
-
-    // Draw sidebar background
-    float sidebarVertices[] = {
-        -1.0f, -1.0f,  // Bottom left
-         1.0f, -1.0f,  // Bottom right
-         1.0f,  1.0f,  // Top right
-        -1.0f,  1.0f   // Top left
-    };
-
-    glBindVertexArray(uiVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, uiVBO);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(sidebarVertices), sidebarVertices);
-    
-    GLint colorLoc = glGetUniformLocation(uiShaderProgram, "color");
-    glUniform4f(colorLoc, 0.2f, 0.2f, 0.2f, 1.0f);  // Dark gray background
-    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-
-    // Render UI components (exp bar, inventory, hotbar)
-    RenderUI(&player, uiShaderProgram);
+    RenderUI(&player);  // Now handles everything UI-related including background
 
     SDL_GL_SwapWindow(window);
 }

@@ -31,12 +31,27 @@
 #define DOOR_VERTICAL_OPEN_TEX_Y (0.0f / 6.0f)    // Top row
 #define DOOR_HORIZONTAL_OPEN_TEX_X (1.0f / 3.0f)  // First column 
 #define DOOR_HORIZONTAL_OPEN_TEX_Y (1.0f / 6.0f)  // Top row
+
+#define FNV_PRIME 1099511628211ULL
+#define FNV_OFFSET 14695981039346656037ULL
+
 EnclosureManager globalEnclosureManager;
 
+/**
+ * @brief Initializes the structure system.
+ *
+ * Sets up any necessary data or states for managing structures.
+ */
 void initializeStructureSystem(void) {
     printf("Structure system initialized\n");
 }
 
+/**
+ * @brief Retrieves the name of a structure type.
+ *
+ * @param type The structure type to query.
+ * @return A string representing the name of the structure.
+ */
 const char* getStructureName(StructureType type) {
     switch(type) {
         case STRUCTURE_WALL: return "Wall";
@@ -45,6 +60,14 @@ const char* getStructureName(StructureType type) {
     }
 }
 
+/**
+ * @brief Checks if a structure can be placed at the specified grid location.
+ *
+ * @param type The type of structure to place.
+ * @param gridX The X-coordinate on the grid.
+ * @param gridY The Y-coordinate on the grid.
+ * @return `true` if the structure can be placed; otherwise, `false`.
+ */
 bool canPlaceStructure(StructureType type, int gridX, int gridY) {
     // Basic bounds checking
     if (gridX < 0 || gridX >= GRID_SIZE || gridY < 0 || gridY >= GRID_SIZE) {
@@ -83,6 +106,15 @@ bool canPlaceStructure(StructureType type, int gridX, int gridY) {
             return false;
     }
 }
+
+/**
+ * @brief Updates wall textures based on surrounding structures.
+ *
+ * @param gridX The X-coordinate of the wall.
+ * @param gridY The Y-coordinate of the wall.
+ *
+ * Adjusts the texture coordinates for a wall tile to reflect its surroundings.
+ */
 void updateWallTextures(int gridX, int gridY) {
     if (grid[gridY][gridX].structureType == 0) return;
 
@@ -128,6 +160,15 @@ void updateWallTextures(int gridX, int gridY) {
         grid[gridY][gridX].wallTexY = WALL_FRONT_TEX_Y;
     }
 }
+
+/**
+ * @brief Updates surrounding structures after a placement.
+ *
+ * @param gridX The X-coordinate of the placed structure.
+ * @param gridY The Y-coordinate of the placed structure.
+ *
+ * Ensures adjacent walls and tiles have updated textures and properties.
+ */
 void updateSurroundingStructures(int gridX, int gridY) {
     // Update the placed structure and all adjacent cells
     if (gridY > 0) updateWallTextures(gridX, gridY-1);
@@ -137,7 +178,14 @@ void updateSurroundingStructures(int gridX, int gridY) {
     updateWallTextures(gridX, gridY);
 }
 
-
+/**
+ * @brief Places a structure at the specified grid location.
+ *
+ * @param type The type of structure to place.
+ * @param gridX The X-coordinate on the grid.
+ * @param gridY The Y-coordinate on the grid.
+ * @return `true` if the structure was placed successfully; otherwise, `false`.
+ */
 bool placeStructure(StructureType type, int gridX, int gridY) {
    if (!canPlaceStructure(type, gridX, gridY)) {
        return false;
@@ -258,10 +306,22 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
    printf("Placed %s at grid position: %d, %d\n", getStructureName(type), gridX, gridY);
    return true;
 }
+
+/**
+ * @brief Cleans up the structure system.
+ *
+ * Releases resources and resets the structure system to an uninitialized state.
+ */
 void cleanupStructureSystem(void) {
     printf("Structure system cleaned up\n");
 }
 
+/**
+ * @brief Cycles through structure types in placement mode.
+ *
+ * @param mode The current placement mode.
+ * @param forward If `true`, cycles forward; otherwise, cycles backward.
+ */
 void cycleStructureType(PlacementMode* mode, bool forward) {
     if (!mode) return;
 
@@ -280,6 +340,13 @@ void cycleStructureType(PlacementMode* mode, bool forward) {
     printf("Selected structure: %s\n", getStructureName(mode->currentType));
 }
 
+/**
+ * @brief Checks if any entity is targeting a specific tile.
+ *
+ * @param gridX The X-coordinate of the tile.
+ * @param gridY The Y-coordinate of the tile.
+ * @return `true` if an entity is targeting the tile; otherwise, `false`.
+ */
 bool isEntityTargetingTile(int gridX, int gridY) {
     for (int i = 0; i < MAX_ENTITIES; i++) {
         if (allEntities[i]) {
@@ -296,6 +363,16 @@ bool isEntityTargetingTile(int gridX, int gridY) {
     return false;
 }
 
+/**
+ * @brief Finds the nearest walkable tile adjacent to a target.
+ *
+ * @param targetX The X-coordinate of the target tile.
+ * @param targetY The Y-coordinate of the target tile.
+ * @param fromX The X-coordinate of the starting position.
+ * @param fromY The Y-coordinate of the starting position.
+ * @param requireWalkable If `true`, only considers walkable tiles.
+ * @return The nearest adjacent tile and its distance.
+ */
 AdjacentTile findNearestAdjacentTile(int targetX, int targetY, int fromX, int fromY, bool requireWalkable) {
     AdjacentTile result = {-1, -1, INFINITY};
     
@@ -327,6 +404,14 @@ AdjacentTile findNearestAdjacentTile(int targetX, int targetY, int fromX, int fr
     return result;
 }
 
+/**
+ * @brief Toggles the open or closed state of a door.
+ *
+ * @param gridX The X-coordinate of the door.
+ * @param gridY The Y-coordinate of the door.
+ * @param player A pointer to the player interacting with the door.
+ * @return `true` if the door was toggled successfully; otherwise, `false`.
+ */
 bool toggleDoor(int gridX, int gridY, Player* player) {
     // Verify it's a door
     if (grid[gridY][gridX].structureType != STRUCTURE_DOOR) return false;
@@ -382,12 +467,27 @@ bool toggleDoor(int gridX, int gridY, Player* player) {
     }
     return false;
 }
+
+/**
+ * @brief Checks if a tile contains a wall or door.
+ *
+ * @param x The X-coordinate of the tile.
+ * @param y The Y-coordinate of the tile.
+ * @return `true` if the tile contains a wall or door; otherwise, `false`.
+ */
 bool isWallOrDoor(int x, int y) {
     if (x < 0 || x >= GRID_SIZE || y < 0 || y >= GRID_SIZE) return false;
 return grid[y][x].structureType != 0;
 
 }
 
+/**
+ * @brief Detects an enclosure starting from a specific tile.
+ *
+ * @param startX The X-coordinate of the starting tile.
+ * @param startY The Y-coordinate of the starting tile.
+ * @return An enclosure structure containing its tiles and properties.
+ */
 Enclosure detectEnclosure(int startX, int startY) {
     Enclosure result = {NULL, 0, false, 0};
     
@@ -501,9 +601,14 @@ Enclosure detectEnclosure(int startX, int startY) {
     return result;
 }
 
-#define FNV_PRIME 1099511628211ULL
-#define FNV_OFFSET 14695981039346656037ULL
-
+/**
+ * @brief Calculates a hash for an enclosure based on its boundary.
+ *
+ * @param boundaryTiles The boundary tiles of the enclosure.
+ * @param boundaryCount The number of boundary tiles.
+ * @param totalArea The total area of the enclosure.
+ * @return A unique hash for the enclosure.
+ */
 uint64_t calculateEnclosureHash(Point* boundaryTiles, int boundaryCount, int totalArea) {
     uint64_t hash = FNV_OFFSET;
 
@@ -536,6 +641,11 @@ uint64_t calculateEnclosureHash(Point* boundaryTiles, int boundaryCount, int tot
     return hash;
 }
 
+/**
+ * @brief Initializes the enclosure manager.
+ *
+ * @param manager A pointer to the enclosure manager to initialize.
+ */
 void initEnclosureManager(EnclosureManager* manager) {
     manager->capacity = 16;  // Initial capacity
     manager->count = 0;
@@ -546,6 +656,12 @@ void initEnclosureManager(EnclosureManager* manager) {
     }
 }
 
+/**
+ * @brief Adds a new enclosure to the manager.
+ *
+ * @param manager A pointer to the enclosure manager.
+ * @param enclosure The enclosure data to add.
+ */
 void addEnclosure(EnclosureManager* manager, EnclosureData* enclosure) {
     // Check if we need to resize
     if (manager->count >= manager->capacity) {
@@ -574,6 +690,13 @@ void addEnclosure(EnclosureManager* manager, EnclosureData* enclosure) {
        enclosure->hash, manager->count);
 }
 
+/**
+ * @brief Finds an enclosure by its hash.
+ *
+ * @param manager A pointer to the enclosure manager.
+ * @param hash The hash of the enclosure to find.
+ * @return A pointer to the found enclosure or `NULL` if not found.
+ */
 EnclosureData* findEnclosure(EnclosureManager* manager, uint64_t hash) {
     for (int i = 0; i < manager->count; i++) {
         if (manager->enclosures[i].hash == hash) {
@@ -583,6 +706,12 @@ EnclosureData* findEnclosure(EnclosureManager* manager, uint64_t hash) {
     return NULL;
 }
 
+/**
+ * @brief Removes an enclosure from the manager by its hash.
+ *
+ * @param manager A pointer to the enclosure manager.
+ * @param hash The hash of the enclosure to remove.
+ */
 void removeEnclosure(EnclosureManager* manager, uint64_t hash) {
     for (int i = 0; i < manager->count; i++) {
         if (manager->enclosures[i].hash == hash) {
@@ -603,6 +732,13 @@ void removeEnclosure(EnclosureManager* manager, uint64_t hash) {
     }
 }
 
+/**
+ * @brief Cleans up the enclosure manager.
+ *
+ * Releases all resources associated with the enclosures managed.
+ *
+ * @param manager A pointer to the enclosure manager to clean up.
+ */
 void cleanupEnclosureManager(EnclosureManager* manager) {
     for (int i = 0; i < manager->count; i++) {
         free(manager->enclosures[i].boundaryTiles);
@@ -614,6 +750,12 @@ void cleanupEnclosureManager(EnclosureManager* manager) {
     manager->capacity = 0;
 }
 
+/**
+ * @brief Awards construction experience for creating an enclosure.
+ *
+ * @param player The player to award experience to.
+ * @param enclosure The enclosure used to calculate experience.
+ */
 void awardConstructionExp(Player* player, const EnclosureData* enclosure) {
     // Base exp values
     const float BASE_WALL_EXP = 10.0f;
@@ -624,7 +766,6 @@ void awardConstructionExp(Player* player, const EnclosureData* enclosure) {
     float wallExp = BASE_WALL_EXP * enclosure->wallCount;
     float doorExp = BASE_DOOR_EXP * enclosure->doorCount;
     float areaExp = AREA_MULTIPLIER * enclosure->totalArea;
-    
     float totalExp = wallExp + doorExp + areaExp;
 
     // Store old exp and level for progress calculation
@@ -633,12 +774,14 @@ void awardConstructionExp(Player* player, const EnclosureData* enclosure) {
     
     // Add new exp
     player->skills.experience[SKILL_CONSTRUCTION] += totalExp;
+    
+    // Calculate new level
     int newLevel = (int)(player->skills.experience[SKILL_CONSTRUCTION] / EXP_PER_LEVEL);
     player->skills.levels[SKILL_CONSTRUCTION] = newLevel;
 
     // Calculate progress percentages
-    float oldProgress = fmodf(oldExp, EXP_PER_LEVEL) / EXP_PER_LEVEL * 100.0f;
-    float newProgress = fmodf(player->skills.experience[SKILL_CONSTRUCTION], EXP_PER_LEVEL) / EXP_PER_LEVEL * 100.0f;
+    float oldProgress = (oldExp - (oldLevel * EXP_PER_LEVEL)) / EXP_PER_LEVEL * 100.0f;
+    float newProgress = (player->skills.experience[SKILL_CONSTRUCTION] - (newLevel * EXP_PER_LEVEL)) / EXP_PER_LEVEL * 100.0f;
 
     printf("\n=== Construction Experience Award ===\n");
     printf("Base Calculations:\n");

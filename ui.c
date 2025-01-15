@@ -1,842 +1,851 @@
+// ui.c - Core UI Implementation with batch rendering
 #include "ui.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <math.h>
 #include "gameloop.h"
-#include "player.h"
 #include "rendering.h"
-
-// Global state
-UIState uiState = {0};
 static UIContext* gContext = NULL;
+UIState uiState = {0};
+/**
+ * @brief Initializes the batch renderer for UI elements.
+ * 
+ * @param renderer A pointer to the batch renderer to be initialized.
+ * 
+ * Allocates memory for the batch renderer's vertex buffer, sets up OpenGL 
+ * vertex array objects (VAOs) and vertex buffer objects (VBOs), and configures
+ * vertex attributes for position, texture coordinates, and color.
+ */
+void UI_InitBatchRenderer(UIBatchRenderer* renderer) {
+    if (renderer->initialized) return;
 
-// ---- Math Utilities ----
-
-static Mat4f Mat4f_Identity(void) {
-    Mat4f m = {{
-        {1.0f, 0.0f, 0.0f, 0.0f},
-        {0.0f, 1.0f, 0.0f, 0.0f},
-        {0.0f, 0.0f, 1.0f, 0.0f},
-        {0.0f, 0.0f, 0.0f, 1.0f}
-    }};
-    return m;
-}
-
-static Mat4f Mat4f_Translate(float x, float y) {
-    Mat4f m = Mat4f_Identity();
-    m.m[3][0] = x;
-    m.m[3][1] = y;
-    return m;
-}
-
-static Mat4f Mat4f_Scale(float x, float y) {
-    Mat4f m = Mat4f_Identity();
-    m.m[0][0] = x;
-    m.m[1][1] = y;
-    return m;
-}
-
-static Mat4f Mat4f_Multiply(const Mat4f* a, const Mat4f* b) {
-    Mat4f result = {0};
-    for (int i = 0; i < 4; i++) {
-        for (int j = 0; j < 4; j++) {
-            for (int k = 0; k < 4; k++) {
-                result.m[i][j] += a->m[i][k] * b->m[k][j];
-            }
-        }
-    }
-    return result;
-}
-
-static void Vec2f_Transform(Vec2f* result, const Vec2f* v, const Mat4f* m) {
-    float x = v->x * m->m[0][0] + v->y * m->m[1][0] + m->m[3][0];
-    float y = v->x * m->m[0][1] + v->y * m->m[1][1] + m->m[3][1];
-    result->x = x;
-    result->y = y;
-}
-
-// ---- Memory Management ----
-
-static void* UI_Malloc(size_t size) {
-    void* ptr = malloc(size);
-    if (!ptr) {
-        fprintf(stderr, "UI: Failed to allocate %zu bytes\n", size);
+    renderer->vertices = (BatchVertex*)malloc(MAX_BATCH_VERTICES * sizeof(BatchVertex));
+    if (!renderer->vertices) {
+        fprintf(stderr, "Failed to allocate batch vertex buffer\n");
         exit(1);
     }
-    return ptr;
-}
-void UI_CleanupInventoryGrid(UIElement* grid) {
-    if (!grid) return;
-    for (int i = 0; i < grid->childCount; i++) {
-        UIElement* slot = grid->children[i];
-        if (slot) {
-            slot->specific.slot.item = NULL; // Just clear the reference
-        }
-    }
-}
-static void* UI_Calloc(size_t count, size_t size) {
-    void* ptr = calloc(count, size);
-    if (!ptr) {
-        fprintf(stderr, "UI: Failed to allocate %zu bytes\n", count * size);
-        exit(1);
-    }
-    return ptr;
-}
 
-// ---- Transform Stack Management ----
-
-static void TransformStack_Init(TransformStack* stack) {
-    stack->count = 0;
-    stack->stack[0] = Mat4f_Identity();
-    stack->count = 1;
-}
-
-static void TransformStack_Push(TransformStack* stack, const Mat4f* transform) {
-    if (stack->count >= MAX_TRANSFORM_STACK) {
-        fprintf(stderr, "UI: Transform stack overflow\n");
-        return;
-    }
+    glGenVertexArrays(1, &renderer->vao);
+    glGenBuffers(1, &renderer->vbo);
     
-    stack->stack[stack->count] = Mat4f_Multiply(&stack->stack[stack->count - 1], transform);
-    stack->count++;
-}
-
-static void TransformStack_Pop(TransformStack* stack) {
-    if (stack->count <= 1) {
-        fprintf(stderr, "UI: Transform stack underflow\n");
-        return;
-    }
-    stack->count--;
-}
-
-static const Mat4f* TransformStack_Current(const TransformStack* stack) {
-    return &stack->stack[stack->count - 1];
-}
-
-// ---- Vertex Buffer Management ----
-
-static void InitializeElementBuffers(UIElement* element) {
-    glGenVertexArrays(1, &element->vao);
-    glGenBuffers(1, &element->vbo);
+    glBindVertexArray(renderer->vao);
+    glBindBuffer(GL_ARRAY_BUFFER, renderer->vbo);
     
-    glBindVertexArray(element->vao);
-    glBindBuffer(GL_ARRAY_BUFFER, element->vbo);
-    
+    glBufferData(GL_ARRAY_BUFFER, 
+                 MAX_BATCH_VERTICES * sizeof(BatchVertex),
+                 NULL, 
+                 GL_DYNAMIC_DRAW);
+
     // Position attribute
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 
+                         sizeof(BatchVertex),
+                         (void*)offsetof(BatchVertex, position));
     glEnableVertexAttribArray(0);
-    
-    // Texcoord attribute
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+
+    // TexCoord attribute
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE,
+                         sizeof(BatchVertex),
+                         (void*)offsetof(BatchVertex, texCoords));
     glEnableVertexAttribArray(1);
-    
+
+    // Color attribute
+    glVertexAttribPointer(2, 4, GL_FLOAT, GL_FALSE,
+                         sizeof(BatchVertex),
+                         (void*)offsetof(BatchVertex, color));
+    glEnableVertexAttribArray(2);
+
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
+
+    renderer->vertexCount = 0;
+    renderer->initialized = true;
+
+    printf("Batch renderer initialized with buffer size: %zu bytes\n",
+           MAX_BATCH_VERTICES * sizeof(BatchVertex));
 }
+/**
+ * @brief Adds a quad to the batch for rendering.
+ * 
+ * @param ctx The UI context containing the batch renderer.
+ * @param x1, y1 Coordinates of the first corner of the quad.
+ * @param x2, y2 Coordinates of the opposite corner of the quad.
+ * @param u1, v1 Texture coordinates for the first corner.
+ * @param u2, v2 Texture coordinates for the opposite corner.
+ * @param color The color of the quad as a UIVec4f.
+ * 
+ * Divides the quad into two triangles and adds their vertex data to the batch. 
+ * If the batch is near capacity, it flushes the batch before adding.
+ */
+void UI_BatchQuad(UIContext* ctx, 
+                  float x1, float y1, float x2, float y2,
+                  float u1, float v1, float u2, float v2,
+                  UIVec4f color,
+                  bool isTextured) {
 
-// ---- Element Creation and Management ----
-
-UIContext* UI_CreateContext(int viewportWidth, int viewportHeight, GLuint shader) {
-    printf("Creating UI context: viewport=%dx%d, shader=%d\n", 
-           viewportWidth, viewportHeight, shader);
+    // Only flush in two cases:
+    // 1. Buffer is full
+    // 2. Texture state is changing
+    bool needsFlush = false;
     
-    UIContext* ctx = UI_Calloc(1, sizeof(UIContext));
-    
-    ctx->shaderProgram = shader;
-    ctx->layoutCtx.viewportWidth = (float)SIDEBAR_WIDTH;  // Use SIDEBAR_WIDTH instead
-    ctx->layoutCtx.viewportHeight = (float)WINDOW_HEIGHT;
-    
-    TransformStack_Init(&ctx->layoutCtx.transforms);
-    
-    // Create root element
-    ctx->root = UI_CreateElement(ELEMENT_CONTAINER);
-    
-    // Set root element to sidebar dimensions
-    ctx->root->computedPosition = (Vec2f){0, 0};
-    ctx->root->computedSize = (Vec2f){SIDEBAR_WIDTH, WINDOW_HEIGHT};
-    ctx->root->layout = LAYOUT_VERTICAL;
-    ctx->root->backgroundColor = (Vec4f){0.2f, 0.2f, 0.2f, 1.0f};
-    
-    printf("Root element size: %.2f x %.2f\n", 
-           ctx->root->computedSize.x, ctx->root->computedSize.y);
-    
-    return ctx;
-}
-UIElement* UI_CreateElement(ElementType type) {
-    UIElement* element = UI_Calloc(1, sizeof(UIElement));
-    
-    element->type = type;
-    element->localTransform = Mat4f_Identity();
-    element->worldTransform = Mat4f_Identity();
-    
-    element->width.unit = UNIT_PIXELS;
-    element->height.unit = UNIT_PIXELS;
-    
-    element->childCapacity = 4;
-    element->children = UI_Malloc(element->childCapacity * sizeof(UIElement*));
-    
-    element->backgroundColor = (Vec4f){0.2f, 0.2f, 0.2f, 1.0f};
-    element->borderColor = (Vec4f){0.8f, 0.8f, 0.8f, 1.0f};
-    element->borderWidth = 1.0f;
-    
-    InitializeElementBuffers(element);
-    
-    return element;
-}
-
-void UI_DestroyElement(UIElement* element) {
-    if (!element) return;
-    
-    for (int i = 0; i < element->childCount; i++) {
-        UI_DestroyElement(element->children[i]);
-    }
-    
-    if (element->children) {
-        free(element->children);
-    }
-    
-    if (element->vao) {
-        glDeleteVertexArrays(1, &element->vao);
-    }
-    if (element->vbo) {
-        glDeleteBuffers(1, &element->vbo);
-    }
-    
-    free(element);
-}
-
-void UI_DestroyContext(UIContext* ctx) {
-    if (!ctx) return;
-    
-    if (ctx->root) {
-        UI_DestroyElement(ctx->root);
-    }
-    
-    free(ctx);
-}
-
-void UI_AddChild(UIElement* parent, UIElement* child) {
-    if (!parent || !child) return;
-    
-    if (parent->childCount >= parent->childCapacity) {
-        size_t newCapacity = parent->childCapacity * 2;
-        UIElement** newChildren = realloc(parent->children, 
-                                        newCapacity * sizeof(UIElement*));
-        if (!newChildren) return;
-        
-        parent->children = newChildren;
-        parent->childCapacity = newCapacity;
-    }
-    
-    child->parent = parent;
-    parent->children[parent->childCount++] = child;
-}
-
-// ---- Layout Calculations ----
-
-static void CalculateElementDimensions(UIElement* element, float parentWidth, float parentHeight) {
-    // Calculate width
-    if (element->width.unit == UNIT_PERCENTAGE) {
-        element->computedSize.x = parentWidth * (element->width.value / 100.0f);
-    } else if (element->width.unit == UNIT_PIXELS) {
-        element->computedSize.x = element->width.value;
-    }
-    
-    // Calculate height
-    if (element->height.unit == UNIT_PERCENTAGE) {
-        element->computedSize.y = parentHeight * (element->height.value / 100.0f);
-    } else if (element->height.unit == UNIT_PIXELS) {
-        element->computedSize.y = element->height.value;
-    } else if (element->height.unit == UNIT_ASPECT) {
-        // Height is determined by width and aspect ratio
-        element->computedSize.y = element->computedSize.x * element->height.value;
-    }
-    
-    // Apply constraints if they exist
-    if (element->widthConstraint.hasMin) {
-        element->computedSize.x = fmaxf(element->computedSize.x, element->widthConstraint.min);
-    }
-    if (element->widthConstraint.hasMax) {
-        element->computedSize.x = fminf(element->computedSize.x, element->widthConstraint.max);
-    }
-    
-    if (element->heightConstraint.hasMin) {
-        element->computedSize.y = fmaxf(element->computedSize.y, element->heightConstraint.min);
-    }
-    if (element->heightConstraint.hasMax) {
-        element->computedSize.y = fminf(element->computedSize.y, element->heightConstraint.max);
-    }
-}
-
-// ---- Layout System ----
-
-static void LayoutVerticalContainer(UIContext* ctx, UIElement* container) {
-    float yOffset = container->padding[0]; // Start after top padding
-    
-    for (int i = 0; i < container->childCount; i++) {
-        UIElement* child = container->children[i];
-        
-        float childX = container->padding[3]; // Left padding
-        float childY = yOffset;
-        float childWidth = container->computedSize.x - (container->padding[1] + container->padding[3]);
-        float availableHeight = container->computedSize.y - yOffset - container->padding[2];
-        
-        CalculateElementDimensions(child, childWidth, availableHeight);
-        
-        child->computedPosition.x = childX;
-        child->computedPosition.y = childY;
-        
-        UI_LayoutElement(ctx, child);
-        
-        yOffset += child->computedSize.y + container->padding[0]; // Add spacing between elements
-    }
-}
-
-static void LayoutGridContainer(UIContext* ctx, UIElement* container) {
-    float cellWidth = (container->computedSize.x - (container->padding[1] + container->padding[3])) / 
-                      container->specific.grid.cols;
-    
-    // For grids, maintain square cells based on width
-    float cellHeight = cellWidth;
-    
-    float startX = container->padding[3];
-    float startY = container->padding[0];
-    
-    for (int row = 0; row < container->specific.grid.rows; row++) {
-        for (int col = 0; col < container->specific.grid.cols; col++) {
-            int index = row * container->specific.grid.cols + col;
-            if (index >= container->childCount) break;
-            
-            UIElement* child = container->children[index];
-            
-            child->computedPosition.x = startX + (col * cellWidth);
-            child->computedPosition.y = startY + (row * cellHeight);
-            
-            CalculateElementDimensions(child, cellWidth, cellHeight);
-            
-            UI_LayoutElement(ctx, child);
-        }
-    }
-}
-
-void UI_LayoutElement(UIContext* ctx, UIElement* element) {
-    if (!element) return;
-    
-    // Calculate local transform based on computed position
-    Mat4f localTransform = Mat4f_Translate(element->computedPosition.x, element->computedPosition.y);
-    element->localTransform = localTransform;
-    
-    // Update world transform
-    if (element->parent) {
-        element->worldTransform = Mat4f_Multiply(&element->parent->worldTransform, &element->localTransform);
-    } else {
-        element->worldTransform = element->localTransform;
-    }
-    
-    // Layout children based on container type
-    switch (element->layout) {
-        case LAYOUT_VERTICAL:
-            LayoutVerticalContainer(ctx, element);
-            break;
-        case LAYOUT_GRID:
-            LayoutGridContainer(ctx, element);
-            break;
-        default:
-            // Handle other layout types as needed
-            break;
-    }
-}
-
-void UI_BeginLayout(UIContext* ctx) {
-    if (!ctx || !ctx->root) return;
-    
-    // Calculate layout for each child
-    float yOffset = 10.0f;  // Start with top margin
-    
-    for (int i = 0; i < ctx->root->childCount; i++) {
-        UIElement* child = ctx->root->children[i];
-        if (!child) continue;
-        
-        // Set position and size based on element type
-        if (child->type == ELEMENT_BAR) {
-            child->computedPosition.x = 10.0f;
-            child->computedPosition.y = yOffset;
-            child->computedSize.x = SIDEBAR_WIDTH - 20.0f;
-            child->computedSize.y = 30.0f;
-            yOffset += 40.0f;  // Bar height + spacing
-        }
-        else if (child->type == ELEMENT_GRID) {
-            child->computedPosition.x = 10.0f;
-            child->computedPosition.y = yOffset;
-            child->computedSize.x = SIDEBAR_WIDTH - 20.0f;
-            child->computedSize.y = WINDOW_HEIGHT - yOffset - 10.0f;  // Remaining space minus bottom margin
-        }
-        
-        printf("Child %d layout: pos=(%.2f, %.2f) size=(%.2f, %.2f)\n",
-               i, child->computedPosition.x, child->computedPosition.y,
-               child->computedSize.x, child->computedSize.y);
-    }
-}
-
-// ---- Rendering System ----
-// In ui.c add this implementation:
-
-void UpdateElementVertices(UIElement* element) {
-    float x1 = element->computedPosition.x;
-    float y1 = element->computedPosition.y;
-    float x2 = x1 + element->computedSize.x;
-    float y2 = y1 + element->computedSize.y;
-    
-    // Transform to NDC coordinates
-    x1 = (2.0f * x1 / SIDEBAR_WIDTH) - 1.0f;
-    x2 = (2.0f * x2 / SIDEBAR_WIDTH) - 1.0f;
-    y1 = 1.0f - (2.0f * y1 / WINDOW_HEIGHT);
-    y2 = 1.0f - (2.0f * y2 / WINDOW_HEIGHT);
-
-    float texX = 0.0f, texY = 0.0f;
-    float texWidth = 1.0f/3.0f, texHeight = 1.0f/6.0f;
-    
-    if (element->type == ELEMENT_CONTAINER && element->specific.slot.item) {
-        if (element->specific.slot.item->type == ITEM_FERN) {
-            // Fern is in the first row (top), one-third across
-            texX = 1.0f/3.0f;  // Start 1/3 across
-            texY = 0.0f;       // Start at top
+    if (ctx->batchRenderer.vertexCount >= MAX_BATCH_VERTICES - 6) {
+        needsFlush = true;
+        printf("DEBUG: Flushing batch: buffer full\n");
+    } else if (ctx->batchRenderer.vertexCount > 0) {
+        bool currentBatchTextured = (ctx->batchRenderer.vertices[0].texCoords[0] != 0.0f || 
+                                   ctx->batchRenderer.vertices[0].texCoords[1] != 0.0f);
+        if (currentBatchTextured != isTextured) {
+            needsFlush = true;
+            printf("DEBUG: Flushing batch: texture state change from %d to %d\n", 
+                   currentBatchTextured, isTextured);
         }
     }
 
-    // Notice y coordinate inversion for proper texture orientation
-    float vertices[] = {
-        // Positions        // Texture coords
-        x1, y1,            texX,              texY + texHeight,  // Top left
-        x2, y1,            texX + texWidth,   texY + texHeight,  // Top right
-        x1, y2,            texX,              texY,              // Bottom left
-        
-        x2, y1,            texX + texWidth,   texY + texHeight,  // Top right
-        x2, y2,            texX + texWidth,   texY,              // Bottom right
-        x1, y2,            texX,              texY               // Bottom left
-    };
-    glBindBuffer(GL_ARRAY_BUFFER, element->vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
-
-    glBindVertexArray(element->vao);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
-    glEnableVertexAttribArray(1);
-}
-
-void UI_EndRender(UIContext* ctx) {
-    if (!ctx) return;
-    
-    // Restore previous shader program
-    glUseProgram(ctx->previousProgram);
-    
-    glDisable(GL_BLEND);
-    glDisable(GL_SCISSOR_TEST);
-    
-    // Check for any remaining GL errors
-    GLenum err;
-    while ((err = glGetError()) != GL_NO_ERROR) {
-        printf("GL error at end of UI render: 0x%x\n", err);
+    if (needsFlush) {
+        UI_FlushBatch(ctx);
     }
+
+    printf("DEBUG: Adding to batch: textured=%d, vertices=%d\n", 
+           isTextured, ctx->batchRenderer.vertexCount);
+
+    BatchVertex* v = &ctx->batchRenderer.vertices[ctx->batchRenderer.vertexCount];
+
+    // First triangle
+    v[0].position[0] = x1; v[0].position[1] = y1;
+    v[0].texCoords[0] = u1; v[0].texCoords[1] = v2; // Swapped v1 to v2
+    v[0].color[0] = color.r; v[0].color[1] = color.g; 
+    v[0].color[2] = color.b; v[0].color[3] = color.a;
+
+    v[1].position[0] = x2; v[1].position[1] = y1;
+    v[1].texCoords[0] = u2; v[1].texCoords[1] = v2; // Swapped v1 to v2
+    v[1].color[0] = color.r; v[1].color[1] = color.g; 
+    v[1].color[2] = color.b; v[1].color[3] = color.a;
+
+    v[2].position[0] = x1; v[2].position[1] = y2;
+    v[2].texCoords[0] = u1; v[2].texCoords[1] = v1; // Swapped v2 to v1
+    v[2].color[0] = color.r; v[2].color[1] = color.g; 
+    v[2].color[2] = color.b; v[2].color[3] = color.a;
+
+    // Second triangle
+    v[3].position[0] = x2; v[3].position[1] = y1;
+    v[3].texCoords[0] = u2; v[3].texCoords[1] = v2; // Swapped v1 to v2
+    v[3].color[0] = color.r; v[3].color[1] = color.g; 
+    v[3].color[2] = color.b; v[3].color[3] = color.a;
+
+    v[4].position[0] = x2; v[4].position[1] = y2;
+    v[4].texCoords[0] = u2; v[4].texCoords[1] = v1; // Swapped v2 to v1
+    v[4].color[0] = color.r; v[4].color[1] = color.g; 
+    v[4].color[2] = color.b; v[4].color[3] = color.a;
+
+    v[5].position[0] = x1; v[5].position[1] = y2;
+    v[5].texCoords[0] = u1; v[5].texCoords[1] = v1; // Swapped v2 to v1
+    v[5].color[0] = color.r; v[5].color[1] = color.g; 
+    v[5].color[2] = color.b; v[5].color[3] = color.a;
+
+    ctx->batchRenderer.vertexCount += 6;
 }
 
-void UI_BeginRender(UIContext* ctx) {
-    if (!ctx || !ctx->shaderProgram) {
-        printf("ERROR: Invalid UI context or shader program\n");
+/**
+ * @brief Prepares the UI batch renderer for drawing.
+ * 
+ * @param ctx The UI context containing the batch renderer.
+ * 
+ * Sets up OpenGL state for blending and binds the texture atlas. Resets
+ * the vertex count for the current batch.
+ */
+void UI_BeginBatch(UIContext* ctx) {
+    if (!ctx || !ctx->batchRenderer.initialized) {
+        printf("ERROR: Invalid context or uninitialized batch renderer\n");
         return;
     }
+
+    printf("\nDEBUG: === BATCH BEGIN STATE ===\n");
     
-    // Store previous GL state
-    GLint previous_program;
-    glGetIntegerv(GL_CURRENT_PROGRAM, &previous_program);
-    
-    // Switch to UI shader and verify
+    // Check initial GL state
+    GLint previousVAO, previousProgram;
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &previousVAO);
+    glGetIntegerv(GL_CURRENT_PROGRAM, &previousProgram);
+    printf("DEBUG: Initial GL State - VAO: %d, Program: %d\n", previousVAO, previousProgram);
+
+    // Set and verify shader program
     glUseProgram(ctx->shaderProgram);
-    GLint current_program;
-    glGetIntegerv(GL_CURRENT_PROGRAM, &current_program);
-    printf("Shader switch: previous=%d, current=%d, expected=%d\n", 
-           previous_program, current_program, ctx->shaderProgram);
-    
+    GLint currentProgram;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
+    printf("DEBUG: Setting shader program ID: %d (Verified: %d)\n", 
+           ctx->shaderProgram, currentProgram);
+
+    // Explicitly bind VAO and verify
+    glBindVertexArray(ctx->batchRenderer.vao);
+    GLint boundVAO;
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &boundVAO);
+    printf("DEBUG: Binding VAO ID: %d (Verified: %d)\n", 
+           ctx->batchRenderer.vao, boundVAO);
+
+    // Verify attribute enables after VAO binding
+    GLint positionEnabled, texCoordEnabled, colorEnabled;
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &positionEnabled);
+    glGetVertexAttribiv(1, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &texCoordEnabled);
+    glGetVertexAttribiv(2, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &colorEnabled);
+    printf("DEBUG: Attribute States - Position: %d, TexCoord: %d, Color: %d\n",
+           positionEnabled, texCoordEnabled, colorEnabled);
+
     // Set up blending
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     
-    // Set and verify viewport
-    glViewport(GAME_VIEW_WIDTH, 0, SIDEBAR_WIDTH, WINDOW_HEIGHT);
-    
-    // Clear sidebar area with a distinct color for debugging
-    glEnable(GL_SCISSOR_TEST);
-    glScissor(GAME_VIEW_WIDTH, 0, SIDEBAR_WIDTH, WINDOW_HEIGHT);
-    glClearColor(0.2f, 0.2f, 0.3f, 1.0f);  // Slightly blue tint for visibility
-    glClear(GL_COLOR_BUFFER_BIT);
-    
-    // Verify all uniforms are accessible
-    GLint colorLoc = glGetUniformLocation(ctx->shaderProgram, "uColor");
-    GLint borderColorLoc = glGetUniformLocation(ctx->shaderProgram, "uBorderColor");
-    printf("Shader uniforms: color=%d, border=%d\n", colorLoc, borderColorLoc);
-    
-    // Store in context for restoration
-    ctx->previousProgram = previous_program;
+    // Texture setup with verification
+    glActiveTexture(GL_TEXTURE0);
+    GLint activeTexture;
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &activeTexture);
+    printf("DEBUG: Active Texture Unit: %d (Expected: %d)\n", 
+           activeTexture - GL_TEXTURE0, 0);
+
+    glBindTexture(GL_TEXTURE_2D, textureAtlas);
+    GLint boundTexture;
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &boundTexture);
+    printf("DEBUG: Binding texture atlas ID: %d (Verified: %d)\n", 
+           textureAtlas, boundTexture);
+
+    // Set and verify uniforms
+    GLint textureLoc = glGetUniformLocation(ctx->shaderProgram, "textureAtlas");
+    if (textureLoc >= 0) {
+        glUniform1i(textureLoc, 0);
+        printf("DEBUG: Setting texture uniform location: %d\n", textureLoc);
+    } else {
+        printf("WARNING: textureAtlas uniform not found\n");
+    }
+
+    GLint hasTextureLoc = glGetUniformLocation(ctx->shaderProgram, "uHasTexture");
+    if (hasTextureLoc >= 0) {
+        glUniform1i(hasTextureLoc, 0);  // Default to no texture
+        GLint verifiedValue;
+        glGetUniformiv(ctx->shaderProgram, hasTextureLoc, &verifiedValue);
+        printf("DEBUG: Setting uHasTexture uniform: %d (Verified: %d)\n", 
+               0, verifiedValue);
+    } else {
+        printf("WARNING: uHasTexture uniform not found\n");
+    }
+
+    // Reset vertex count
+    ctx->batchRenderer.vertexCount = 0;
+
+    // Check for any GL errors
+    GLenum err;
+    while ((err = glGetError()) != GL_NO_ERROR) {
+        printf("ERROR: GL error in BeginBatch: 0x%x\n", err);
+    }
+
+    printf("DEBUG: === BATCH BEGIN COMPLETE ===\n\n");
 }
-// Update initial element positions in UI_CreateProgressBar:
+
+/**
+ * @brief Flushes the current batch of vertices to the GPU.
+ * 
+ * @param ctx The UI context containing the batch renderer.
+ * 
+ * Uploads the current batch of vertices to the GPU and renders them as
+ * triangles. Resets the vertex count to prepare for the next batch.
+ */
+void UI_FlushBatch(UIContext* ctx) {
+    if (!ctx || ctx->batchRenderer.vertexCount == 0) {
+        printf("UI_FlushBatch: No vertices to flush.\n");
+        return;
+    }
+
+    printf("\nDEBUG: === BATCH FLUSH START ===\n");
+    
+    // Verify shader state
+    GLint currentProgram;
+    glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
+    printf("DEBUG: Current shader program: %d (Expected: %d)\n", 
+           currentProgram, ctx->shaderProgram);
+
+    // Ensure proper shader is bound
+    glUseProgram(ctx->shaderProgram);
+
+    // Verify VAO state
+    GLint currentVAO;
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &currentVAO);
+    printf("DEBUG: Current VAO: %d (Expected: %d)\n", 
+           currentVAO, ctx->batchRenderer.vao);
+
+    glBindVertexArray(ctx->batchRenderer.vao);
+
+    // Verify attribute enables
+    GLint positionEnabled, texCoordEnabled, colorEnabled;
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &positionEnabled);
+    glGetVertexAttribiv(1, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &texCoordEnabled);
+    glGetVertexAttribiv(2, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &colorEnabled);
+    
+    printf("DEBUG: Attribute enables - Position: %d, TexCoord: %d, Color: %d\n",
+           positionEnabled, texCoordEnabled, colorEnabled);
+
+    // Bind texture atlas
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, textureAtlas);
+    
+    // Instead of querying the uniform location each time, store it in the context
+    GLint hasTextureLoc = glGetUniformLocation(ctx->shaderProgram, "uHasTexture");
+    
+    // Sample first vertex to determine if batch uses textures
+    BatchVertex* firstVertex = &ctx->batchRenderer.vertices[0];
+    bool isTexturedBatch = (firstVertex->texCoords[0] != 0.0f || 
+                           firstVertex->texCoords[1] != 0.0f);
+    
+    glUniform1i(hasTextureLoc, isTexturedBatch ? 1 : 0);
+    
+    GLint verifiedTexture;
+    glGetUniformiv(ctx->shaderProgram, hasTextureLoc, &verifiedTexture);
+    printf("DEBUG: Texture state in flush - Required: %d, Actual: %d\n",
+           isTexturedBatch ? 1 : 0, verifiedTexture);
+
+    glBindBuffer(GL_ARRAY_BUFFER, ctx->batchRenderer.vbo);
+
+    // Sample some vertex data before upload
+    BatchVertex* lastVertex = &ctx->batchRenderer.vertices[ctx->batchRenderer.vertexCount - 1];
+    
+    printf("DEBUG: First vertex color: R=%.2f G=%.2f B=%.2f A=%.2f tex(%.2f, %.2f)\n",
+           firstVertex->color[0], firstVertex->color[1], 
+           firstVertex->color[2], firstVertex->color[3],
+           firstVertex->texCoords[0], firstVertex->texCoords[1]);
+    
+    printf("DEBUG: Last vertex color: R=%.2f G=%.2f B=%.2f A=%.2f tex(%.2f, %.2f)\n",
+           lastVertex->color[0], lastVertex->color[1], 
+           lastVertex->color[2], lastVertex->color[3],
+           lastVertex->texCoords[0], lastVertex->texCoords[1]);
+
+    printf("DEBUG: Uploading %d vertices (%zu bytes)\n", 
+           ctx->batchRenderer.vertexCount,
+           ctx->batchRenderer.vertexCount * sizeof(BatchVertex));
+
+    glBufferSubData(GL_ARRAY_BUFFER, 0,
+                   ctx->batchRenderer.vertexCount * sizeof(BatchVertex),
+                   ctx->batchRenderer.vertices);
+
+    // Check for GL errors
+    GLenum err;
+    while ((err = glGetError()) != GL_NO_ERROR) {
+        printf("DEBUG: GL error before draw: 0x%x\n", err);
+    }
+
+    glDrawArrays(GL_TRIANGLES, 0, ctx->batchRenderer.vertexCount);
+
+    while ((err = glGetError()) != GL_NO_ERROR) {
+        printf("DEBUG: GL error after draw: 0x%x\n", err);
+    }
+
+    ctx->batchRenderer.vertexCount = 0;
+
+    printf("DEBUG: === BATCH FLUSH END ===\n\n");
+}
+
+/**
+ * @brief Ends the current batch rendering process.
+ * 
+ * @param ctx The UI context containing the batch renderer.
+ * 
+ * Flushes any remaining vertices in the batch, then disables OpenGL 
+ * state for blending and unbinds resources.
+ */
+void UI_EndBatch(UIContext* ctx) {
+    if (!ctx) {
+        printf("ERROR: Invalid context in EndBatch\n");
+        return;
+    }
+
+    printf("\nDEBUG: === BATCH END STATE ===\n");
+
+    // Verify final state before cleanup
+    GLint currentVAO, currentProgram, currentTexture;
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &currentVAO);
+    glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &currentTexture);
+    
+    printf("DEBUG: Final GL State - VAO: %d, Program: %d, Texture: %d\n",
+           currentVAO, currentProgram, currentTexture);
+
+    UI_FlushBatch(ctx);
+
+    // Verify attribute states before unbinding
+    GLint positionEnabled, texCoordEnabled, colorEnabled;
+    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &positionEnabled);
+    glGetVertexAttribiv(1, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &texCoordEnabled);
+    glGetVertexAttribiv(2, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &colorEnabled);
+    
+    printf("DEBUG: Final Attribute States - Position: %d, TexCoord: %d, Color: %d\n",
+           positionEnabled, texCoordEnabled, colorEnabled);
+
+    glDisable(GL_BLEND);
+    
+    // Explicit cleanup of bindings
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glUseProgram(0);
+    
+    // Verify clean state
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &currentVAO);
+    glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
+    
+    printf("DEBUG: Cleanup State - VAO: %d, Program: %d\n",
+           currentVAO, currentProgram);
+
+    // Check for any GL errors
+    GLenum err;
+    while ((err = glGetError()) != GL_NO_ERROR) {
+        printf("ERROR: GL error in EndBatch: 0x%x\n", err);
+    }
+
+    printf("DEBUG: === BATCH END COMPLETE ===\n\n");
+}
+
+/**
+ * @brief Renders a single UI element.
+ * 
+ * @param ctx The UI context containing rendering information.
+ * @param element A pointer to the UI element to be rendered.
+ * 
+ * Renders the background, border, and content of the element based on its 
+ * type (e.g., progress bar, grid). Handles coordinate transformations for 
+ * proper screen rendering.
+ */
+void UI_RenderElement(UIContext* ctx, UIElement* element) {
+   if (!element) return;
+
+   float x1 = (2.0f * element->position.x / ctx->viewportWidth) - 1.0f;
+   float y1 = 1.0f - (2.0f * element->position.y / ctx->viewportHeight);
+   float x2 = x1 + (2.0f * element->size.x / ctx->viewportWidth);
+   float y2 = y1 - (2.0f * element->size.y / ctx->viewportHeight);
+
+   printf("Rendering element at screen coordinates: (%.2f, %.2f) to (%.2f, %.2f)\n", x1, y1, x2, y2);
+
+   if (element->type == ELEMENT_BAR) {
+       // Draw background
+       UI_BatchQuad(ctx, x1, y1, x2, y2, 
+                   0.0f, 0.0f, 0.0f, 0.0f, 
+                   element->backgroundColor, false);
+
+       // Draw progress
+       float progress = element->specific.bar.value / element->specific.bar.maxValue;
+       float progressX2 = x1 + (x2 - x1) * progress;
+       UIVec4f progressColor = {0.2f, 0.7f, 0.2f, 1.0f};  // Green progress
+       
+       UI_BatchQuad(ctx, x1, y1, progressX2, y2,
+                   0.0f, 0.0f, 0.0f, 0.0f,
+                   progressColor, false);
+   }
+   else if (element->type == ELEMENT_GRID) {
+       // First draw the container background
+       UI_BatchQuad(ctx, x1, y1, x2, y2, 
+                   0.0f, 0.0f, 0.0f, 0.0f, 
+                   element->backgroundColor, false);
+
+       float cellWidth = element->size.x / element->specific.grid.cols;
+       float cellHeight = element->size.y / element->specific.grid.rows;
+
+       for (int y = 0; y < element->specific.grid.rows; y++) {
+           for (int x = 0; x < element->specific.grid.cols; x++) {
+               int idx = y * element->specific.grid.cols + x;
+               UICellData* cell = &element->specific.grid.cells[idx];
+
+               float cx1 = element->position.x + x * cellWidth;
+               float cy1 = element->position.y + y * cellHeight;
+
+               float ncx1 = (2.0f * cx1 / ctx->viewportWidth) - 1.0f;
+               float ncy1 = 1.0f - (2.0f * cy1 / ctx->viewportHeight);
+               float ncx2 = ncx1 + (2.0f * cellWidth / ctx->viewportWidth);
+               float ncy2 = ncy1 - (2.0f * cellHeight / ctx->viewportHeight);
+
+               printf("Rendering grid cell (%d, %d) at normalized coordinates: (%.2f, %.2f) to (%.2f, %.2f)\n",
+                      x, y, ncx1, ncy1, ncx2, ncy2);
+
+               // Draw cell background
+               UIVec4f cellColor = {0.2f, 0.2f, 0.2f, 0.9f};
+               UI_BatchQuad(ctx, ncx1, ncy1, ncx2, ncy2, 
+                           0.0f, 0.0f, 0.0f, 0.0f, 
+                           cellColor, false);
+
+               // Draw item if present
+               if (cell->item) {
+                   float padding = 4.0f / ctx->viewportWidth;
+                   ncx1 += padding;
+                   ncx2 -= padding;
+                   ncy1 -= padding;
+                   ncy2 += padding;
+
+                   float texX = cell->itemTexX;
+                   float texY = cell->itemTexY;
+                   
+                   // Our texture atlas is 3x6 grid
+                   const float ATLAS_COLS = 3.0f;
+                   const float ATLAS_ROWS = 6.0f;
+                   float texWidth = 1.0f / ATLAS_COLS;
+                   float texHeight = 1.0f / ATLAS_ROWS;
+                   
+                   // Calculate width and height of cell in pixels
+                   float cellWidthPixels = (ncx2 - ncx1) * ctx->viewportWidth * 0.5f;
+                   float cellHeightPixels = (ncy1 - ncy2) * ctx->viewportHeight * 0.5f;
+                   
+                   // Calculate true aspect ratio of texture tile
+                   float textureAspect = (texWidth * ATLAS_COLS) / (texHeight * ATLAS_ROWS);
+                   float cellAspect = cellWidthPixels / cellHeightPixels;
+                   
+                   // Center the item in the cell while maintaining texture aspect ratio
+                   if (cellAspect > textureAspect) {
+                       // Cell is too wide - adjust width based on height
+                       float desiredWidth = cellHeightPixels * textureAspect;
+                       float excess = cellWidthPixels - desiredWidth;
+                       float normalizedExcess = excess / (ctx->viewportWidth * 0.5f);
+                       ncx1 += normalizedExcess * 0.5f;
+                       ncx2 -= normalizedExcess * 0.5f;
+                   } else {
+                       // Cell is too tall - adjust height based on width
+                       float desiredHeight = cellWidthPixels / textureAspect;
+                       float excess = cellHeightPixels - desiredHeight;
+                       float normalizedExcess = excess / (ctx->viewportHeight * 0.5f);
+                       ncy1 -= normalizedExcess * 0.5f;
+                       ncy2 += normalizedExcess * 0.5f;
+                   }
+
+                   printf("DEBUG: Item rendering details:\n");
+                   printf("  Cell size (pixels): %.2f x %.2f\n", cellWidthPixels, cellHeightPixels);
+                   printf("  Texture aspect: %.2f, Cell aspect: %.2f\n", textureAspect, cellAspect);
+                   printf("  Final coords: (%.2f, %.2f) to (%.2f, %.2f)\n", ncx1, ncy1, ncx2, ncy2);
+
+                   UI_BatchQuad(ctx, ncx1, ncy1, ncx2, ncy2,
+                               texX, texY,             
+                               texX + texWidth,        
+                               texY + texHeight,       
+                               (UIVec4f){1.0f, 1.0f, 1.0f, 1.0f},
+                               true);
+
+                   printf("DEBUG: Post-render item bounds:\n");
+                   printf("  Screen: (%.2f, %.2f) to (%.2f, %.2f)\n",
+                          ncx1, ncy1, ncx2, ncy2);
+               }
+           }
+       }
+   }
+   else if (element->type == ELEMENT_CONTAINER) {
+       // Draw container background
+       UI_BatchQuad(ctx, x1, y1, x2, y2,
+                   0.0f, 0.0f, 0.0f, 0.0f,
+                   element->backgroundColor, false);
+   }
+}
+/**
+ * @brief Creates a new UI element of a specified type.
+ * 
+ * @param type The type of the UI element to create.
+ * @return A pointer to the newly created UI element, or NULL if allocation fails.
+ * 
+ * Initializes the UI element with default values for appearance and behavior.
+ */
+UIElement* UI_CreateElement(ElementType type) {
+    UIElement* element = calloc(1, sizeof(UIElement));
+    if (!element) {
+        fprintf(stderr, "Failed to allocate UI element\n");
+        return NULL;
+    }
+
+    element->type = type;
+    element->borderWidth = 1.0f;
+    element->backgroundColor = (UIVec4f){0.2f, 0.2f, 0.2f, 0.9f};
+    element->borderColor = (UIVec4f){0.4f, 0.4f, 0.4f, 1.0f};
+
+    return element;
+}
+
+/**
+ * @brief Creates a new progress bar element.
+ * 
+ * @return A pointer to the newly created progress bar element, or NULL if allocation fails.
+ * 
+ * Initializes the progress bar with default properties such as size, color, 
+ * and range. Logs creation details for debugging.
+ */
 UIElement* UI_CreateProgressBar(void) {
     UIElement* bar = UI_CreateElement(ELEMENT_BAR);
     if (!bar) return NULL;
-    
-    // Position relative to sidebar
-    bar->computedPosition.x = 10.0f;  // 10 pixels margin
-    bar->computedPosition.y = 10.0f;  // 10 pixels from top
-    bar->computedSize.x = SIDEBAR_WIDTH - 20.0f;  // Full width minus margins
-    bar->computedSize.y = 30.0f;  // Fixed height
-    
-    bar->backgroundColor = (Vec4f){0.2f, 0.7f, 0.2f, 1.0f};  // Green
-    bar->borderColor = (Vec4f){0.8f, 0.8f, 0.8f, 1.0f};     // Light gray
-    bar->borderWidth = 1.0f;
-    
+
+    // Specialized bar setup
+    bar->specific.bar.value = 0.0f;
+    bar->specific.bar.maxValue = 1.0f;
+    bar->specific.bar.flashIntensity = 0.0f;
+    bar->backgroundColor = (UIVec4f){0.1f, 0.1f, 0.1f, 0.9f};
+    bar->borderColor = (UIVec4f){0.5f, 0.5f, 0.5f, 1.0f};
+    bar->size = (UIVec2f){200.0f, 20.0f};
+
+    printf("Created progress bar: %p\n", (void*)bar);
     return bar;
 }
 
-
-// ---- Interface Functions ----
-
-void InitializeUI(GLuint shaderProgram) {
-    printf("Initializing UI with shader program: %d\n", shaderProgram);
-    
-    // Create UI context
-    gContext = UI_CreateContext(SIDEBAR_WIDTH, WINDOW_HEIGHT, shaderProgram);
-    if (!gContext) {
-        printf("ERROR: Failed to create UI context\n");
-        return;
-    }
-
-    // Create progress bar with bright color for visibility
-    UIElement* expBar = UI_CreateProgressBar();
-    if (expBar) {
-        expBar->backgroundColor = (Vec4f){0.0f, 1.0f, 0.0f, 1.0f};  // Bright green
-        expBar->borderColor = (Vec4f){1.0f, 1.0f, 1.0f, 1.0f};      // White border
-        expBar->borderWidth = 2.0f;  // Thicker border for visibility
-        uiState.expBar = expBar;
-        UI_AddChild(gContext->root, expBar);
-    }
-
-    // Create inventory grid with visible colors
-    UIElement* inventoryGrid = UI_CreateGrid(5, 5);
-    if (inventoryGrid) {
-        inventoryGrid->backgroundColor = (Vec4f){0.3f, 0.3f, 0.3f, 1.0f};
-        inventoryGrid->borderColor = (Vec4f){0.8f, 0.8f, 0.8f, 1.0f};
-        inventoryGrid->borderWidth = 1.0f;
-        uiState.inventory = inventoryGrid;
-        UI_AddChild(gContext->root, inventoryGrid);
-    }
-}
-void RenderUI(const Player* player, GLuint shaderProgram){
-    if (!gContext || !player) {
-        printf("RenderUI: NULL context or player\n");
-        return;
-    }
-
-    UI_BeginLayout(gContext);
-    
-    // Update inventory grid with current items
-    if (uiState.inventory) {
-        printf("Updating inventory in RenderUI - player inventory has %d items\n", 
-               player->inventory->slotCount);
-        UI_UpdateInventoryGrid((UIElement*)uiState.inventory, player->inventory);
-    } else {
-        printf("No inventory UI element found\n");
-    }
-
-    UI_BeginRender(gContext);
-    
-    // Modify UI_RenderElement to handle inventory slots
-    UI_RenderElement(gContext, gContext->root);
-    
-    UI_EndRender(gContext);
-}
-
-void CleanupUI(void) {
-    if (gContext) {
-        if (uiState.inventory) {
-            UI_CleanupInventoryGrid((UIElement*)uiState.inventory);
-        }
-        UI_DestroyContext(gContext);
-        gContext = NULL;
-    }
-    memset(&uiState, 0, sizeof(uiState));
-}
-
-// Original working code with the fix for cell position centering
+/**
+ * @brief Creates a new grid element with specified dimensions.
+ * 
+ * @param rows The number of rows in the grid.
+ * @param cols The number of columns in the grid.
+ * @return A pointer to the newly created grid element, or NULL if allocation fails.
+ * 
+ * Allocates and initializes the grid, including its individual cells.
+ */
 UIElement* UI_CreateGrid(int rows, int cols) {
+    if (rows <= 0 || cols <= 0 || rows * cols > MAX_GRID_CELLS) {
+        fprintf(stderr, "Invalid grid dimensions: %dx%d\n", rows, cols);
+        return NULL;
+    }
+
     UIElement* grid = UI_CreateElement(ELEMENT_GRID);
     if (!grid) return NULL;
-    
-    // Position relative to sidebar
-    grid->computedPosition.x = 10.0f;
-    grid->computedPosition.y = 100.0f;  
-    
-    grid->computedSize.x = SIDEBAR_WIDTH - 20.0f;
-    grid->computedSize.y = 400.0f;
-    
-    grid->layout = LAYOUT_GRID;
+
     grid->specific.grid.rows = rows;
     grid->specific.grid.cols = cols;
+    grid->specific.grid.cellAspectRatio = 1.0f;
     
-    grid->backgroundColor = (Vec4f){0.3f, 0.3f, 0.4f, 1.0f};
-    grid->borderColor = (Vec4f){0.6f, 0.6f, 0.6f, 1.0f};
-    grid->borderWidth = 2.0f;
+    // Set a darker background for the grid container
+    grid->backgroundColor = (UIVec4f){0.5f, 0.5f, 0.5f, 1.0f};  // Darker than cells
 
-    float availableWidth = grid->computedSize.x - (grid->borderWidth * (cols + 1));
-    float availableHeight = grid->computedSize.y - (grid->borderWidth * (rows + 1));
-    float cellSize = fminf(availableWidth / cols, availableHeight / rows);
+    printf("Created grid: %dx%d at %p\n", rows, cols, (void*)grid);
 
-    float totalGridWidth = cols * cellSize + (cols + 1) * grid->borderWidth;
-    float totalGridHeight = rows * cellSize + (rows + 1) * grid->borderWidth;
-    
-    // Here's the fix - startX should be relative to the grid's total available width
-    float startX = (grid->computedSize.x - totalGridWidth) / 2.0f + grid->computedPosition.x;
-    float startY = (grid->computedSize.y - totalGridHeight) / 2.0f;
-
-    for (int i = 0; i < rows; i++) {
-        for (int j = 0; j < cols; j++) {
-            UIElement* cell = UI_CreateElement(ELEMENT_CONTAINER);
-            if (!cell) continue;
-
-            cell->computedPosition.x = startX + j * (cellSize + grid->borderWidth) + grid->borderWidth;
-            cell->computedPosition.y = startY + i * (cellSize + grid->borderWidth) + grid->borderWidth;
-            cell->computedSize.x = cellSize;
-            cell->computedSize.y = cellSize;
-
-            cell->backgroundColor = (Vec4f){0.2f, 0.2f, 0.3f, 1.0f};
-            cell->borderColor = (Vec4f){0.4f, 0.4f, 0.4f, 1.0f};
-            cell->borderWidth = 1.0f;
-
-            UI_AddChild(grid, cell);
-        }
+    // Initialize cells with a lighter color than the container
+    for (int i = 0; i < rows * cols; i++) {
+        grid->specific.grid.cells[i].hasItem = false;
+        grid->specific.grid.cells[i].itemTexX = 0.0f;
+        grid->specific.grid.cells[i].itemTexY = 0.0f;
     }
-    
+
     return grid;
 }
 
-void UI_RenderElement(UIContext* ctx, UIElement* element) {
-    if (!element) return;
-    
-    UpdateElementVertices(element);
-    
-    glUseProgram(ctx->shaderProgram);
-    
-    GLint colorLoc = glGetUniformLocation(ctx->shaderProgram, "uColor");
-    GLint borderColorLoc = glGetUniformLocation(ctx->shaderProgram, "uBorderColor");
-    GLint borderWidthLoc = glGetUniformLocation(ctx->shaderProgram, "uBorderWidth");
-    GLint hasTextureLoc = glGetUniformLocation(ctx->shaderProgram, "uHasTexture");
-    GLint textureLoc = glGetUniformLocation(ctx->shaderProgram, "textureAtlas");
-    
-    // Debug uniform locations
-    printf("Uniform locations: color=%d, border=%d, hasTexture=%d, texture=%d\n",
-           colorLoc, borderColorLoc, hasTextureLoc, textureLoc);
-
-    glBindVertexArray(element->vao);
-    
-    // First render the background
-    if (colorLoc >= 0) {
-        glUniform4fv(colorLoc, 1, (float*)&element->backgroundColor);
-    }
-    if (borderColorLoc >= 0) {
-        glUniform4fv(borderColorLoc, 1, (float*)&element->borderColor);
-    }
-    if (borderWidthLoc >= 0) {
-        glUniform1f(borderWidthLoc, element->borderWidth);
-    }
-    if (hasTextureLoc >= 0) {
-        glUniform1i(hasTextureLoc, 0);  // Start with no texture
-    }
-    
-    glDrawArrays(GL_TRIANGLES, 0, 6);
-
-    // If this is a slot with an item, render the item texture
-    if (element->type == ELEMENT_CONTAINER && element->specific.slot.item) {
-        // Enable texturing for item
-        if (hasTextureLoc >= 0) {
-            glUniform1i(hasTextureLoc, 1);
-        }
-        if (textureLoc >= 0) {
-            glUniform1i(textureLoc, 0);
-        }
-        
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureAtlas);
-        
-        // Debug texture binding
-        GLint boundTexture;
-        glGetIntegerv(GL_TEXTURE_BINDING_2D, &boundTexture);
-        printf("Rendering item texture: atlas=%u, bound=%d, UV=(%.2f, %.2f)\n",
-               textureAtlas, boundTexture,
-               element->specific.slot.itemUV.x, element->specific.slot.itemUV.y);
-
-        // Render the item
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-        
-        // Check for GL errors
-        GLenum err = glGetError();
-        if (err != GL_NO_ERROR) {
-            printf("GL error after item render: 0x%x\n", err);
-        }
-
-        // Reset texture state
-        if (hasTextureLoc >= 0) {
-            glUniform1i(hasTextureLoc, 0);
-        }
-    }
-
-    // Render children
-    for (int i = 0; i < element->childCount; i++) {
-        UI_RenderElement(ctx, element->children[i]);
-    }
-}
-UIElement* UI_CreateInventorySlot(void) {
-    UIElement* slot = UI_CreateElement(ELEMENT_CONTAINER);
-    if (!slot) return NULL;
-    
-    slot->backgroundColor = (Vec4f){0.2f, 0.2f, 0.2f, 0.9f};
-    slot->borderColor = (Vec4f){0.4f, 0.4f, 0.4f, 1.0f};
-    slot->borderWidth = 1.0f;
-    
-    // Initialize slot-specific data
-    slot->specific.slot.item = NULL;
-    slot->specific.slot.highlightIntensity = 0.0f;
-    slot->specific.slot.isSelected = false;
-    slot->specific.slot.itemUV = (Vec2f){0.0f, 0.0f};
-    
-    return slot;
-}
-
-void UI_SetSlotItem(UIElement* slot, const Item* item) {
-    if (!slot) return;
-    
-    slot->specific.slot.item = NULL;
-    
-    if (item) {
-        slot->specific.slot.item = item;
-        
-        // Match the coordinates used in the grid
-        switch(item->type) {
-            case ITEM_FERN:
-                slot->specific.slot.itemUV.x = 1.0f/3.0f;
-                slot->specific.slot.itemUV.y = 0.0f/6.0f;
-                break;
-            default:
-                float spriteSize = 1.0f / 8.0f;
-                slot->specific.slot.itemUV.x = (item->type % 8) * spriteSize;
-                slot->specific.slot.itemUV.y = (item->type / 8) * spriteSize;
-                break;
-        }
-        
-        printf("Set slot item: type=%d, UV=(%.2f, %.2f) [VERIFIED]\n", 
-               item->type, slot->specific.slot.itemUV.x, slot->specific.slot.itemUV.y);
-    }
-}
-
-void UI_RenderInventorySlot(UIContext* ctx, UIElement* slot, const Item* item) {
-    if (!slot || !ctx->shaderProgram || !item) return;
-
-    // Add debug output
-    printf("Rendering slot with item type %d\n", item->type);
-
-    float padding = slot->borderWidth + 2.0f;
-    float x1 = slot->computedPosition.x + padding;
-    float y1 = slot->computedPosition.y + padding;
-    float x2 = x1 + slot->computedSize.x - (padding * 2);
-    float y2 = y1 + slot->computedSize.y - (padding * 2);
-
-    x1 = (2.0f * x1 / SIDEBAR_WIDTH) - 1.0f;
-    x2 = (2.0f * x2 / SIDEBAR_WIDTH) - 1.0f;
-    y1 = 1.0f - (2.0f * y1 / WINDOW_HEIGHT);
-    y2 = 1.0f - (2.0f * y2 / WINDOW_HEIGHT);
-
-    // Use the stored UV coordinates
-    float texX = slot->specific.slot.itemUV.x;
-    float texY = slot->specific.slot.itemUV.y;
-    float texWidth = 1.0f/3.0f;
-    float texHeight = 1.0f/6.0f;
-
-    printf("Drawing item with tex coords: (%.2f, %.2f) to (%.2f, %.2f)\n", 
-           texX, texY, texX + texWidth, texY + texHeight);
-
-    float vertices[] = {
-        x1, y1,    texX, texY + texHeight,
-        x2, y1,    texX + texWidth, texY + texHeight,
-        x2, y2,    texX + texWidth, texY,
-        x2, y2,    texX + texWidth, texY,
-        x1, y2,    texX, texY,
-        x1, y1,    texX, texY + texHeight
-    };
-
-    // Verify GL state before render
-    GLint currentProgram;
-    glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
-    printf("Current shader program: %d (expected: %d)\n", currentProgram, ctx->shaderProgram);
-
-    glBindBuffer(GL_ARRAY_BUFFER, slot->vbo);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
-
-    GLint hasTextureLoc = glGetUniformLocation(ctx->shaderProgram, "uHasTexture");
-    GLint textureLoc = glGetUniformLocation(ctx->shaderProgram, "textureAtlas");
-    
-    // Add error checking
-    GLenum err = glGetError();
-    if (err != GL_NO_ERROR) {
-        printf("GL error before setting uniforms: 0x%x\n", err);
-    }
-
-    if (hasTextureLoc >= 0 && textureLoc >= 0) {
-        glUniform1i(hasTextureLoc, 1);
-        glUniform1i(textureLoc, 0);
-        
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, textureAtlas);
-        
-        // Verify texture binding
-        GLint boundTexture;
-        glGetIntegerv(GL_TEXTURE_BINDING_2D, &boundTexture);
-        printf("Bound texture: %d (expected: %d)\n", boundTexture, textureAtlas);
-
-        glBindVertexArray(slot->vao);
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-        
-        err = glGetError();
-        if (err != GL_NO_ERROR) {
-            printf("GL error after draw: 0x%x\n", err);
-        }
-
-        glUniform1i(hasTextureLoc, 0);
-    } else {
-        printf("ERROR: Shader uniforms not found - hasTexture=%d, texture=%d\n", 
-               hasTextureLoc, textureLoc);
-    }
-}
-
-
+/**
+ * @brief Updates a grid element with inventory data.
+ * 
+ * @param grid The grid element to update.
+ * @param inv The inventory data to populate into the grid.
+ * 
+ * Maps inventory items to grid cells and updates their positions, sizes,
+ * and texture coordinates. Logs updates for debugging.
+ */
 void UI_UpdateInventoryGrid(UIElement* grid, const Inventory* inv) {
-    if (!grid || !inv) {
-        printf("UI_UpdateInventoryGrid: NULL grid or inventory\n");
+    if (!grid || !inv || grid->type != ELEMENT_GRID) {
+        printf("Error: Invalid grid or inventory\n");
         return;
     }
+    printf("\n=== INVENTORY UPDATE ===\n");
+    printf("Grid dimensions: %dx%d\n", grid->specific.grid.rows, grid->specific.grid.cols);
+    printf("Inventory slots: %d\n", inv->slotCount);
+    float cellWidth = grid->size.x / grid->specific.grid.cols;
+    float cellHeight = grid->size.y / grid->specific.grid.rows;
 
-    printf("Updating inventory grid - grid has %d children, inventory has %d items\n",
-           grid->childCount, inv->slotCount);
-
-    for (int i = 0; i < grid->childCount && i < INVENTORY_SIZE; i++) {
-        UIElement* slot = grid->children[i];
-        if (!slot) continue;
-
+    for (int i = 0; i < inv->slotCount && 
+         i < (grid->specific.grid.rows * grid->specific.grid.cols); i++) {
+        
         const Item* item = inv->slots[i];
-        if (item) {
-            printf("Slot %d: Setting item type %d\n", i, item->type);
-        } else {
-            printf("Slot %d: Empty\n", i);
-        }
+         printf("Slot %d has item of type %d\n", i, item->type);
 
-        UI_SetSlotItem(slot, item);
+        int row = i / grid->specific.grid.cols;
+        int col = i % grid->specific.grid.cols;
+
+        UICellData* cell = &grid->specific.grid.cells[i];
+        cell->position.x = grid->position.x + (col * cellWidth);
+        cell->position.y = grid->position.y + (row * cellHeight);
+        cell->size.x = cellWidth;
+        cell->size.y = cellHeight;
+        cell->item = item;  // Store direct reference to item
+
+        if (item) {
+            switch(item->type) {
+                case ITEM_FERN:
+                    cell->itemTexX = 1.0f/3.0f;
+                    cell->itemTexY = 0.0f;
+                    break;
+                default:
+                    cell->itemTexX = 0.0f;
+                    cell->itemTexY = 0.0f;
+                    break;
+            }
+            printf("Cell %d,%d: Item type %d stored with tex coords %.2f,%.2f\n",
+                   row, col, item->type, cell->itemTexX, cell->itemTexY);
+        } else {
+            cell->itemTexX = 0.0f;
+            cell->itemTexY = 0.0f;
+        }
     }
+}
+
+/**
+ * @brief Initializes the UI system.
+ * 
+ * @param shaderProgram The OpenGL shader program used for rendering.
+ * 
+ * Sets up the UI context, initializes the batch renderer, and creates
+ * default UI elements such as the experience bar and inventory grid.
+ */
+void InitializeUI(GLuint shaderProgram) {
+    printf("Initializing UI with shader: %u\n", shaderProgram);
+    
+    gContext = calloc(1, sizeof(UIContext));
+    if (!gContext) {
+        fprintf(stderr, "Failed to allocate UI context\n");
+        return;
+    }
+    
+    gContext->shaderProgram = shaderProgram;
+    gContext->viewportWidth = SIDEBAR_WIDTH;
+    gContext->viewportHeight = WINDOW_HEIGHT;
+    
+    UI_InitBatchRenderer(&gContext->batchRenderer);
+    
+    UIElement* expBar = UI_CreateProgressBar();
+    if (expBar) {
+        expBar->position = (UIVec2f){10.0f, 10.0f};
+        expBar->size = (UIVec2f){SIDEBAR_WIDTH - 20.0f, 30.0f};
+        uiState.expBar = expBar;
+    }
+    
+    UIElement* inventory = UI_CreateGrid(5, 5);
+    if (inventory) {
+        inventory->position = (UIVec2f){10.0f, 50.0f};
+        inventory->size = (UIVec2f){SIDEBAR_WIDTH - 20.0f, 400.0f};
+        uiState.inventory = inventory;
+    }
+}
+
+/**
+ * @brief Renders the entire UI, including elements like progress bars and grids.
+ * 
+ * @param player The player whose data is displayed in the UI.
+ * 
+ * Updates and renders all UI elements based on the current player state.
+ */
+void RenderUI(const Player* player) {
+    if (!gContext || !player) return;
+    
+    UI_BeginBatch(gContext);
+    printf("\n=== UI RENDER FRAME START ===\n");
+    
+    // Draw sidebar background first
+    UI_RenderSidebarBackground(gContext);
+    
+    if (uiState.expBar) {
+        UIElement* expBar = (UIElement*)uiState.expBar;
+        float constructionExp = player->skills.experience[SKILL_CONSTRUCTION];
+        uint32_t constructionLevel = player->skills.levels[SKILL_CONSTRUCTION];
+        float currentLevelExp = constructionExp - (constructionLevel * EXP_PER_LEVEL);
+        float progress = currentLevelExp / EXP_PER_LEVEL;
+        
+        expBar->specific.bar.value = progress;
+        expBar->specific.bar.maxValue = 1.0f;
+        
+        UI_RenderElement(gContext, expBar);
+    }
+    
+    if (uiState.inventory) {
+        UIElement* grid = (UIElement*)uiState.inventory;
+        printf("Found inventory grid: %dx%d\n", 
+               grid->specific.grid.rows, 
+               grid->specific.grid.cols);
+
+        // Update grid with current inventory state
+        UI_UpdateInventoryGrid(grid, player->inventory);
+        
+        printf("Rendering inventory grid...\n");
+        UI_RenderElement(gContext, grid);
+    } else {
+        printf("No inventory grid found!\n");
+    }
+    
+    printf("=== UI RENDER FRAME END ===\n\n");
+    UI_EndBatch(gContext);
+}
+
+/**
+* @brief Renders the background of the sidebar UI.
+*
+* @param ctx Pointer to the UI context containing batch renderer and viewport information
+*
+* Renders a solid dark gray quad covering the entire sidebar viewport area. Uses normalized device 
+* coordinates (-1 to 1) for the quad vertices since it should fill the entire viewport. The quad
+* is rendered without texturing using just a solid color.
+* 
+* This function must be called before rendering other UI elements to provide the base background.
+* Returns early if ctx is NULL.
+*
+* @warning Must be called between UI_BeginBatch() and UI_EndBatch() calls
+*/void UI_RenderSidebarBackground(UIContext* ctx) {
+    if (!ctx) return;
+
+    // Use dark gray for sidebar background
+    UIVec4f backgroundColor = {0.2f, 0.2f, 0.2f, 1.0f};
+
+    // Render background quad covering entire sidebar (no texture)
+    UI_BatchQuad(ctx, 
+                 -1.0f, -1.0f,    // Bottom-left
+                 1.0f, 1.0f,      // Top-right
+                 0.0f, 0.0f,      // Tex coords (unused)
+                 0.0f, 0.0f,      // Tex coords (unused)
+                 backgroundColor,
+                 false);          // Not textured
+}
+
+/**
+ * @brief Destroys a UI element and frees its resources.
+ * 
+ * @param element The UI element to destroy.
+ * 
+ * Performs cleanup specific to the element's type and releases allocated memory.
+ */
+void UI_DestroyElement(UIElement* element) {
+    if (!element) return;
+
+    // Type-specific cleanup
+    switch (element->type) {
+        case ELEMENT_GRID:
+            // Grid-specific cleanup if needed
+            break;
+        case ELEMENT_BAR:
+            // Bar-specific cleanup if needed
+            break;
+        case ELEMENT_CONTAINER:
+        case ELEMENT_BUTTON:
+            // Other type-specific cleanup
+            break;
+    }
+
+    // Free the element itself
+    free(element);
+    printf("Destroyed UI element: %p\n", (void*)element);
+}
+
+/**
+ * @brief Cleans up the entire UI system.
+ * 
+ * Frees all allocated resources, including the UI context, batch renderer, 
+ * and created elements. Resets the global UI state.
+ */
+void CleanupUI(void) {
+    if (!gContext) return;
+    
+    if (uiState.expBar) {
+        UI_DestroyElement((UIElement*)uiState.expBar);
+        uiState.expBar = NULL;
+    }
+    
+    if (uiState.inventory) {
+        UI_DestroyElement((UIElement*)uiState.inventory);
+        uiState.inventory = NULL;
+    }
+    
+    if (gContext->batchRenderer.vertices) {
+        free(gContext->batchRenderer.vertices);
+    }
+    
+    if (gContext->batchRenderer.vao) {
+        glDeleteVertexArrays(1, &gContext->batchRenderer.vao);
+    }
+    
+    if (gContext->batchRenderer.vbo) {
+        glDeleteBuffers(1, &gContext->batchRenderer.vbo);
+    }
+    
+    free(gContext);
+    gContext = NULL;
 }
