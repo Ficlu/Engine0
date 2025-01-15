@@ -30,7 +30,7 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
     atomic_store(&player->entity.posX, tempPosX);
     atomic_store(&player->entity.posY, tempPosY);
 
-        for (int i = 0; i < SKILL_COUNT; i++) {
+    for (int i = 0; i < SKILL_COUNT; i++) {
         player->skills.levels[i] = 0;
         player->skills.experience[i] = 0.0f;
     }
@@ -52,6 +52,12 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
     player->targetBuildY = 0;
     player->hasBuildTarget = false;
 
+    // Initialize harvest-related fields
+    player->targetHarvestX = 0;
+    player->targetHarvestY = 0;
+    player->hasHarvestTarget = false;
+    player->pendingHarvestType = 0;
+
     atomic_store(&player->cameraTargetX, atomic_load(&player->entity.posX));
     atomic_store(&player->cameraTargetY, atomic_load(&player->entity.posY));
     atomic_store(&player->cameraCurrentX, atomic_load(&player->entity.posX));
@@ -64,7 +70,6 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
         fprintf(stderr, "Failed to create player inventory\n");
         exit(1);
     }
-
 
     int tempNearestX, tempNearestY;
     findNearestWalkableTile(atomic_load(&player->entity.posX), atomic_load(&player->entity.posY), &tempNearestX, &tempNearestY);
@@ -80,9 +85,10 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
     atomic_store(&player->cameraCurrentX, atomic_load(&player->entity.posX));
     atomic_store(&player->cameraCurrentY, atomic_load(&player->entity.posY));
 
-    printf("Player initialized at (%d, %d) with inventory\n", atomic_load(&player->entity.gridX), atomic_load(&player->entity.gridY));
+    printf("Player initialized at (%d, %d) with inventory\n", 
+           atomic_load(&player->entity.gridX), 
+           atomic_load(&player->entity.gridY));
 }
-
 /*
  * UpdatePlayer
  *
@@ -121,7 +127,50 @@ void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
         }
     }
 
-    // Camera follow logic
+    // NEW: Check if we have a harvest target and have reached it
+    if (player->hasHarvestTarget) {
+        int currentX = atomic_load(&player->entity.gridX);
+        int currentY = atomic_load(&player->entity.gridY);
+        
+        bool isNearTarget = (
+            abs(currentX - player->targetHarvestX) <= 1 && 
+            abs(currentY - player->targetHarvestY) <= 1
+        );
+
+        if (isNearTarget) {
+            // Create new item based on what we're harvesting
+            Item* harvestedItem = NULL;
+            switch(player->pendingHarvestType) {
+                case MATERIAL_FERN:
+                    harvestedItem = CreateItem(ITEM_FERN);
+                    break;
+                // Add other harvestable types here
+            }
+
+            if (harvestedItem) {
+                bool added = AddItem(player->inventory, harvestedItem);
+                if (added) {
+                    // Award experience before clearing the cell
+                    awardForagingExp(player, harvestedItem);
+                    
+                    // Clear the harvested object from the grid
+                    grid[player->targetHarvestY][player->targetHarvestX].structureType = STRUCTURE_NONE;
+                    grid[player->targetHarvestY][player->targetHarvestX].materialType = MATERIAL_NONE;
+                    GRIDCELL_SET_WALKABLE(grid[player->targetHarvestY][player->targetHarvestX], true);
+                    printf("Successfully harvested at: %d, %d\n", 
+                           player->targetHarvestX, player->targetHarvestY);
+                } else {
+                    printf("Failed to add harvested item to inventory\n");
+                    DestroyItem(harvestedItem);
+                }
+            }
+            
+            player->hasHarvestTarget = false;
+            player->pendingHarvestType = 0;
+        }
+    }
+
+    // Camera follow logic (unchanged)
     float playerPosX = atomic_load(&player->entity.posX);
     float playerPosY = atomic_load(&player->entity.posY);
 
@@ -139,6 +188,7 @@ void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
     player->cameraCurrentX += (player->cameraTargetX - player->cameraCurrentX) * cameraSmoothFactor;
     player->cameraCurrentY += (player->cameraTargetY - player->cameraCurrentY) * cameraSmoothFactor;
 }
+
 /*
  * CleanupPlayer
  *

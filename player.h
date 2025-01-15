@@ -34,7 +34,10 @@ typedef struct Player {
     int targetBuildX;
     int targetBuildY;
     bool hasBuildTarget;
-    
+    int targetHarvestX;
+    int targetHarvestY;
+    bool hasHarvestTarget;
+    uint8_t pendingHarvestType;
     StructureType pendingBuildType;
     Skills skills;
     Inventory* inventory;

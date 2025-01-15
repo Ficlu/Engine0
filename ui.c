@@ -629,35 +629,34 @@ void UI_UpdateInventoryGrid(UIElement* grid, const Inventory* inv) {
         printf("Error: Invalid grid or inventory\n");
         return;
     }
-    printf("\n=== INVENTORY UPDATE ===\n");
-    printf("Grid dimensions: %dx%d\n", grid->specific.grid.rows, grid->specific.grid.cols);
-    printf("Inventory slots: %d\n", inv->slotCount);
+
+    // Reset all cells first
+    for (int i = 0; i < (grid->specific.grid.rows * grid->specific.grid.cols); i++) {
+        grid->specific.grid.cells[i].item = NULL;  // Clear all item pointers
+        grid->specific.grid.cells[i].itemTexX = 0.0f;
+        grid->specific.grid.cells[i].itemTexY = 0.0f;
+    }
 
     float cellWidth = grid->size.x / grid->specific.grid.cols;
     float cellHeight = grid->size.y / grid->specific.grid.rows;
 
+    // Only process valid slots
     for (int i = 0; i < inv->slotCount && 
          i < (grid->specific.grid.rows * grid->specific.grid.cols); i++) {
         
         const Item* item = inv->slots[i];
-        // Add defensive check here
-        if (item) {
-            printf("Slot %d has item of type %d\n", i, item->type);
-        } else {
-            printf("Slot %d is empty\n", i);
-        }
-
         int row = i / grid->specific.grid.cols;
         int col = i % grid->specific.grid.cols;
-
         UICellData* cell = &grid->specific.grid.cells[i];
+
         cell->position.x = grid->position.x + (col * cellWidth);
         cell->position.y = grid->position.y + (row * cellHeight);
         cell->size.x = cellWidth;
         cell->size.y = cellHeight;
-        cell->item = item;  // This is safe now as item can be NULL
 
         if (item) {
+            cell->item = item;
+            // Set texture coordinates based on item type
             switch(item->type) {
                 case ITEM_FERN:
                     cell->itemTexX = 1.0f/3.0f;
@@ -668,16 +667,9 @@ void UI_UpdateInventoryGrid(UIElement* grid, const Inventory* inv) {
                     cell->itemTexY = 0.0f;
                     break;
             }
-            printf("Cell %d,%d: Item type %d stored with tex coords %.2f,%.2f\n",
-                   row, col, item->type, cell->itemTexX, cell->itemTexY);
-        } else {
-            cell->itemTexX = 0.0f;
-            cell->itemTexY = 0.0f;
-            printf("Cell %d,%d: Empty\n", row, col);
         }
     }
 }
-
 /**
  * @brief Initializes the UI system.
  * 

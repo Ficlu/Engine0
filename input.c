@@ -112,6 +112,7 @@ void HandleInput() {
                             );
 
 if (isNearby) {
+
     // Create new fern item
     Item* fernItem = CreateItem(ITEM_FERN);
     if (!fernItem) {
@@ -124,21 +125,21 @@ if (isNearby) {
     bool added = AddItem(player.inventory, fernItem);
     printf("AddItem result: %d\n", added);
     
-if (added) {
-    // Award foraging experience BEFORE any cleanup
-    awardForagingExp(&player, fernItem);  // Do this first
-    
-    // Now safe to clear the grid cell
-    grid[gridY][gridX].structureType = STRUCTURE_NONE;
-    grid[gridY][gridX].materialType = MATERIAL_NONE;
-    GRIDCELL_SET_WALKABLE(grid[gridY][gridX], true);
-    printf("Grid cell cleared after successful harvest\n");
-} else {
+    if (added) {
+        // Award foraging experience BEFORE any cleanup
+        awardForagingExp(&player, fernItem);  // Do this first
+        
+        // Now safe to clear the grid cell
+        grid[gridY][gridX].structureType = STRUCTURE_NONE;
+        grid[gridY][gridX].materialType = MATERIAL_NONE;
+        GRIDCELL_SET_WALKABLE(grid[gridY][gridX], true);
+        printf("Grid cell cleared after successful harvest\n");
+    } else {
         printf("Failed to add item to inventory - destroying item\n");
         DestroyItem(fernItem);
     }
 } else {
-                                // If not nearby, pathfind to the fern
+                                // If not nearby, pathfind to the fern and set up harvest target
                                 AdjacentTile nearest = findNearestAdjacentTile(gridX, gridY,
                                                                              player.entity.gridX,
                                                                              player.entity.gridY,
@@ -149,7 +150,14 @@ if (added) {
                                     player.entity.targetGridX = player.entity.gridX;
                                     player.entity.targetGridY = player.entity.gridY;
                                     player.entity.needsPathfinding = true;
-                                    printf("Pathfinding to fern at (%d, %d)\n", gridX, gridY);
+                                    
+                                    // Set up harvest target info
+                                    player.targetHarvestX = gridX;
+                                    player.targetHarvestY = gridY;
+                                    player.hasHarvestTarget = true;
+                                    player.pendingHarvestType = grid[gridY][gridX].materialType;
+                                    
+                                    printf("Pathfinding to harvest fern at (%d, %d)\n", gridX, gridY);
                                 }
                             }
                         }
@@ -160,6 +168,10 @@ if (added) {
                         }
                         // Finally handle movement
                         else if (GRIDCELL_IS_WALKABLE(grid[gridY][gridX])) {
+                            // Clear any pending harvest if we're clicking to move elsewhere
+                            player.hasHarvestTarget = false;
+                            player.pendingHarvestType = 0;
+                            
                             player.entity.finalGoalX = gridX;
                             player.entity.finalGoalY = gridY;
                             player.entity.targetGridX = player.entity.gridX;
