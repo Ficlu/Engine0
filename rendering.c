@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include "gameloop.h"
+#include "texture_coords.h"
 
 // Global variables
 GLuint textureAtlas = 0;
@@ -682,59 +683,63 @@ void initializeEnemyBatchVAO() {
  * Populates the buffer with transformed vertex data for each enemy.
  */
 void updateEnemyBatchVBO(Enemy* enemies, int enemyCount, float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
-    if (!entityBatchData.persistentBuffer) return;
+    if (enemyCount == 0) return;
 
-    int dataIndex = 0;
-    float enemyTexX = 1.0f / 3.0f;
-    float enemyTexY = 5.0f / 6.0f;
-    float enemyTexWidth = 1.0f / 3.0f;
-    float enemyTexHeight = 1.0f / 6.0f;
+    TextureCoords* enemyTex = getTextureCoords("enemy");
+    if (!enemyTex) {
+        fprintf(stderr, "Failed to get enemy texture coordinates\n");
+        return;
+    }
 
+    float* vertices = (float*)malloc(enemyCount * 24 * sizeof(float));  // 6 vertices * 4 components
+    if (!vertices) {
+        fprintf(stderr, "Failed to allocate vertex buffer for enemies\n");
+        return;
+    }
+
+    int vertexIndex = 0;
     for (int i = 0; i < enemyCount; i++) {
         float enemyScreenX = (enemies[i].entity.posX - cameraOffsetX) * zoomFactor;
         float enemyScreenY = (enemies[i].entity.posY - cameraOffsetY) * zoomFactor;
-        float halfSize = TILE_SIZE * zoomFactor;
-
-        float* buffer = entityBatchData.persistentBuffer;
-
+        
         // First triangle
-        buffer[dataIndex++] = enemyScreenX - halfSize;
-        buffer[dataIndex++] = enemyScreenY - halfSize;
-        buffer[dataIndex++] = enemyTexX;
-        buffer[dataIndex++] = enemyTexY;
+        vertices[vertexIndex++] = enemyScreenX - TILE_SIZE * zoomFactor;
+        vertices[vertexIndex++] = enemyScreenY - TILE_SIZE * zoomFactor;
+        vertices[vertexIndex++] = enemyTex->u1;
+        vertices[vertexIndex++] = enemyTex->v1;
 
-        buffer[dataIndex++] = enemyScreenX + halfSize;
-        buffer[dataIndex++] = enemyScreenY - halfSize;
-        buffer[dataIndex++] = enemyTexX + enemyTexWidth;
-        buffer[dataIndex++] = enemyTexY;
+        vertices[vertexIndex++] = enemyScreenX + TILE_SIZE * zoomFactor;
+        vertices[vertexIndex++] = enemyScreenY - TILE_SIZE * zoomFactor;
+        vertices[vertexIndex++] = enemyTex->u2;
+        vertices[vertexIndex++] = enemyTex->v1;
 
-        buffer[dataIndex++] = enemyScreenX - halfSize;
-        buffer[dataIndex++] = enemyScreenY + halfSize;
-        buffer[dataIndex++] = enemyTexX;
-        buffer[dataIndex++] = enemyTexY + enemyTexHeight;
+        vertices[vertexIndex++] = enemyScreenX + TILE_SIZE * zoomFactor;
+        vertices[vertexIndex++] = enemyScreenY + TILE_SIZE * zoomFactor;
+        vertices[vertexIndex++] = enemyTex->u2;
+        vertices[vertexIndex++] = enemyTex->v2;
 
         // Second triangle
-        buffer[dataIndex++] = enemyScreenX + halfSize;
-        buffer[dataIndex++] = enemyScreenY - halfSize;
-        buffer[dataIndex++] = enemyTexX + enemyTexWidth;
-        buffer[dataIndex++] = enemyTexY;
+        vertices[vertexIndex++] = enemyScreenX - TILE_SIZE * zoomFactor;
+        vertices[vertexIndex++] = enemyScreenY - TILE_SIZE * zoomFactor;
+        vertices[vertexIndex++] = enemyTex->u1;
+        vertices[vertexIndex++] = enemyTex->v1;
 
-        buffer[dataIndex++] = enemyScreenX + halfSize;
-        buffer[dataIndex++] = enemyScreenY + halfSize;
-        buffer[dataIndex++] = enemyTexX + enemyTexWidth;
-        buffer[dataIndex++] = enemyTexY + enemyTexHeight;
+        vertices[vertexIndex++] = enemyScreenX + TILE_SIZE * zoomFactor;
+        vertices[vertexIndex++] = enemyScreenY + TILE_SIZE * zoomFactor;
+        vertices[vertexIndex++] = enemyTex->u2;
+        vertices[vertexIndex++] = enemyTex->v2;
 
-        buffer[dataIndex++] = enemyScreenX - halfSize;
-        buffer[dataIndex++] = enemyScreenY + halfSize;
-        buffer[dataIndex++] = enemyTexX;
-        buffer[dataIndex++] = enemyTexY + enemyTexHeight;
+        vertices[vertexIndex++] = enemyScreenX - TILE_SIZE * zoomFactor;
+        vertices[vertexIndex++] = enemyScreenY + TILE_SIZE * zoomFactor;
+        vertices[vertexIndex++] = enemyTex->u1;
+        vertices[vertexIndex++] = enemyTex->v2;
     }
 
     glBindBuffer(GL_ARRAY_BUFFER, enemyBatchVBO);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, dataIndex * sizeof(float), entityBatchData.persistentBuffer);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, vertexIndex * sizeof(float), vertices);
+    
+    free(vertices);
 }
-
 /**
  * @brief Frees resources associated with the entity batch data.
  * 

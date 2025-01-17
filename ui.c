@@ -5,6 +5,7 @@
 #include <string.h>
 #include "gameloop.h"
 #include "rendering.h"
+#include "texture_coords.h"
 static UIContext* gContext = NULL;
 UIState uiState = {0};
 /**
@@ -251,93 +252,24 @@ void UI_FlushBatch(UIContext* ctx) {
         return;
     }
 
-    // printf("\nDEBUG: === BATCH FLUSH START ===\n");
-    
-    // Verify shader state
-    GLint currentProgram;
-    glGetIntegerv(GL_CURRENT_PROGRAM, &currentProgram);
-    // printf("DEBUG: Current shader program: %d (Expected: %d)\n", 
-    //       currentProgram, ctx->shaderProgram);
-
-    // Ensure proper shader is bound
     glUseProgram(ctx->shaderProgram);
-
-    // Verify VAO state
-    GLint currentVAO;
-    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &currentVAO);
-    // printf("DEBUG: Current VAO: %d (Expected: %d)\n", 
-    //       currentVAO, ctx->batchRenderer.vao);
-
     glBindVertexArray(ctx->batchRenderer.vao);
 
-    // Verify attribute enables
-    GLint positionEnabled, texCoordEnabled, colorEnabled;
-    glGetVertexAttribiv(0, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &positionEnabled);
-    glGetVertexAttribiv(1, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &texCoordEnabled);
-    glGetVertexAttribiv(2, GL_VERTEX_ATTRIB_ARRAY_ENABLED, &colorEnabled);
-    
-    // printf("DEBUG: Attribute enables - Position: %d, TexCoord: %d, Color: %d\n",
-    //       positionEnabled, texCoordEnabled, colorEnabled);
-
-    // Bind texture atlas
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, textureAtlas);
-    
-    // Instead of querying the uniform location each time, store it in the context
-    GLint hasTextureLoc = glGetUniformLocation(ctx->shaderProgram, "uHasTexture");
-    
-    // Sample first vertex to determine if batch uses textures
     BatchVertex* firstVertex = &ctx->batchRenderer.vertices[0];
     bool isTexturedBatch = (firstVertex->texCoords[0] != 0.0f || 
                            firstVertex->texCoords[1] != 0.0f);
     
+    GLint hasTextureLoc = glGetUniformLocation(ctx->shaderProgram, "uHasTexture");
     glUniform1i(hasTextureLoc, isTexturedBatch ? 1 : 0);
-    
-    GLint verifiedTexture;
-    glGetUniformiv(ctx->shaderProgram, hasTextureLoc, &verifiedTexture);
-    // printf("DEBUG: Texture state in flush - Required: %d, Actual: %d\n",
-        //   isTexturedBatch ? 1 : 0, verifiedTexture);
 
     glBindBuffer(GL_ARRAY_BUFFER, ctx->batchRenderer.vbo);
-
-    // Sample some vertex data before upload
-    BatchVertex* lastVertex = &ctx->batchRenderer.vertices[ctx->batchRenderer.vertexCount - 1];
-    
-    /* printf("DEBUG: First vertex color: R=%.2f G=%.2f B=%.2f A=%.2f tex(%.2f, %.2f)\n",
-           firstVertex->color[0], firstVertex->color[1], 
-           firstVertex->color[2], firstVertex->color[3],
-           firstVertex->texCoords[0], firstVertex->texCoords[1]);
-    
-    printf("DEBUG: Last vertex color: R=%.2f G=%.2f B=%.2f A=%.2f tex(%.2f, %.2f)\n",
-           lastVertex->color[0], lastVertex->color[1], 
-           lastVertex->color[2], lastVertex->color[3],
-           lastVertex->texCoords[0], lastVertex->texCoords[1]);
-
-    printf("DEBUG: Uploading %d vertices (%zu bytes)\n", 
-           ctx->batchRenderer.vertexCount,
-           ctx->batchRenderer.vertexCount * sizeof(BatchVertex));
-*/
     glBufferSubData(GL_ARRAY_BUFFER, 0,
                    ctx->batchRenderer.vertexCount * sizeof(BatchVertex),
                    ctx->batchRenderer.vertices);
 
-    // Check for GL errors
-    GLenum err;
-    while ((err = glGetError()) != GL_NO_ERROR) {
-    //    printf("DEBUG: GL error before draw: 0x%x\n", err);
-    }
-
     glDrawArrays(GL_TRIANGLES, 0, ctx->batchRenderer.vertexCount);
-
-    while ((err = glGetError()) != GL_NO_ERROR) {
-    //    printf("DEBUG: GL error after draw: 0x%x\n", err);
-    }
-
     ctx->batchRenderer.vertexCount = 0;
-
-    //printf("DEBUG: === BATCH FLUSH END ===\n\n");
 }
-
 /**
  * @brief Ends the current batch rendering process.
  * 
@@ -408,128 +340,111 @@ void UI_EndBatch(UIContext* ctx) {
  * proper screen rendering.
  */
 void UI_RenderElement(UIContext* ctx, UIElement* element) {
-   if (!element) return;
+    if (!element) return;
 
-   float x1 = (2.0f * element->position.x / ctx->viewportWidth) - 1.0f;
-   float y1 = 1.0f - (2.0f * element->position.y / ctx->viewportHeight);
-   float x2 = x1 + (2.0f * element->size.x / ctx->viewportWidth);
-   float y2 = y1 - (2.0f * element->size.y / ctx->viewportHeight);
+    float x1 = (2.0f * element->position.x / ctx->viewportWidth) - 1.0f;
+    float y1 = 1.0f - (2.0f * element->position.y / ctx->viewportHeight);
+    float x2 = x1 + (2.0f * element->size.x / ctx->viewportWidth);
+    float y2 = y1 - (2.0f * element->size.y / ctx->viewportHeight);
 
-   // printf("Rendering element at screen coordinates: (%.2f, %.2f) to (%.2f, %.2f)\n", x1, y1, x2, y2);
+    if (element->type == ELEMENT_BAR) {
+        // Draw background
+        UI_BatchQuad(ctx, x1, y1, x2, y2, 
+                    0.0f, 0.0f, 0.0f, 0.0f, 
+                    element->backgroundColor, false);
 
-   if (element->type == ELEMENT_BAR) {
-       // Draw background
-       UI_BatchQuad(ctx, x1, y1, x2, y2, 
-                   0.0f, 0.0f, 0.0f, 0.0f, 
-                   element->backgroundColor, false);
+        // Draw progress
+        float progress = element->specific.bar.value / element->specific.bar.maxValue;
+        float progressX2 = x1 + (x2 - x1) * progress;
+        UIVec4f progressColor = {0.2f, 0.7f, 0.2f, 1.0f};
+        
+        UI_BatchQuad(ctx, x1, y1, progressX2, y2,
+                    0.0f, 0.0f, 0.0f, 0.0f,
+                    progressColor, false);
+    }
+    else if (element->type == ELEMENT_GRID) {
+        // Draw container background
+        UI_BatchQuad(ctx, x1, y1, x2, y2, 
+                    0.0f, 0.0f, 0.0f, 0.0f, 
+                    element->backgroundColor, false);
 
-       // Draw progress
-       float progress = element->specific.bar.value / element->specific.bar.maxValue;
-       float progressX2 = x1 + (x2 - x1) * progress;
-       UIVec4f progressColor = {0.2f, 0.7f, 0.2f, 1.0f};  // Green progress
-       
-       UI_BatchQuad(ctx, x1, y1, progressX2, y2,
-                   0.0f, 0.0f, 0.0f, 0.0f,
-                   progressColor, false);
-   }
-   else if (element->type == ELEMENT_GRID) {
-       // First draw the container background
-       UI_BatchQuad(ctx, x1, y1, x2, y2, 
-                   0.0f, 0.0f, 0.0f, 0.0f, 
-                   element->backgroundColor, false);
+        float cellWidth = element->size.x / element->specific.grid.cols;
+        float cellHeight = element->size.y / element->specific.grid.rows;
 
-       float cellWidth = element->size.x / element->specific.grid.cols;
-       float cellHeight = element->size.y / element->specific.grid.rows;
+        for (int y = 0; y < element->specific.grid.rows; y++) {
+            for (int x = 0; x < element->specific.grid.cols; x++) {
+                int idx = y * element->specific.grid.cols + x;
+                UICellData* cell = &element->specific.grid.cells[idx];
 
-       for (int y = 0; y < element->specific.grid.rows; y++) {
-           for (int x = 0; x < element->specific.grid.cols; x++) {
-               int idx = y * element->specific.grid.cols + x;
-               UICellData* cell = &element->specific.grid.cells[idx];
+                float cx1 = element->position.x + x * cellWidth;
+                float cy1 = element->position.y + y * cellHeight;
 
-               float cx1 = element->position.x + x * cellWidth;
-               float cy1 = element->position.y + y * cellHeight;
+                float ncx1 = (2.0f * cx1 / ctx->viewportWidth) - 1.0f;
+                float ncy1 = 1.0f - (2.0f * cy1 / ctx->viewportHeight);
+                float ncx2 = ncx1 + (2.0f * cellWidth / ctx->viewportWidth);
+                float ncy2 = ncy1 - (2.0f * cellHeight / ctx->viewportHeight);
 
-               float ncx1 = (2.0f * cx1 / ctx->viewportWidth) - 1.0f;
-               float ncy1 = 1.0f - (2.0f * cy1 / ctx->viewportHeight);
-               float ncx2 = ncx1 + (2.0f * cellWidth / ctx->viewportWidth);
-               float ncy2 = ncy1 - (2.0f * cellHeight / ctx->viewportHeight);
-
-        //       printf("Rendering grid cell (%d, %d) at normalized coordinates: (%.2f, %.2f) to (%.2f, %.2f)\n",
-                //      x, y, ncx1, ncy1, ncx2, ncy2);
-
-               // Draw cell background
-               UIVec4f cellColor = {0.2f, 0.2f, 0.2f, 0.9f};
-               UI_BatchQuad(ctx, ncx1, ncy1, ncx2, ncy2, 
+                // Draw cell background
+                UIVec4f cellColor = {0.2f, 0.2f, 0.2f, 0.9f};
+                UI_BatchQuad(ctx, ncx1, ncy1, ncx2, ncy2, 
                            0.0f, 0.0f, 0.0f, 0.0f, 
                            cellColor, false);
 
-               // Draw item if present
-               if (cell->item) {
-                   float padding = 4.0f / ctx->viewportWidth;
-                   ncx1 += padding;
-                   ncx2 -= padding;
-                   ncy1 -= padding;
-                   ncy2 += padding;
+                // Draw item if present
+                if (cell->item) {
+                    float padding = 4.0f / ctx->viewportWidth;
+                    ncx1 += padding;
+                    ncx2 -= padding;
+                    ncy1 -= padding;
+                    ncy2 += padding;
 
-                   float texX = cell->itemTexX;
-                   float texY = cell->itemTexY;
-                   
-                   // Our texture atlas is 3x6 grid
-                   const float ATLAS_COLS = 3.0f;
-                   const float ATLAS_ROWS = 6.0f;
-                   float texWidth = 1.0f / ATLAS_COLS;
-                   float texHeight = 1.0f / ATLAS_ROWS;
-                   
-                   // Calculate width and height of cell in pixels
-                   float cellWidthPixels = (ncx2 - ncx1) * ctx->viewportWidth * 0.5f;
-                   float cellHeightPixels = (ncy1 - ncy2) * ctx->viewportHeight * 0.5f;
-                   
-                   // Calculate true aspect ratio of texture tile
-                   float textureAspect = (texWidth * ATLAS_COLS) / (texHeight * ATLAS_ROWS);
-                   float cellAspect = cellWidthPixels / cellHeightPixels;
-                   
-                   // Center the item in the cell while maintaining texture aspect ratio
-                   if (cellAspect > textureAspect) {
-                       // Cell is too wide - adjust width based on height
-                       float desiredWidth = cellHeightPixels * textureAspect;
-                       float excess = cellWidthPixels - desiredWidth;
-                       float normalizedExcess = excess / (ctx->viewportWidth * 0.5f);
-                       ncx1 += normalizedExcess * 0.5f;
-                       ncx2 -= normalizedExcess * 0.5f;
-                   } else {
-                       // Cell is too tall - adjust height based on width
-                       float desiredHeight = cellWidthPixels / textureAspect;
-                       float excess = cellHeightPixels - desiredHeight;
-                       float normalizedExcess = excess / (ctx->viewportHeight * 0.5f);
-                       ncy1 -= normalizedExcess * 0.5f;
-                       ncy2 += normalizedExcess * 0.5f;
-                   }
-/*
-                   printf("DEBUG: Item rendering details:\n");
-                   printf("  Cell size (pixels): %.2f x %.2f\n", cellWidthPixels, cellHeightPixels);
-                   printf("  Texture aspect: %.2f, Cell aspect: %.2f\n", textureAspect, cellAspect);
-                   printf("  Final coords: (%.2f, %.2f) to (%.2f, %.2f)\n", ncx1, ncy1, ncx2, ncy2);
-*/
-                   UI_BatchQuad(ctx, ncx1, ncy1, ncx2, ncy2,
-                               texX, texY,             
-                               texX + texWidth,        
-                               texY + texHeight,       
-                               (UIVec4f){1.0f, 1.0f, 1.0f, 1.0f},
-                               true);
+                    TextureCoords* texCoords = NULL;
+                    switch(cell->item->type) {
+                        case ITEM_FERN:
+                            texCoords = getTextureCoords("item_fern");
+                            break;
+                        default:
+                            break;
+                    }
 
-                //   printf("DEBUG: Post-render item bounds:\n");
-                //   printf("  Screen: (%.2f, %.2f) to (%.2f, %.2f)\n",
-                //          ncx1, ncy1, ncx2, ncy2);
-               }
-           }
-       }
-   }
-   else if (element->type == ELEMENT_CONTAINER) {
-       // Draw container background
-       UI_BatchQuad(ctx, x1, y1, x2, y2,
-                   0.0f, 0.0f, 0.0f, 0.0f,
-                   element->backgroundColor, false);
-   }
+                    if (texCoords) {
+                        float cellWidthPixels = (ncx2 - ncx1) * ctx->viewportWidth * 0.5f;
+                        float cellHeightPixels = (ncy1 - ncy2) * ctx->viewportHeight * 0.5f;
+                        
+                        float textureAspect = ((texCoords->u2 - texCoords->u1) * ATLAS_COLS) / 
+                                            ((texCoords->v2 - texCoords->v1) * ATLAS_ROWS);
+                        float cellAspect = cellWidthPixels / cellHeightPixels;
+                        
+                        if (cellAspect > textureAspect) {
+                            float desiredWidth = cellHeightPixels * textureAspect;
+                            float excess = cellWidthPixels - desiredWidth;
+                            float normalizedExcess = excess / (ctx->viewportWidth * 0.5f);
+                            ncx1 += normalizedExcess * 0.5f;
+                            ncx2 -= normalizedExcess * 0.5f;
+                        } else {
+                            float desiredHeight = cellWidthPixels / textureAspect;
+                            float excess = cellHeightPixels - desiredHeight;
+                            float normalizedExcess = excess / (ctx->viewportHeight * 0.5f);
+                            ncy1 -= normalizedExcess * 0.5f;
+                            ncy2 += normalizedExcess * 0.5f;
+                        }
+
+                        UI_BatchQuad(ctx, ncx1, ncy1, ncx2, ncy2,
+                                   texCoords->u1, texCoords->v1,
+                                   texCoords->u2, texCoords->v2,
+                                   (UIVec4f){1.0f, 1.0f, 1.0f, 1.0f},
+                                   true);
+                    }
+                }
+            }
+        }
+    }
+    else if (element->type == ELEMENT_CONTAINER) {
+        // Draw container background
+        UI_BatchQuad(ctx, x1, y1, x2, y2,
+                    0.0f, 0.0f, 0.0f, 0.0f,
+                    element->backgroundColor, false);
+    }
 }
 /**
  * @brief Creates a new UI element of a specified type.
@@ -632,7 +547,7 @@ void UI_UpdateInventoryGrid(UIElement* grid, const Inventory* inv) {
 
     // Reset all cells first
     for (int i = 0; i < (grid->specific.grid.rows * grid->specific.grid.cols); i++) {
-        grid->specific.grid.cells[i].item = NULL;  // Clear all item pointers
+        grid->specific.grid.cells[i].item = NULL;
         grid->specific.grid.cells[i].itemTexX = 0.0f;
         grid->specific.grid.cells[i].itemTexY = 0.0f;
     }
@@ -656,16 +571,21 @@ void UI_UpdateInventoryGrid(UIElement* grid, const Inventory* inv) {
 
         if (item) {
             cell->item = item;
-            // Set texture coordinates based on item type
+            TextureCoords* texCoords = NULL;
+            
+            // Get texture coordinates based on item type
             switch(item->type) {
                 case ITEM_FERN:
-                    cell->itemTexX = 1.0f/3.0f;
-                    cell->itemTexY = 0.0f;
+                    texCoords = getTextureCoords("item_fern");
                     break;
                 default:
-                    cell->itemTexX = 0.0f;
-                    cell->itemTexY = 0.0f;
-                    break;
+                    fprintf(stderr, "Unknown item type: %d\n", item->type);
+                    continue;
+            }
+
+            if (texCoords) {
+                cell->itemTexX = texCoords->u1;
+                cell->itemTexY = texCoords->v1;
             }
         }
     }

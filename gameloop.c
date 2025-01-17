@@ -21,6 +21,8 @@
 #include "structures.h"
 #include "input.h"
 #include "ui.h"
+#include "texture_coords.h"
+
 #define UNWALKABLE_PROBABILITY 0.04f
 GLuint outlineShaderProgram;
 atomic_bool isRunning = true;
@@ -354,6 +356,8 @@ void InitializeEngine(void) {
 
     // Load texture atlas first
     textureAtlas = loadBMP("texture_atlas-1.bmp");
+    initializeDefaultTextures();  // Add this line
+    printf("Texture system initialized.\n");
     if (!textureAtlas) {
         fprintf(stderr, "Failed to load texture atlas\n");
         glDeleteProgram(shaderProgram);
@@ -437,6 +441,7 @@ void InitializeEngine(void) {
         printf("GL error after initialization: 0x%x\n", err);
     }
 }
+
 void CleanupEntities() {
     for (int i = 0; i < MAX_ENTITIES; i++) {
         if (allEntities[i]) {
@@ -654,171 +659,203 @@ void initializeTilesBatchVAO() {
  * @param[in] zoomFactor The zoom factor applied to the view
  */
 void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
-   if (!tileBatchData.persistentBuffer) {
-       tileBatchData.bufferCapacity = MAX_VISIBLE_TILES * 6 * 4;
-       tileBatchData.persistentBuffer = malloc(tileBatchData.bufferCapacity * sizeof(float));
-       if (!tileBatchData.persistentBuffer) {
-           fprintf(stderr, "Failed to allocate tile batch buffer\n");
-           return;
-       }
-   }
+    if (!tileBatchData.persistentBuffer) {
+        tileBatchData.bufferCapacity = MAX_VISIBLE_TILES * 6 * 4;
+        tileBatchData.persistentBuffer = malloc(tileBatchData.bufferCapacity * sizeof(float));
+        if (!tileBatchData.persistentBuffer) {
+            fprintf(stderr, "Failed to allocate tile batch buffer\n");
+            return;
+        }
+    }
 
-   glUseProgram(shaderProgram);
-   glBindVertexArray(tilesBatchVAO);
+    glUseProgram(shaderProgram);
+    glBindVertexArray(tilesBatchVAO);
 
-   float playerWorldX = player.entity.posX;
-   float playerWorldY = player.entity.posY;
+    float playerWorldX = player.entity.posX;
+    float playerWorldY = player.entity.posY;
 
-   int renderedTiles = 0;
-   int culledTiles = 0;
+    int renderedTiles = 0;
+    int culledTiles = 0;
 
-   int dataIndex = 0;
-   float* batchData = tileBatchData.persistentBuffer;
-   const float texMargin = 0.0001f; // Smaller margin and we'll add it instead of subtracting
+    int dataIndex = 0;
+    float* batchData = tileBatchData.persistentBuffer;
+    const float texMargin = 0.0001f;
 
-   for (int y = 0; y < GRID_SIZE; y++) {
-       for (int x = 0; x < GRID_SIZE; x++) {
-           if (grid[y][x].terrainType == (uint8_t)TERRAIN_UNLOADED) {
-               continue;
-           }
+    for (int y = 0; y < GRID_SIZE; y++) {
+        for (int x = 0; x < GRID_SIZE; x++) {
+            if (grid[y][x].terrainType == TERRAIN_UNLOADED) {
+                continue;
+            }
 
-           float worldX, worldY;
-           WorldToScreenCoords(x, y, 0, 0, 1, &worldX, &worldY);
+            float worldX, worldY;
+            WorldToScreenCoords(x, y, 0, 0, 1, &worldX, &worldY);
 
-           if (!isPointVisible(worldX, worldY, playerWorldX, playerWorldY, zoomFactor)) {
-               culledTiles++;
-               continue;
-           }
+            if (!isPointVisible(worldX, worldY, playerWorldX, playerWorldY, zoomFactor)) {
+                culledTiles++;
+                continue;
+            }
 
-           renderedTiles++;
+            renderedTiles++;
 
-           float posX, posY;
-           WorldToScreenCoords(x, y, cameraOffsetX, cameraOffsetY, zoomFactor, &posX, &posY);
+            float posX, posY;
+            WorldToScreenCoords(x, y, cameraOffsetX, cameraOffsetY, zoomFactor, &posX, &posY);
 
-           float texX = 0.0f;
-           float texY = 0.0f;
-           float texWidth = 1.0f / 3.0f;
-           float texHeight = 1.0f / 6.0f;
-
-           switch (grid[y][x].terrainType) {
-               case (uint8_t)TERRAIN_SAND:
-                   texX = 0.0f / 3.0f;
-                   texY = 4.0f / 6.0f;
-                   break;
-               case (uint8_t)TERRAIN_WATER:
-                   texX = 1.0f / 3.0f;
-                   texY = 4.0f / 6.0f;
-                   break;
-               case (uint8_t)TERRAIN_GRASS:
-                   texX = 2.0f / 3.0f;
-                   texY = 4.0f / 6.0f;
-                   break;
-                case (uint8_t)TERRAIN_STONE:
-                    texX = 2.0f / 3.0f;  
-                    texY = 5.0f / 6.0f; 
+            // Get terrain texture coordinates based on type
+            TextureCoords* terrainTex = NULL;
+            switch (grid[y][x].terrainType) {
+                case TERRAIN_SAND:
+                    terrainTex = getTextureCoords("terrain_sand");
                     break;
-               default:
-                   texX = 2.0f / 3.0f;
-                   texY = 4.0f / 6.0f;
-                   break;
-           }
+                case TERRAIN_WATER:
+                    terrainTex = getTextureCoords("terrain_water");
+                    break;
+                case TERRAIN_GRASS:
+                    terrainTex = getTextureCoords("terrain_grass");
+                    break;
+                case TERRAIN_STONE:
+                    terrainTex = getTextureCoords("terrain_stone");
+                    break;
+                default:
+                    terrainTex = getTextureCoords("terrain_grass");
+                    break;
+            }
 
-           // Contract texture coordinates slightly
-           float adjustedTexX = texX + texMargin;
-           float adjustedTexY = texY + texMargin;
-           float adjustedTexWidth = texWidth - (2 * texMargin);
-           float adjustedTexHeight = texHeight - (2 * texMargin);
+            if (!terrainTex) {
+                fprintf(stderr, "Failed to get terrain texture for type %d\n", grid[y][x].terrainType);
+                continue;
+            }
 
-           float halfSize = TILE_SIZE * zoomFactor;
+            float halfSize = TILE_SIZE * zoomFactor;
 
-           // First triangle - with adjusted texture coordinates
-           batchData[dataIndex++] = posX - halfSize;
-           batchData[dataIndex++] = posY - halfSize;
-           batchData[dataIndex++] = adjustedTexX;
-           batchData[dataIndex++] = adjustedTexY + adjustedTexHeight;
+            // First triangle for terrain
+            batchData[dataIndex++] = posX - halfSize;
+            batchData[dataIndex++] = posY - halfSize;
+            batchData[dataIndex++] = terrainTex->u1 + texMargin;
+            batchData[dataIndex++] = terrainTex->v1 + texMargin;
 
-           batchData[dataIndex++] = posX + halfSize;
-           batchData[dataIndex++] = posY - halfSize;
-           batchData[dataIndex++] = adjustedTexX + adjustedTexWidth;
-           batchData[dataIndex++] = adjustedTexY + adjustedTexHeight;
+            batchData[dataIndex++] = posX + halfSize;
+            batchData[dataIndex++] = posY - halfSize;
+            batchData[dataIndex++] = terrainTex->u2 - texMargin;
+            batchData[dataIndex++] = terrainTex->v1 + texMargin;
 
-           batchData[dataIndex++] = posX - halfSize;
-           batchData[dataIndex++] = posY + halfSize;
-           batchData[dataIndex++] = adjustedTexX;
-           batchData[dataIndex++] = adjustedTexY;
+            batchData[dataIndex++] = posX - halfSize;
+            batchData[dataIndex++] = posY + halfSize;
+            batchData[dataIndex++] = terrainTex->u1 + texMargin;
+            batchData[dataIndex++] = terrainTex->v2 - texMargin;
 
-           // Second triangle - with adjusted texture coordinates
-           batchData[dataIndex++] = posX + halfSize;
-           batchData[dataIndex++] = posY - halfSize;
-           batchData[dataIndex++] = adjustedTexX + adjustedTexWidth;
-           batchData[dataIndex++] = adjustedTexY + adjustedTexHeight;
+            // Second triangle for terrain
+            batchData[dataIndex++] = posX + halfSize;
+            batchData[dataIndex++] = posY - halfSize;
+            batchData[dataIndex++] = terrainTex->u2 - texMargin;
+            batchData[dataIndex++] = terrainTex->v1 + texMargin;
 
-           batchData[dataIndex++] = posX + halfSize;
-           batchData[dataIndex++] = posY + halfSize;
-           batchData[dataIndex++] = adjustedTexX + adjustedTexWidth;
-           batchData[dataIndex++] = adjustedTexY;
+            batchData[dataIndex++] = posX + halfSize;
+            batchData[dataIndex++] = posY + halfSize;
+            batchData[dataIndex++] = terrainTex->u2 - texMargin;
+            batchData[dataIndex++] = terrainTex->v2 - texMargin;
 
-           batchData[dataIndex++] = posX - halfSize;
-           batchData[dataIndex++] = posY + halfSize;
-           batchData[dataIndex++] = adjustedTexX;
-           batchData[dataIndex++] = adjustedTexY;
+            batchData[dataIndex++] = posX - halfSize;
+            batchData[dataIndex++] = posY + halfSize;
+            batchData[dataIndex++] = terrainTex->u1 + texMargin;
+            batchData[dataIndex++] = terrainTex->v2 - texMargin;
 
-           // Render any structure (wall or door)
-           if (grid[y][x].structureType != 0) {
-               float wallTexX = grid[y][x].wallTexX;
-               float wallTexY = grid[y][x].wallTexY;
-               uint8_t orientation = GRIDCELL_GET_ORIENTATION(grid[y][x]);
+            // If there's a structure, render it
+            if (grid[y][x].structureType != 0) {
+                TextureCoords* structureTex = NULL;
+                
+                if (grid[y][x].structureType == STRUCTURE_WALL) {
+                    // Get appropriate wall texture based on surroundings
+                    bool hasNorth = (y > 0) && isWallOrDoor(x, y-1);
+                    bool hasSouth = (y < GRID_SIZE-1) && isWallOrDoor(x, y+1);
+                    bool hasEast = (x < GRID_SIZE-1) && isWallOrDoor(x+1, y);
+                    bool hasWest = (x > 0) && isWallOrDoor(x-1, y);
 
-               // Contract structure texture coordinates too
-               float adjustedWallTexX = wallTexX + texMargin;
-               float adjustedWallTexY = wallTexY + texMargin;
+                    if (hasNorth && hasEast && !hasWest && !hasSouth) {
+                        structureTex = getTextureCoords("wall_bottom_left");
+                    } 
+                    else if (hasNorth && hasWest && !hasEast && !hasSouth) {
+                        structureTex = getTextureCoords("wall_bottom_right");
+                    } 
+                    else if (hasSouth && hasEast && !hasWest && !hasNorth) {
+                        structureTex = getTextureCoords("wall_top_left");
+                    } 
+                    else if (hasSouth && hasWest && !hasEast && !hasNorth) {
+                        structureTex = getTextureCoords("wall_top_right");
+                    } 
+                    else if (hasNorth || hasSouth) {
+                        structureTex = getTextureCoords("wall_vertical");
+                    } 
+                    else {
+                        structureTex = getTextureCoords("wall_front");
+                    }
+                }
+                else if (grid[y][x].structureType == STRUCTURE_DOOR) {
+                    bool isOpen = GRIDCELL_IS_WALKABLE(grid[y][x]);
+                    bool isVertical = (GRIDCELL_GET_ORIENTATION(grid[y][x]) == 0);
+                    
+                    if (isVertical) {
+                        structureTex = getTextureCoords(isOpen ? "door_vertical_open" : "door_vertical");
+                    } else {
+                        structureTex = getTextureCoords(isOpen ? "door_horizontal_open" : "door_horizontal");
+                    }
+                }
+                else if (grid[y][x].structureType == STRUCTURE_PLANT) {
+                    if (grid[y][x].materialType == MATERIAL_FERN) {
+                        structureTex = getTextureCoords("item_fern");
+                        if (!structureTex) {
+                            fprintf(stderr, "Failed to get fern texture\n");
+                            continue;
+                        }
+                    }
+                }
 
-               // First triangle for structure
-               batchData[dataIndex++] = posX - halfSize;
-               batchData[dataIndex++] = posY - halfSize;
-               batchData[dataIndex++] = adjustedWallTexX;
-               batchData[dataIndex++] = adjustedWallTexY;
+                if (structureTex) {
+                    // First triangle for structure
+                    batchData[dataIndex++] = posX - halfSize;
+                    batchData[dataIndex++] = posY - halfSize;
+                    batchData[dataIndex++] = structureTex->u1 + texMargin;
+                    batchData[dataIndex++] = structureTex->v1 + texMargin;
 
-               batchData[dataIndex++] = posX + halfSize;
-               batchData[dataIndex++] = posY - halfSize;
-               batchData[dataIndex++] = adjustedWallTexX + adjustedTexWidth;
-               batchData[dataIndex++] = adjustedWallTexY;
+                    batchData[dataIndex++] = posX + halfSize;
+                    batchData[dataIndex++] = posY - halfSize;
+                    batchData[dataIndex++] = structureTex->u2 - texMargin;
+                    batchData[dataIndex++] = structureTex->v1 + texMargin;
 
-               batchData[dataIndex++] = posX - halfSize;
-               batchData[dataIndex++] = posY + halfSize;
-               batchData[dataIndex++] = adjustedWallTexX;
-               batchData[dataIndex++] = adjustedWallTexY + adjustedTexHeight;
+                    batchData[dataIndex++] = posX - halfSize;
+                    batchData[dataIndex++] = posY + halfSize;
+                    batchData[dataIndex++] = structureTex->u1 + texMargin;
+                    batchData[dataIndex++] = structureTex->v2 - texMargin;
 
-               // Second triangle for structure
-               batchData[dataIndex++] = posX + halfSize;
-               batchData[dataIndex++] = posY - halfSize;
-               batchData[dataIndex++] = adjustedWallTexX + adjustedTexWidth;
-               batchData[dataIndex++] = adjustedWallTexY;
+                    // Second triangle for structure
+                    batchData[dataIndex++] = posX + halfSize;
+                    batchData[dataIndex++] = posY - halfSize;
+                    batchData[dataIndex++] = structureTex->u2 - texMargin;
+                    batchData[dataIndex++] = structureTex->v1 + texMargin;
 
-               batchData[dataIndex++] = posX + halfSize;
-               batchData[dataIndex++] = posY + halfSize;
-               batchData[dataIndex++] = adjustedWallTexX + adjustedTexWidth;
-               batchData[dataIndex++] = adjustedWallTexY + adjustedTexHeight;
+                    batchData[dataIndex++] = posX + halfSize;
+                    batchData[dataIndex++] = posY + halfSize;
+                    batchData[dataIndex++] = structureTex->u2 - texMargin;
+                    batchData[dataIndex++] = structureTex->v2 - texMargin;
 
-               batchData[dataIndex++] = posX - halfSize;
-               batchData[dataIndex++] = posY + halfSize;
-               batchData[dataIndex++] = adjustedWallTexX;
-               batchData[dataIndex++] = adjustedWallTexY + adjustedTexHeight;
+                    batchData[dataIndex++] = posX - halfSize;
+                    batchData[dataIndex++] = posY + halfSize;
+                    batchData[dataIndex++] = structureTex->u1 + texMargin;
+                    batchData[dataIndex++] = structureTex->v2 - texMargin;
 
-               renderedTiles++;
-           }
-       }
-   }
+                    renderedTiles++;
+                }
+            }
+        }
+    }
 
-   glBindBuffer(GL_ARRAY_BUFFER, tilesBatchVBO);
-   glBufferSubData(GL_ARRAY_BUFFER, 0, dataIndex * sizeof(float), batchData);
-   glDrawArrays(GL_TRIANGLES, 0, renderedTiles * 6);
+    glBindBuffer(GL_ARRAY_BUFFER, tilesBatchVBO);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, dataIndex * sizeof(float), batchData);
+    glDrawArrays(GL_TRIANGLES, 0, renderedTiles * 6);
 
-   if (isPointVisible(player.entity.finalGoalX, player.entity.finalGoalY, playerWorldX, playerWorldY, zoomFactor)) {
-       drawTargetTileOutline(player.entity.finalGoalX, player.entity.finalGoalY, cameraOffsetX, cameraOffsetY, zoomFactor);
-   }
+    if (isPointVisible(player.entity.finalGoalX, player.entity.finalGoalY, playerWorldX, playerWorldY, zoomFactor)) {
+        drawTargetTileOutline(player.entity.finalGoalX, player.entity.finalGoalY, cameraOffsetX, cameraOffsetY, zoomFactor);
+    }
 }
-
 /*
  * RenderEntities
  *
@@ -888,11 +925,15 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
         }
     }
 
-    //printf("Total enemies: %d, Visible: %d, View-culled: %d, Chunk-culled: %d\n", 
-    //       MAX_ENEMIES, visibleEnemyCount, culledEnemyCount, chunkCulledCount);
-
     float smoothCameraOffsetX = player.cameraCurrentX;
     float smoothCameraOffsetY = player.cameraCurrentY;
+
+    // Get enemy texture coordinates
+    TextureCoords* enemyTex = getTextureCoords("enemy");
+    if (!enemyTex) {
+        fprintf(stderr, "Failed to get enemy texture coordinates\n");
+        return;
+    }
 
     updateEnemyBatchVBO(visibleEnemies, visibleEnemyCount, smoothCameraOffsetX, smoothCameraOffsetY, zoomFactor);
     glBindVertexArray(enemyBatchVAO);
@@ -904,24 +945,31 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
 
     float playerScreenX = (playerWorldX - smoothCameraOffsetX) * zoomFactor;
     float playerScreenY = (playerWorldY - smoothCameraOffsetY) * zoomFactor;
-    float playerTexX = 0.0f / 3.0f;
-    float playerTexY = 5.0f / 6.0f;
-    float playerTexWidth = 1.0f / 3.0f;
-    float playerTexHeight = 1.0f / 6.0f;
+
+    // Get player texture coordinates
+    TextureCoords* playerTex = getTextureCoords("player");
+    if (!playerTex) {
+        fprintf(stderr, "Failed to get player texture coordinates\n");
+        return;
+    }
 
     float playerVertices[] = {
-        playerScreenX - TILE_SIZE * zoomFactor, playerScreenY - TILE_SIZE * zoomFactor, playerTexX, playerTexY,
-        playerScreenX + TILE_SIZE * zoomFactor, playerScreenY - TILE_SIZE * zoomFactor, playerTexX + playerTexWidth, playerTexY,
-        playerScreenX + TILE_SIZE * zoomFactor, playerScreenY + TILE_SIZE * zoomFactor, playerTexX + playerTexWidth, playerTexY + playerTexHeight,
-        playerScreenX - TILE_SIZE * zoomFactor, playerScreenY + TILE_SIZE * zoomFactor, playerTexX, playerTexY + playerTexHeight
+        playerScreenX - TILE_SIZE * zoomFactor, playerScreenY - TILE_SIZE * zoomFactor, 
+        playerTex->u1, playerTex->v1,
+        playerScreenX + TILE_SIZE * zoomFactor, playerScreenY - TILE_SIZE * zoomFactor, 
+        playerTex->u2, playerTex->v1,
+        playerScreenX + TILE_SIZE * zoomFactor, playerScreenY + TILE_SIZE * zoomFactor, 
+        playerTex->u2, playerTex->v2,
+        playerScreenX - TILE_SIZE * zoomFactor, playerScreenY + TILE_SIZE * zoomFactor, 
+        playerTex->u1, playerTex->v2
     };
+
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(playerVertices), playerVertices);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
-
 /*
  * PhysicsLoop
  *

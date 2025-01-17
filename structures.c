@@ -7,30 +7,9 @@
 #include <stdint.h>
 #include <inttypes.h>
 #include "ui.h"
+#include "texture_coords.h"
+
 // Constants for texture coordinates from your existing system
-
-/* These defs need to be in structures.c since they incl the division operation - do not move to header file or they will break when refed*/
-#define WALL_FRONT_TEX_X (1.0f / 3.0f)
-#define WALL_FRONT_TEX_Y (3.0f / 6.0f)
-#define WALL_VERTICAL_TEX_X (0.0f / 3.0f)
-#define WALL_VERTICAL_TEX_Y (3.0f / 6.0f)
-#define WALL_TOP_LEFT_TEX_X (1.0f / 3.0f)
-#define WALL_TOP_LEFT_TEX_Y (2.0f / 6.0f)
-#define WALL_TOP_RIGHT_TEX_X (2.0f / 3.0f)
-#define WALL_TOP_RIGHT_TEX_Y (3.0f / 6.0f)
-#define WALL_BOTTOM_LEFT_TEX_X (0.0f / 3.0f)
-#define WALL_BOTTOM_LEFT_TEX_Y (2.0f / 6.0f)
-#define WALL_BOTTOM_RIGHT_TEX_X (2.0f / 3.0f)
-#define WALL_BOTTOM_RIGHT_TEX_Y (2.0f / 6.0f)
-
-#define DOOR_VERTICAL_TEX_X (2.0f / 3.0f)    // Middle column
-#define DOOR_VERTICAL_TEX_Y (1.0f / 6.0f)    // Top row
-#define DOOR_HORIZONTAL_TEX_X (0.0f / 3.0f)  // First column 
-#define DOOR_HORIZONTAL_TEX_Y (1.0f / 6.0f)  // Top row
-#define DOOR_VERTICAL_OPEN_TEX_X (0.0f / 3.0f)    // Middle column
-#define DOOR_VERTICAL_OPEN_TEX_Y (0.0f / 6.0f)    // Top row
-#define DOOR_HORIZONTAL_OPEN_TEX_X (1.0f / 3.0f)  // First column 
-#define DOOR_HORIZONTAL_OPEN_TEX_Y (1.0f / 6.0f)  // Top row
 
 #define FNV_PRIME 1099511628211ULL
 #define FNV_OFFSET 14695981039346656037ULL
@@ -124,11 +103,8 @@ void updateWallTextures(int gridX, int gridY) {
     if (!isWallOrDoor(gridX, gridY)) return;
 
     // Preserve door textures
-    if ((grid[gridY][gridX].wallTexX == DOOR_VERTICAL_TEX_X && 
-         grid[gridY][gridX].wallTexY == DOOR_VERTICAL_TEX_Y) ||
-        (grid[gridY][gridX].wallTexX == DOOR_HORIZONTAL_TEX_X &&
-         grid[gridY][gridX].wallTexY == DOOR_HORIZONTAL_TEX_Y)) {
-        return;
+    if (grid[gridY][gridX].structureType == STRUCTURE_DOOR) {
+        return;  // Let toggleDoor handle door textures
     }
 
     // Get adjacent wall info - explicitly check for walls/doors only
@@ -137,32 +113,39 @@ void updateWallTextures(int gridX, int gridY) {
     bool hasEast = (gridX < GRID_SIZE-1) && isWallOrDoor(gridX+1, gridY);
     bool hasWest = (gridX > 0) && isWallOrDoor(gridX-1, gridY);
 
-    // Rest of the texture logic remains the same...
+    TextureCoords* texCoords;
+    const char* textureId;
+
     if (hasNorth && hasEast && !hasWest && !hasSouth) {
-        grid[gridY][gridX].wallTexX = WALL_BOTTOM_LEFT_TEX_X;
-        grid[gridY][gridX].wallTexY = WALL_BOTTOM_LEFT_TEX_Y;
+        textureId = "wall_bottom_left";
     } 
     else if (hasNorth && hasWest && !hasEast && !hasSouth) {
-        grid[gridY][gridX].wallTexX = WALL_BOTTOM_RIGHT_TEX_X;
-        grid[gridY][gridX].wallTexY = WALL_BOTTOM_RIGHT_TEX_Y;
+        textureId = "wall_bottom_right";
     } 
     else if (hasSouth && hasEast && !hasWest && !hasNorth) {
-        grid[gridY][gridX].wallTexX = WALL_TOP_LEFT_TEX_X;
-        grid[gridY][gridX].wallTexY = WALL_TOP_LEFT_TEX_Y;
+        textureId = "wall_top_left";
     } 
     else if (hasSouth && hasWest && !hasEast && !hasNorth) {
-        grid[gridY][gridX].wallTexX = WALL_TOP_RIGHT_TEX_X;
-        grid[gridY][gridX].wallTexY = WALL_TOP_RIGHT_TEX_Y;
+        textureId = "wall_top_right";
     } 
     else if (hasNorth || hasSouth) {
-        grid[gridY][gridX].wallTexX = WALL_VERTICAL_TEX_X;
-        grid[gridY][gridX].wallTexY = WALL_VERTICAL_TEX_Y;
+        textureId = "wall_vertical";
     } 
     else {
-        grid[gridY][gridX].wallTexX = WALL_FRONT_TEX_X;
-        grid[gridY][gridX].wallTexY = WALL_FRONT_TEX_Y;
+        textureId = "wall_front";
     }
+
+    texCoords = getTextureCoords(textureId);
+    if (!texCoords) {
+        fprintf(stderr, "Failed to get texture coordinates for %s\n", textureId);
+        return;
+    }
+
+    grid[gridY][gridX].wallTexX = texCoords->u1;
+    grid[gridY][gridX].wallTexY = texCoords->v1;
 }
+
+
 
 /**
  * @brief Updates surrounding structures after a placement.
@@ -211,9 +194,19 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
     grid[gridY][gridX].structureType = type;
     grid[gridY][gridX].materialType = MATERIAL_WOOD; // Default to wood for walls/doors
 
+    TextureCoords* texCoords;
+
     switch(type) {
         case STRUCTURE_WALL:
             GRIDCELL_SET_WALKABLE(grid[gridY][gridX], false);
+            // Initial texture will be updated by updateSurroundingStructures
+            texCoords = getTextureCoords("wall_front");
+            if (!texCoords) {
+                fprintf(stderr, "Failed to get wall texture coordinates\n");
+                return false;
+            }
+            grid[gridY][gridX].wallTexX = texCoords->u1;
+            grid[gridY][gridX].wallTexY = texCoords->v1;
             updateSurroundingStructures(gridX, gridY);
             break;
             
@@ -223,18 +216,25 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
             bool hasNorth = (gridY > 0) && isWallOrDoor(gridX, gridY-1);
             bool hasSouth = (gridY < GRID_SIZE-1) && isWallOrDoor(gridX, gridY+1);
 
+            const char* textureId;
             // Set door orientation based on adjacent walls
             if (hasNorth || hasSouth) {
                 // Vertical door
                 GRIDCELL_SET_ORIENTATION(grid[gridY][gridX], 0);
-                grid[gridY][gridX].wallTexX = DOOR_VERTICAL_TEX_X;
-                grid[gridY][gridX].wallTexY = DOOR_VERTICAL_TEX_Y;
+                textureId = "door_vertical";
             } else {
                 // Horizontal door
                 GRIDCELL_SET_ORIENTATION(grid[gridY][gridX], 1);
-                grid[gridY][gridX].wallTexX = DOOR_HORIZONTAL_TEX_X;
-                grid[gridY][gridX].wallTexY = DOOR_HORIZONTAL_TEX_Y;
+                textureId = "door_horizontal";
             }
+
+            texCoords = getTextureCoords(textureId);
+            if (!texCoords) {
+                fprintf(stderr, "Failed to get door texture coordinates for %s\n", textureId);
+                return false;
+            }
+            grid[gridY][gridX].wallTexX = texCoords->u1;
+            grid[gridY][gridX].wallTexY = texCoords->v1;
             
             updateSurroundingStructures(gridX, gridY);
             break;
@@ -243,6 +243,13 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
         case STRUCTURE_PLANT:
             GRIDCELL_SET_WALKABLE(grid[gridY][gridX], false);
             grid[gridY][gridX].materialType = MATERIAL_FERN; // Default plant type
+            texCoords = getTextureCoords("item_fern");
+            if (!texCoords) {
+                fprintf(stderr, "Failed to get fern texture coordinates\n");
+                return false;
+            }
+            grid[gridY][gridX].wallTexX = texCoords->u1;
+            grid[gridY][gridX].wallTexY = texCoords->v1;
             printf("Placed plant: structureType=%d, materialType=%d\n", 
                    grid[gridY][gridX].structureType, 
                    grid[gridY][gridX].materialType);
@@ -282,8 +289,32 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
                 }
             }
 
-            // Rest of enclosure handling code remains the same...
-            // [Previous enclosure processing code here]
+            // Calculate the centroid for the enclosure
+            float centroidX = (float)sumX / enclosure.tileCount;
+            float centroidY = (float)sumY / enclosure.tileCount;
+
+            // Calculate enclosure area and perimeter
+            int totalArea = enclosure.tileCount;
+            int perimeter = wallCount + doorCount;
+
+            // Initialize the enclosure data
+            newEnclosure.hash = calculateEnclosureHash(boundaryPoints, enclosure.tileCount, totalArea);
+            newEnclosure.centerPoint.x = centroidX;
+            newEnclosure.centerPoint.y = centroidY;
+            newEnclosure.totalArea = totalArea;
+            newEnclosure.wallCount = wallCount;
+            newEnclosure.doorCount = doorCount;
+            newEnclosure.boundaryCount = enclosure.tileCount;
+
+            // Store boundary points - if we need to store them, we need to add this member to EnclosureData
+            // For now, we can free them since they're already used in the hash calculation
+            free(boundaryPoints);
+
+            // Add the enclosure to the manager
+            addEnclosure(&globalEnclosureManager, &newEnclosure);;
+
+            // Free the enclosure tiles (but not boundaryPoints, as it's now owned by the enclosure)
+            free(enclosure.tiles);
         }
     }
 
@@ -414,24 +445,24 @@ bool toggleDoor(int gridX, int gridY, Player* player) {
         bool isVertical = (GRIDCELL_GET_ORIENTATION(grid[gridY][gridX]) == 0);
         bool willBeOpen = !currentlyOpen;  // What state it will be after toggling
 
-        // Update textures based on orientation and state
+        // Get appropriate texture coordinates
+        TextureCoords* texCoords;
+        const char* textureId;
+
         if (isVertical) {
-            if (willBeOpen) {
-                grid[gridY][gridX].wallTexX = DOOR_VERTICAL_OPEN_TEX_X;
-                grid[gridY][gridX].wallTexY = DOOR_VERTICAL_OPEN_TEX_Y;
-            } else {
-                grid[gridY][gridX].wallTexX = DOOR_VERTICAL_TEX_X;
-                grid[gridY][gridX].wallTexY = DOOR_VERTICAL_TEX_Y;
-            }
+            textureId = willBeOpen ? "door_vertical_open" : "door_vertical";
         } else {
-            if (willBeOpen) {
-                grid[gridY][gridX].wallTexX = DOOR_HORIZONTAL_OPEN_TEX_X;
-                grid[gridY][gridX].wallTexY = DOOR_HORIZONTAL_OPEN_TEX_Y;
-            } else {
-                grid[gridY][gridX].wallTexX = DOOR_HORIZONTAL_TEX_X;
-                grid[gridY][gridX].wallTexY = DOOR_HORIZONTAL_TEX_Y;
-            }
+            textureId = willBeOpen ? "door_horizontal_open" : "door_horizontal";
         }
+
+        texCoords = getTextureCoords(textureId);
+        if (!texCoords) {
+            fprintf(stderr, "Failed to get texture coordinates for %s\n", textureId);
+            return false;
+        }
+
+        grid[gridY][gridX].wallTexX = texCoords->u1;
+        grid[gridY][gridX].wallTexY = texCoords->v1;
         
         return true;
     } else {
@@ -451,7 +482,6 @@ bool toggleDoor(int gridX, int gridY, Player* player) {
     }
     return false;
 }
-
 /**
  * @brief Checks if a tile contains a wall or door.
  *
