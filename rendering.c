@@ -796,11 +796,9 @@ void setupSidebarViewport(void) {
 void renderStructurePreview(const PlacementMode* mode, float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
     if (!mode->active) return;
 
-    // Convert grid coordinates to screen coordinates
     float posX, posY;
     WorldToScreenCoords(mode->previewX, mode->previewY, cameraOffsetX, cameraOffsetY, zoomFactor, &posX, &posY);
 
-    // Setup alpha blending for transparency
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
@@ -809,7 +807,6 @@ void renderStructurePreview(const PlacementMode* mode, float cameraOffsetX, floa
         texX = 0.0f / 3.0f;
         texY = 1.0f / 6.0f;
     } else {
-        // Wall preview uses standard wall texture
         texX = 1.0f / 3.0f;
         texY = 3.0f / 6.0f;
     }
@@ -818,29 +815,24 @@ void renderStructurePreview(const PlacementMode* mode, float cameraOffsetX, floa
     float texHeight = 1.0f / 6.0f;
     float halfSize = TILE_SIZE * zoomFactor;
 
-    // Draw semi-transparent preview
-    float previewVertices[] = {
-        posX - halfSize, posY - halfSize, texX, texY + texHeight,
-        posX + halfSize, posY - halfSize, texX + texWidth, texY + texHeight,
-        posX + halfSize, posY + halfSize, texX + texWidth, texY,
-        posX - halfSize, posY + halfSize, texX, texY
-    };
-
+float previewVertices[] = {
+    posX - halfSize, (posY - halfSize) + halfSize, texX, texY + texHeight,
+    posX + halfSize, (posY - halfSize) + halfSize, texX + texWidth, texY + texHeight,
+    posX + halfSize, posY + halfSize + halfSize, texX + texWidth, texY,
+    posX - halfSize, posY + halfSize + halfSize, texX, texY
+};
     glBindVertexArray(squareVAO);
     glBindBuffer(GL_ARRAY_BUFFER, squareVBO);
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(previewVertices), previewVertices);
 
-    // Set transparency
     GLint alphaUniform = glGetUniformLocation(shaderProgram, "alpha");
-    glUniform1f(alphaUniform, 0.5f); // 50% transparency
+    glUniform1f(alphaUniform, 0.5f);
 
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
-    // Reset alpha
     glUniform1f(alphaUniform, 1.0f);
     glDisable(GL_BLEND);
 }
-
 void cleanupUIResources(void) {
     if (uiShaderProgram) {
         glDeleteProgram(uiShaderProgram);

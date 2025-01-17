@@ -58,6 +58,8 @@ typedef struct {
     int capacity;              // Current capacity of the array
 } EnclosureManager;
 
+
+
 // Function declarations
 uint64_t calculateEnclosureHash(Point* boundaryTiles, int boundaryCount, int totalArea);
 void initEnclosureManager(EnclosureManager* manager);
