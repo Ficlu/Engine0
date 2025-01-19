@@ -355,7 +355,7 @@ void InitializeEngine(void) {
     printf("Shader programs created.\n");
 
     // Load texture atlas first
-    textureAtlas = loadBMP("texture_atlas-1.bmp");
+    textureAtlas = loadBMP("sprite-sheet-32.bmp");
     initializeDefaultTextures();  // Add this line
     printf("Texture system initialized.\n");
     if (!textureAtlas) {
@@ -679,7 +679,7 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
 
     int dataIndex = 0;
     float* batchData = tileBatchData.persistentBuffer;
-    const float texMargin = 0.0001f;
+    const float texMargin = 0.0000001f;
 
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {

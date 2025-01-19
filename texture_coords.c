@@ -4,8 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#define ATLAS_COLS 3
-#define ATLAS_ROWS 6
+
 #define FNV_OFFSET 2166136261u
 #define FNV_PRIME 16777619u
 
@@ -194,26 +193,26 @@ void initializeDefaultTextures(void) {
     initTextureManager(64);
 
     // Register all textures
-    registerTexture("wall_front", 1, 3);
-    registerTexture("wall_vertical", 0, 3);
-    registerTexture("wall_top_left", 1, 2);
-    registerTexture("wall_top_right", 2, 3);
-    registerTexture("wall_bottom_left", 0, 2);
-    registerTexture("wall_bottom_right", 2, 2);
+    registerTexture("wall_front", 0, 62);
+    registerTexture("wall_vertical", 1, 62);
+    registerTexture("wall_top_left", 3, 62);
+    registerTexture("wall_top_right", 5, 62);
+    registerTexture("wall_bottom_left", 2, 62);
+    registerTexture("wall_bottom_right", 4, 62);
 
     registerTexture("door_vertical", 2, 1);
     registerTexture("door_horizontal", 0, 1);
     registerTexture("door_vertical_open", 0, 0);
     registerTexture("door_horizontal_open", 1, 1);
 
-    registerTexture("terrain_sand", 0, 4);
-    registerTexture("terrain_water", 1, 4);
-    registerTexture("terrain_grass", 2, 4);
-    registerTexture("terrain_stone", 2, 5);
+    registerTexture("terrain_sand", 0, 61);
+    registerTexture("terrain_water", 2, 61);
+    registerTexture("terrain_grass", 1, 61);
+    registerTexture("terrain_stone", 3, 61);
 
-    registerTexture("player", 0, 5);
-    registerTexture("enemy", 1, 5);
-    registerTexture("item_fern", 1, 0);
+    registerTexture("player", 0, 63);
+    registerTexture("enemy", 0, 59);
+    registerTexture("item_fern", 0, 58);
 
     // Validate registration
     printf("\nValidating texture registration...\n");

@@ -4,8 +4,8 @@
 #include <stdbool.h>
 
 // Texture atlas dimensions
-#define ATLAS_COLS 3
-#define ATLAS_ROWS 6
+#define ATLAS_COLS 64
+#define ATLAS_ROWS 64
 
 // Basic UV coordinate structure
 typedef struct {

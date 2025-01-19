@@ -616,20 +616,42 @@ GLuint loadBMP(const char* filePath) {
     unsigned int imageSize = *(int*)&(header[0x22]);
     unsigned int width = *(int*)&(header[0x12]);
     unsigned int height = *(int*)&(header[0x16]);
+    unsigned int bitsPerPixel = *(short*)&(header[0x1C]);
 
-    if (imageSize == 0) imageSize = width * height * 3;
-    if (dataPos == 0) dataPos = 54;
+    printf("BMP header info:\n");
+    printf("Data position: %u\n", dataPos);
+    printf("Image size: %u\n", imageSize);
+    printf("Width: %u\n", width);
+    printf("Height: %u\n", height);
+    printf("Bits per pixel: %u\n", bitsPerPixel);
+
+    // Calculate proper image size based on bits per pixel
+    if (imageSize == 0) {
+        imageSize = width * height * (bitsPerPixel / 8);
+    }
+
+    // Seek to the actual data position
+    fseek(file, dataPos, SEEK_SET);
 
     unsigned char* data = (unsigned char*)malloc(imageSize);
+    if (!data) {
+        printf("Failed to allocate memory for image data\n");
+        fclose(file);
+        return 0;
+    }
 
-    fread(data, 1, imageSize, file);
+    size_t bytesRead = fread(data, 1, imageSize, file);
+    if (bytesRead != imageSize) {
+        printf("Warning: Read %zu bytes, expected %u bytes\n", bytesRead, imageSize);
+    }
+    
     fclose(file);
 
     GLuint textureID;
     glGenTextures(1, &textureID);
     glBindTexture(GL_TEXTURE_2D, textureID);
 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_BGR, GL_UNSIGNED_BYTE, data);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_BGRA, GL_UNSIGNED_BYTE, data);
     free(data);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -637,10 +659,8 @@ GLuint loadBMP(const char* filePath) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    printf("Texture loaded successfully: %s (Width: %d, Height: %d)\n", filePath, width, height);
     return textureID;
 }
-
 /**
  * @brief Initializes the vertex array object (VAO) and buffer for enemy batches.
  * 
@@ -802,25 +822,28 @@ void renderStructurePreview(const PlacementMode* mode, float cameraOffsetX, floa
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    float texX, texY;
+    TextureCoords* texCoords;
     if (mode->currentType == STRUCTURE_DOOR) {
-        texX = 0.0f / 3.0f;
-        texY = 1.0f / 6.0f;
+        texCoords = getTextureCoords("door_horizontal");
     } else {
-        texX = 1.0f / 3.0f;
-        texY = 3.0f / 6.0f;
+        texCoords = getTextureCoords("wall_front");
     }
 
-    float texWidth = 1.0f / 3.0f;
-    float texHeight = 1.0f / 6.0f;
+    if (!texCoords) {
+        fprintf(stderr, "Failed to get preview texture coordinates\n");
+        return;
+    }
+
     float halfSize = TILE_SIZE * zoomFactor;
+    float verticalOffset = halfSize;
 
 float previewVertices[] = {
-    posX - halfSize, (posY - halfSize) + halfSize, texX, texY + texHeight,
-    posX + halfSize, (posY - halfSize) + halfSize, texX + texWidth, texY + texHeight,
-    posX + halfSize, posY + halfSize + halfSize, texX + texWidth, texY,
-    posX - halfSize, posY + halfSize + halfSize, texX, texY
+    posX - halfSize,  posY,                  texCoords->u1, texCoords->v2,  // bottom left
+    posX + halfSize,  posY,                  texCoords->u2, texCoords->v2,  // bottom right
+    posX + halfSize,  posY + 2*halfSize,     texCoords->u2, texCoords->v1,  // top right
+    posX - halfSize,  posY + 2*halfSize,     texCoords->u1, texCoords->v1   // top left
 };
+
     glBindVertexArray(squareVAO);
     glBindBuffer(GL_ARRAY_BUFFER, squareVBO);
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(previewVertices), previewVertices);
