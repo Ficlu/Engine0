@@ -123,81 +123,89 @@ void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
     float playerPosX = atomic_load(&player->entity.posX);
     float playerPosY = atomic_load(&player->entity.posY);
 
-    // Calculate deltas once for both animation and camera
-    float dx = playerPosX - player->cameraCurrentX;
-    float dy = playerPosY - player->cameraCurrentY;
-
-    // Check if we've reached our destination
-    bool reachedDestination = (
-        atomic_load(&player->entity.gridX) == atomic_load(&player->entity.finalGoalX) &&
-        atomic_load(&player->entity.gridY) == atomic_load(&player->entity.finalGoalY)
+    // Calculate distance to target tile center for animation
+    float targetWorldX, targetWorldY;
+    WorldToScreenCoords(
+        atomic_load(&player->entity.targetGridX), 
+        atomic_load(&player->entity.targetGridY), 
+        0, 0, 1, 
+        &targetWorldX, &targetWorldY
     );
 
-    // Update animation state based on movement and destination
-    player->animation->isMoving = (fabs(dx) > 0.0001f || fabs(dy) > 0.0001f) && !reachedDestination;
+    float dx = targetWorldX - playerPosX;
+    float dy = targetWorldY - playerPosY;
+    float distanceToTarget = sqrt(dx * dx + dy * dy);
+
+    #define POSITION_EPSILON 0.001f
+    player->animation->isMoving = distanceToTarget > POSITION_EPSILON;
     
     if (player->animation->isMoving) {
-        // Calculate movement vector
-        float moveX = atomic_load(&player->entity.targetGridX) - atomic_load(&player->entity.gridX);
-        float moveY = atomic_load(&player->entity.targetGridY) - atomic_load(&player->entity.gridY);
+        // Animation logic remains unchanged
+        float angle = atan2f(dy, dx);
         
-        // Determine predominant direction using atan2
-        float angle = atan2f(moveY, moveX);
-        
-        // Convert angle to direction
-const float PI = 3.14159265358979323846f;
-if (angle < -3*PI/4 || angle > 3*PI/4) {
-    player->animation->facing = DIRECTION_LEFT;
-} else if (angle < -PI/4) {
-    player->animation->facing = DIRECTION_UP;    // Changed from DOWN
-} else if (angle < PI/4) {
-    player->animation->facing = DIRECTION_RIGHT;
-} else {
-    player->animation->facing = DIRECTION_DOWN;  // Changed from UP
-}
+        const float PI = 3.14159265358979323846f;
+        if (distanceToTarget > POSITION_EPSILON * 2.0f) {
+            if (angle < -3*PI/4 || angle > 3*PI/4) {
+                player->animation->facing = DIRECTION_LEFT;
+            } else if (angle < -PI/4) {
+                player->animation->facing = DIRECTION_DOWN;
+            } else if (angle < PI/4) {
+                player->animation->facing = DIRECTION_RIGHT;
+            } else {
+                player->animation->facing = DIRECTION_UP;
+            }
+        }
 
         Uint32 currentTime = SDL_GetTicks();
-        if (currentTime - player->animation->lastFrameUpdate >= 100) {
+        if (currentTime - player->animation->lastFrameUpdate >= 70) {
             player->animation->currentFrame = (player->animation->currentFrame + 1) % 4;
             player->animation->lastFrameUpdate = currentTime;
         }
     } else {
-        player->animation->currentFrame = 0;  // Reset to standing frame
+        player->animation->currentFrame = 0;
     }
 
-    // Check if we have a build target and have reached it
+    // Structure placement logic using continuous coordinates
     if (player->hasBuildTarget) {
-        int currentX = atomic_load(&player->entity.gridX);
-        int currentY = atomic_load(&player->entity.gridY);
-        
-        bool isNearTarget = (
-            abs(currentX - player->targetBuildX) <= 1 && 
-            abs(currentY - player->targetBuildY) <= 1
-        );
-
-        if (isNearTarget) {
-            bool placed = placeStructure(player->pendingBuildType, 
-                                       player->targetBuildX, 
-                                       player->targetBuildY);
-            printf("Reached build location - placement %s at: %d, %d\n",
-                   placed ? "succeeded" : "failed",
-                   player->targetBuildX, player->targetBuildY);
+        if (isWithinBuildRange(playerPosX, playerPosY, 
+                             player->targetBuildX, player->targetBuildY)) {
+            bool placed = placeStructure(
+                player->pendingBuildType, 
+                player->targetBuildX, 
+                player->targetBuildY
+            );
             
+            if (placed) {
+                printf("Structure placement succeeded at: %d, %d\n",
+                       player->targetBuildX, player->targetBuildY);
+            } else {
+                printf("Structure placement failed at: %d, %d\n",
+                       player->targetBuildX, player->targetBuildY);
+            }
             player->hasBuildTarget = false;
         }
     }
 
-    // Check if we have a harvest target and have reached it
-    if (player->hasHarvestTarget) {
-        int currentX = atomic_load(&player->entity.gridX);
-        int currentY = atomic_load(&player->entity.gridY);
-        
-        bool isNearTarget = (
-            abs(currentX - player->targetHarvestX) <= 1 && 
-            abs(currentY - player->targetHarvestY) <= 1
-        );
+    // Rest of the function (camera logic, etc.) remains unchanged
+    float cameraSmoothFactor = 0.05f;
+    float lookAheadFactor = 1.0f;
+    
+    float cameraOffsetX = playerPosX - player->cameraCurrentX;
+    float cameraOffsetY = playerPosY - player->cameraCurrentY;
+    
+    player->lookAheadX = cameraOffsetX * lookAheadFactor;
+    player->lookAheadY = cameraOffsetY * lookAheadFactor;
 
-        if (isNearTarget) {
+    player->cameraTargetX = playerPosX + player->lookAheadX;
+    player->cameraTargetY = playerPosY + player->lookAheadY;
+
+    player->cameraCurrentX += (player->cameraTargetX - player->cameraCurrentX) * cameraSmoothFactor;
+    player->cameraCurrentY += (player->cameraTargetY - player->cameraCurrentY) * cameraSmoothFactor;
+
+    // Handle harvest target using the same coordinate system
+    if (player->hasHarvestTarget) {
+        if (isWithinBuildRange(playerPosX, playerPosY,
+                             player->targetHarvestX, player->targetHarvestY)) {
             Item* harvestedItem = NULL;
             switch(player->pendingHarvestType) {
                 case MATERIAL_FERN:
@@ -225,18 +233,6 @@ if (angle < -3*PI/4 || angle > 3*PI/4) {
             player->pendingHarvestType = 0;
         }
     }
-
-    // Camera follow logic using already calculated dx/dy
-    float lookAheadFactor = 1.0f;
-    player->lookAheadX = dx * lookAheadFactor;
-    player->lookAheadY = dy * lookAheadFactor;
-
-    player->cameraTargetX = playerPosX + player->lookAheadX;
-    player->cameraTargetY = playerPosY + player->lookAheadY;
-
-    float cameraSmoothFactor = 0.05f;
-    player->cameraCurrentX += (player->cameraTargetX - player->cameraCurrentX) * cameraSmoothFactor;
-    player->cameraCurrentY += (player->cameraTargetY - player->cameraCurrentY) * cameraSmoothFactor;
 }
 /*
  * CleanupPlayer

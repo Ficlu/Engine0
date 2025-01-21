@@ -145,7 +145,17 @@ void updateWallTextures(int gridX, int gridY) {
     grid[gridY][gridX].wallTexY = texCoords->v1;
 }
 
+bool isWithinBuildRange(float entityX, float entityY, int targetGridX, int targetGridY) {
+    float targetWorldX, targetWorldY;
+    WorldToScreenCoords(targetGridX, targetGridY, 0, 0, 1, &targetWorldX, &targetWorldY);
 
+    float dx = targetWorldX - entityX;
+    float dy = targetWorldY - entityY;
+    float distance = sqrt(dx * dx + dy * dy);
+
+    // BUILD_RANGE is in world units, matching our continuous coordinate system
+    return distance <= (TILE_SIZE * 1.5f);  // 1.5 tiles reach
+}
 
 /**
  * @brief Updates surrounding structures after a placement.

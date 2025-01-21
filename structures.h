@@ -68,7 +68,7 @@ EnclosureData* findEnclosure(EnclosureManager* manager, uint64_t hash);
 void removeEnclosure(EnclosureManager* manager, uint64_t hash);
 void cleanupEnclosureManager(EnclosureManager* manager);
 extern EnclosureManager globalEnclosureManager; 
-
+bool isWithinBuildRange(float entityX, float entityY, int targetGridX, int targetGridY);
 struct Player;  // Forward declaration
 void cycleStructureType(PlacementMode* mode, bool forward);
 void initializeStructureSystem(void);

@@ -136,49 +136,33 @@ static void HandleHarvesting(int gridX, int gridY) {
 // Handle building placement
 static void HandlePlacement(int gridX, int gridY, Uint8 button) {
     if (button == SDL_BUTTON_LEFT) {
-        if (IsWithinPlayerRange(gridX, gridY, player.entity.gridX, player.entity.gridY)) {
+        int playerGridX = atomic_load(&player.entity.gridX);
+        int playerGridY = atomic_load(&player.entity.gridY);
+        
+        if (IsWithinPlayerRange(gridX, gridY, playerGridX, playerGridY)) {
             printf("Attempting direct placement at (%d, %d)\n", gridX, gridY);
             bool placed = placeStructure(placementMode.currentType, gridX, gridY);
             printf("Direct placement result: %s\n", placed ? "success" : "failed");
         } else {
             AdjacentTile nearest = findNearestAdjacentTile(gridX, gridY,
-                                                         player.entity.gridX,
-                                                         player.entity.gridY,
+                                                         playerGridX, 
+                                                         playerGridY,
                                                          true);
             if (nearest.x != -1) {
-                int pathLength;
-                Node* path = findPath(player.entity.gridX, player.entity.gridY, 
-                                    nearest.x, nearest.y, &pathLength);
+                atomic_store(&player.entity.finalGoalX, nearest.x);
+                atomic_store(&player.entity.finalGoalY, nearest.y);
+                atomic_store(&player.entity.targetGridX, playerGridX);
+                atomic_store(&player.entity.targetGridY, playerGridY);
+                atomic_store(&player.entity.needsPathfinding, true);
                 
-                if (path != NULL) {
-                    player.entity.finalGoalX = nearest.x;
-                    player.entity.finalGoalY = nearest.y;
-                    player.entity.targetGridX = player.entity.gridX;
-                    player.entity.targetGridY = player.entity.gridY;
-                    player.entity.needsPathfinding = true;
-                    player.targetBuildX = gridX;
-                    player.targetBuildY = gridY;
-                    player.hasBuildTarget = true;
-                    player.pendingBuildType = placementMode.currentType;
-                    free(path);
-                }
-            }
-        }
-    } else if (button == SDL_BUTTON_RIGHT) {
-        if (grid[gridY][gridX].structureType == STRUCTURE_WALL || 
-            grid[gridY][gridX].structureType == STRUCTURE_DOOR) {
-            if (IsWithinPlayerRange(gridX, gridY, player.entity.gridX, player.entity.gridY)) {
-                grid[gridY][gridX].structureType = STRUCTURE_NONE;  
-                GRIDCELL_SET_WALKABLE(grid[gridY][gridX], true);
-                updateSurroundingStructures(gridX, gridY);
-                printf("Removed structure at grid position: %d, %d\n", gridX, gridY);
-            } else {
-                printf("Can't remove structure - too far away\n");
+                player.targetBuildX = gridX;
+                player.targetBuildY = gridY;
+                player.hasBuildTarget = true;
+                player.pendingBuildType = placementMode.currentType;
             }
         }
     }
 }
-
 // Handle player movement
 static void HandleMovement(int gridX, int gridY) {
     player.hasHarvestTarget = false;

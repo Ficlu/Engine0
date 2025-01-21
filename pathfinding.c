@@ -154,9 +154,8 @@ Node pop(PriorityQueue* pq) {
 float heuristic(int x1, int y1, int x2, int y2) {
     int dx = abs(x1 - x2);
     int dy = abs(y1 - y2);
-    return (dx + dy) + (1.414f - 2) * fminf(dx, dy);
+    return (float)(dx + dy);  // Manhattan distance - faster than diagonal
 }
-
 /*
  * lineOfSight
  *

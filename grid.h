@@ -1,3 +1,10 @@
+#ifdef __SSE4_1__
+#define USE_SIMD
+#endif
+
+#ifdef USE_SIMD
+#include <immintrin.h>
+#endif
 #ifndef GRID_H
 #define GRID_H
 
