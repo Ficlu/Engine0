@@ -4,7 +4,7 @@
 #include "grid.h"
 #include <stdbool.h>
 #include <stdatomic.h>
-
+#include <SDL2/SDL.h>
 // Forward declaration
 struct Node;
 
@@ -23,7 +23,7 @@ typedef struct {
     int cachedPathLength;
     int currentPathIndex;
     bool isPlayer;
-    
+
 } Entity;
 
 void findNearestWalkableTile(float posX, float posY, int* nearestX, int* nearestY);

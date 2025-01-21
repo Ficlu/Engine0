@@ -928,13 +928,7 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     float smoothCameraOffsetX = player.cameraCurrentX;
     float smoothCameraOffsetY = player.cameraCurrentY;
 
-    // Get enemy texture coordinates
-    TextureCoords* enemyTex = getTextureCoords("enemy");
-    if (!enemyTex) {
-        fprintf(stderr, "Failed to get enemy texture coordinates\n");
-        return;
-    }
-
+    // Update enemy batch VBO and render
     updateEnemyBatchVBO(visibleEnemies, visibleEnemyCount, smoothCameraOffsetX, smoothCameraOffsetY, zoomFactor);
     glBindVertexArray(enemyBatchVAO);
     glDrawArrays(GL_TRIANGLES, 0, visibleEnemyCount * 6);
@@ -946,8 +940,52 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     float playerScreenX = (playerWorldX - smoothCameraOffsetX) * zoomFactor;
     float playerScreenY = (playerWorldY - smoothCameraOffsetY) * zoomFactor;
 
-    // Get player texture coordinates
-    TextureCoords* playerTex = getTextureCoords("player");
+    // Get player texture based on animation state and direction
+    TextureCoords* playerTex;
+    char textureName[32];
+
+    if (!player.animation->isMoving) {
+        // Use standing frame based on direction
+        switch(player.animation->facing) {
+        case DIRECTION_UP:
+            playerTex = getTextureCoords("player_run_up_0");
+            break;
+        case DIRECTION_DOWN:
+            playerTex = getTextureCoords("player");  // Original standing frame for down
+            break;
+        case DIRECTION_LEFT:
+            playerTex = getTextureCoords("player_run_left_0");
+            break;
+        case DIRECTION_RIGHT:
+            playerTex = getTextureCoords("player_run_right_0");
+            break;
+        default:
+            playerTex = getTextureCoords("player");  // Default to original standing frame
+    }
+    } else {
+        // Get running animation frame based on direction
+        const char* dirStr;
+        switch(player.animation->facing) {
+            case DIRECTION_UP:
+                dirStr = "up";
+                break;
+            case DIRECTION_DOWN:
+                dirStr = "down";
+                break;
+            case DIRECTION_LEFT:
+                dirStr = "left";
+                break;
+            case DIRECTION_RIGHT:
+                dirStr = "right";
+                break;
+            default:
+                dirStr = "down";
+        }
+        snprintf(textureName, sizeof(textureName), "player_run_%s_%d", 
+                dirStr, player.animation->currentFrame);
+        playerTex = getTextureCoords(textureName);
+    }
+
     if (!playerTex) {
         fprintf(stderr, "Failed to get player texture coordinates\n");
         return;
@@ -970,6 +1008,7 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
+
 /*
  * PhysicsLoop
  *

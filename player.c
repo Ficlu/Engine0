@@ -84,11 +84,20 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
     atomic_store(&player->cameraTargetY, atomic_load(&player->entity.posY));
     atomic_store(&player->cameraCurrentX, atomic_load(&player->entity.posX));
     atomic_store(&player->cameraCurrentY, atomic_load(&player->entity.posY));
-
+        player->animation = malloc(sizeof(PlayerAnimation));
+    if (!player->animation) {
+        fprintf(stderr, "Failed to allocate player animation\n");
+        return;
+    }
+    player->animation->currentFrame = 0;
+    player->animation->lastFrameUpdate = 0;
+    player->animation->isMoving = false;
+    
     printf("Player initialized at (%d, %d) with inventory\n", 
            atomic_load(&player->entity.gridX), 
            atomic_load(&player->entity.gridY));
 }
+
 /*
  * UpdatePlayer
  *
@@ -103,7 +112,58 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
  * @pre entityCount is a positive integer
  */
 void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
+    if (player == NULL || allEntities == NULL) {
+        fprintf(stderr, "Error: NULL pointer passed to UpdatePlayer\n");
+        return;
+    }
+
     UpdateEntity(&player->entity, allEntities, entityCount);
+
+    // Get current positions once
+    float playerPosX = atomic_load(&player->entity.posX);
+    float playerPosY = atomic_load(&player->entity.posY);
+
+    // Calculate deltas once for both animation and camera
+    float dx = playerPosX - player->cameraCurrentX;
+    float dy = playerPosY - player->cameraCurrentY;
+
+    // Check if we've reached our destination
+    bool reachedDestination = (
+        atomic_load(&player->entity.gridX) == atomic_load(&player->entity.finalGoalX) &&
+        atomic_load(&player->entity.gridY) == atomic_load(&player->entity.finalGoalY)
+    );
+
+    // Update animation state based on movement and destination
+    player->animation->isMoving = (fabs(dx) > 0.0001f || fabs(dy) > 0.0001f) && !reachedDestination;
+    
+    if (player->animation->isMoving) {
+        // Calculate movement vector
+        float moveX = atomic_load(&player->entity.targetGridX) - atomic_load(&player->entity.gridX);
+        float moveY = atomic_load(&player->entity.targetGridY) - atomic_load(&player->entity.gridY);
+        
+        // Determine predominant direction using atan2
+        float angle = atan2f(moveY, moveX);
+        
+        // Convert angle to direction
+const float PI = 3.14159265358979323846f;
+if (angle < -3*PI/4 || angle > 3*PI/4) {
+    player->animation->facing = DIRECTION_LEFT;
+} else if (angle < -PI/4) {
+    player->animation->facing = DIRECTION_UP;    // Changed from DOWN
+} else if (angle < PI/4) {
+    player->animation->facing = DIRECTION_RIGHT;
+} else {
+    player->animation->facing = DIRECTION_DOWN;  // Changed from UP
+}
+
+        Uint32 currentTime = SDL_GetTicks();
+        if (currentTime - player->animation->lastFrameUpdate >= 100) {
+            player->animation->currentFrame = (player->animation->currentFrame + 1) % 4;
+            player->animation->lastFrameUpdate = currentTime;
+        }
+    } else {
+        player->animation->currentFrame = 0;  // Reset to standing frame
+    }
 
     // Check if we have a build target and have reached it
     if (player->hasBuildTarget) {
@@ -127,7 +187,7 @@ void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
         }
     }
 
-    // NEW: Check if we have a harvest target and have reached it
+    // Check if we have a harvest target and have reached it
     if (player->hasHarvestTarget) {
         int currentX = atomic_load(&player->entity.gridX);
         int currentY = atomic_load(&player->entity.gridY);
@@ -138,22 +198,18 @@ void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
         );
 
         if (isNearTarget) {
-            // Create new item based on what we're harvesting
             Item* harvestedItem = NULL;
             switch(player->pendingHarvestType) {
                 case MATERIAL_FERN:
                     harvestedItem = CreateItem(ITEM_FERN);
                     break;
-                // Add other harvestable types here
             }
 
             if (harvestedItem) {
                 bool added = AddItem(player->inventory, harvestedItem);
                 if (added) {
-                    // Award experience before clearing the cell
                     awardForagingExp(player, harvestedItem);
                     
-                    // Clear the harvested object from the grid
                     grid[player->targetHarvestY][player->targetHarvestX].structureType = STRUCTURE_NONE;
                     grid[player->targetHarvestY][player->targetHarvestX].materialType = MATERIAL_NONE;
                     GRIDCELL_SET_WALKABLE(grid[player->targetHarvestY][player->targetHarvestX], true);
@@ -170,14 +226,8 @@ void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
         }
     }
 
-    // Camera follow logic (unchanged)
-    float playerPosX = atomic_load(&player->entity.posX);
-    float playerPosY = atomic_load(&player->entity.posY);
-
-    float dx = playerPosX - player->cameraCurrentX;
-    float dy = playerPosY - player->cameraCurrentY;
+    // Camera follow logic using already calculated dx/dy
     float lookAheadFactor = 1.0f;
-
     player->lookAheadX = dx * lookAheadFactor;
     player->lookAheadY = dy * lookAheadFactor;
 
@@ -188,7 +238,6 @@ void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
     player->cameraCurrentX += (player->cameraTargetX - player->cameraCurrentX) * cameraSmoothFactor;
     player->cameraCurrentY += (player->cameraTargetY - player->cameraCurrentY) * cameraSmoothFactor;
 }
-
 /*
  * CleanupPlayer
  *
@@ -202,6 +251,10 @@ void CleanupPlayer(Player* player) {
     if (player == NULL) {
         fprintf(stderr, "Error: player pointer is NULL in CleanupPlayer\n");
         return;
+    }
+    if (player->animation) {
+        free(player->animation);
+        player->animation = NULL;
     }
 
     if (player->entity.cachedPath) {

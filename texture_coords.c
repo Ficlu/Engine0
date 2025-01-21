@@ -210,7 +210,35 @@ void initializeDefaultTextures(void) {
     registerTexture("terrain_grass", 1, 61);
     registerTexture("terrain_stone", 3, 61);
 
-    registerTexture("player", 0, 63);
+    registerTexture("player", 0, 63);     // Standing frame (original player texture)
+    registerTexture("player_run_0", 1, 63);     // First running frame
+    registerTexture("player_run_1", 2, 63);     // Second running frame
+    registerTexture("player_run_2", 3, 63);     // Third running frame
+    registerTexture("player_run_3", 4, 63);     // Fourth running frame  
+        // Down
+    registerTexture("player_run_down_0", 0, 63);
+    registerTexture("player_run_down_1", 1, 63);
+    registerTexture("player_run_down_2", 2, 63);
+    registerTexture("player_run_down_3", 3, 63);
+    registerTexture("player_run_down_3", 4, 63);
+    // Up
+    registerTexture("player_run_up_0", 15, 63);
+    registerTexture("player_run_up_1", 16, 63);
+    registerTexture("player_run_up_2", 17, 63);
+    registerTexture("player_run_up_3", 18, 63);
+    registerTexture("player_run_up_3", 19, 63);
+    // Left
+    registerTexture("player_run_left_0", 5, 63);
+    registerTexture("player_run_left_1", 6, 63);
+    registerTexture("player_run_left_2", 7, 63);
+    registerTexture("player_run_left_3", 8, 63);
+    registerTexture("player_run_left_3", 9, 63);
+    // Right
+    registerTexture("player_run_right_0", 10, 63);
+    registerTexture("player_run_right_1", 11, 63);
+    registerTexture("player_run_right_2", 12, 63);
+    registerTexture("player_run_right_3", 13, 63);
+    registerTexture("player_run_right_3", 14, 63);
     registerTexture("enemy", 0, 59);
     registerTexture("item_fern", 0, 58);
 
