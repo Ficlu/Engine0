@@ -199,11 +199,11 @@ void initializeDefaultTextures(void) {
     registerTexture("wall_top_right", 5, 62);
     registerTexture("wall_bottom_left", 2, 62);
     registerTexture("wall_bottom_right", 4, 62);
+    registerTexture("wall_top_intersection", 6, 62);
+  
+    registerTexture("door_horizontal", 7, 62);
 
-    registerTexture("door_vertical", 2, 1);
-    registerTexture("door_horizontal", 0, 1);
-    registerTexture("door_vertical_open", 0, 0);
-    registerTexture("door_horizontal_open", 1, 1);
+    registerTexture("door_horizontal_open", 8, 62);
 
     registerTexture("terrain_sand", 0, 61);
     registerTexture("terrain_water", 2, 61);
@@ -247,8 +247,8 @@ void initializeDefaultTextures(void) {
     bool allValid = true;
     const char* testTextures[] = {
         "wall_front", "wall_vertical", "wall_top_left", "wall_top_right",
-        "wall_bottom_left", "wall_bottom_right", "door_vertical", "door_horizontal",
-        "door_vertical_open", "door_horizontal_open", "terrain_sand", "terrain_water",
+        "wall_bottom_left", "wall_bottom_right", "door_horizontal",
+         "door_horizontal_open", "terrain_sand", "terrain_water",
         "terrain_grass", "terrain_stone", "player", "enemy", "item_fern"
     };
 

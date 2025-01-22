@@ -169,11 +169,12 @@ void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
     if (player->hasBuildTarget) {
         if (isWithinBuildRange(playerPosX, playerPosY, 
                              player->targetBuildX, player->targetBuildY)) {
-            bool placed = placeStructure(
-                player->pendingBuildType, 
-                player->targetBuildX, 
-                player->targetBuildY
-            );
+bool placed = placeStructure(
+    player->pendingBuildType, 
+    player->targetBuildX, 
+    player->targetBuildY,
+    player
+);
             
             if (placed) {
                 printf("Structure placement succeeded at: %d, %d\n",

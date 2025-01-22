@@ -8,7 +8,7 @@
 #include <inttypes.h>
 #include "ui.h"
 #include "texture_coords.h"
-
+#include "player.h"
 // Constants for texture coordinates from your existing system
 
 #define FNV_PRIME 1099511628211ULL
@@ -99,52 +99,68 @@ bool canPlaceStructure(StructureType type, int gridX, int gridY) {
  * Adjusts the texture coordinates for a wall tile to reflect its surroundings.
  */
 void updateWallTextures(int gridX, int gridY) {
-    // Skip if not a wall/door
-    if (!isWallOrDoor(gridX, gridY)) return;
+   // Skip if not a wall/door
+   if (!isWallOrDoor(gridX, gridY)) return;
 
-    // Preserve door textures
-    if (grid[gridY][gridX].structureType == STRUCTURE_DOOR) {
-        return;  // Let toggleDoor handle door textures
-    }
+   // Preserve door textures
+   if (grid[gridY][gridX].structureType == STRUCTURE_DOOR) {
+       return;  // Let toggleDoor handle door textures
+   }
 
-    // Get adjacent wall info - explicitly check for walls/doors only
-    bool hasNorth = (gridY > 0) && isWallOrDoor(gridX, gridY-1);
-    bool hasSouth = (gridY < GRID_SIZE-1) && isWallOrDoor(gridX, gridY+1);
-    bool hasEast = (gridX < GRID_SIZE-1) && isWallOrDoor(gridX+1, gridY);
-    bool hasWest = (gridX > 0) && isWallOrDoor(gridX-1, gridY);
+   // Get adjacent wall info - explicitly check for walls/doors only
+   bool hasNorth = (gridY > 0) && isWallOrDoor(gridX, gridY-1);
+   bool hasSouth = (gridY < GRID_SIZE-1) && isWallOrDoor(gridX, gridY+1);
+   bool hasEast = (gridX < GRID_SIZE-1) && isWallOrDoor(gridX+1, gridY);
+   bool hasWest = (gridX > 0) && isWallOrDoor(gridX-1, gridY);
 
-    TextureCoords* texCoords;
-    const char* textureId;
+   TextureCoords* texCoords;
+   const char* textureId;
 
-    if (hasNorth && hasEast && !hasWest && !hasSouth) {
-        textureId = "wall_bottom_left";
-    } 
-    else if (hasNorth && hasWest && !hasEast && !hasSouth) {
-        textureId = "wall_bottom_right";
-    } 
-    else if (hasSouth && hasEast && !hasWest && !hasNorth) {
-        textureId = "wall_top_left";
-    } 
-    else if (hasSouth && hasWest && !hasEast && !hasNorth) {
-        textureId = "wall_top_right";
-    } 
-    else if (hasNorth || hasSouth) {
-        textureId = "wall_vertical";
-    } 
-    else {
-        textureId = "wall_front";
-    }
+   // First check corners - these take precedence
+   if (hasNorth && hasEast && !hasWest && !hasSouth) {
+       textureId = "wall_bottom_left";
+   } 
+   else if (hasNorth && hasWest && !hasEast && !hasSouth) {
+       textureId = "wall_bottom_right";
+   } 
+   else if (hasSouth && hasEast && !hasWest && !hasNorth) {
+       textureId = "wall_top_left";
+   } 
+   else if (hasSouth && hasWest && !hasEast && !hasNorth) {
+       textureId = "wall_top_right";
+   }
+   // Now check for intersections
+   else if (hasEast && hasWest) {
+       if (hasNorth && !hasSouth) {
+           textureId = "wall_front";  // Three-way intersection with north
+       }
+       else if (hasSouth && !hasNorth) {
+           textureId = "wall_top_intersection";  // Three-way intersection with south
+       }
+       else if (hasNorth && hasSouth) {
+           textureId = "wall_top_intersection";  // Four-way intersection
+       }
+       else {
+           textureId = "wall_front";  // Default to front texture for E+W only
+       }
+   }
+   // Fall back to standard cases
+   else if (hasNorth || hasSouth) {
+       textureId = "wall_vertical";
+   } 
+   else {
+       textureId = "wall_front";
+   }
 
-    texCoords = getTextureCoords(textureId);
-    if (!texCoords) {
-        fprintf(stderr, "Failed to get texture coordinates for %s\n", textureId);
-        return;
-    }
+   texCoords = getTextureCoords(textureId);
+   if (!texCoords) {
+       fprintf(stderr, "Failed to get texture coordinates for %s\n", textureId);
+       return;
+   }
 
-    grid[gridY][gridX].wallTexX = texCoords->u1;
-    grid[gridY][gridX].wallTexY = texCoords->v1;
+   grid[gridY][gridX].wallTexX = texCoords->u1;
+   grid[gridY][gridX].wallTexY = texCoords->v1;
 }
-
 bool isWithinBuildRange(float entityX, float entityY, int targetGridX, int targetGridY) {
     float targetWorldX, targetWorldY;
     WorldToScreenCoords(targetGridX, targetGridY, 0, 0, 1, &targetWorldX, &targetWorldY);
@@ -189,7 +205,7 @@ void updateSurroundingStructures(int gridX, int gridY) {
  * @param gridY The Y-coordinate on the grid.
  * @return `true` if the structure was placed successfully; otherwise, `false`.
  */
-bool placeStructure(StructureType type, int gridX, int gridY) {
+bool placeStructure(StructureType type, int gridX, int gridY, Player* player) {
     if (!canPlaceStructure(type, gridX, gridY)) {
         return false;
     }
@@ -222,34 +238,10 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
             
         case STRUCTURE_DOOR: {
             GRIDCELL_SET_WALKABLE(grid[gridY][gridX], false);
-            // Determine door orientation based on adjacent walls
-            bool hasNorth = (gridY > 0) && isWallOrDoor(gridX, gridY-1);
-            bool hasSouth = (gridY < GRID_SIZE-1) && isWallOrDoor(gridX, gridY+1);
-
-            const char* textureId;
-            // Set door orientation based on adjacent walls
-            if (hasNorth || hasSouth) {
-                // Vertical door
-                GRIDCELL_SET_ORIENTATION(grid[gridY][gridX], 0);
-                textureId = "door_vertical";
-            } else {
-                // Horizontal door
-                GRIDCELL_SET_ORIENTATION(grid[gridY][gridX], 1);
-                textureId = "door_horizontal";
-            }
-
-            texCoords = getTextureCoords(textureId);
-            if (!texCoords) {
-                fprintf(stderr, "Failed to get door texture coordinates for %s\n", textureId);
-                return false;
-            }
-            grid[gridY][gridX].wallTexX = texCoords->u1;
-            grid[gridY][gridX].wallTexY = texCoords->v1;
-            
+            GRIDCELL_SET_ORIENTATION(grid[gridY][gridX], 1);  // 1 = horizontal   
             updateSurroundingStructures(gridX, gridY);
             break;
         }
-
         case STRUCTURE_PLANT:
             GRIDCELL_SET_WALKABLE(grid[gridY][gridX], false);
             grid[gridY][gridX].materialType = MATERIAL_FERN; // Default plant type
@@ -316,14 +308,14 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
             newEnclosure.doorCount = doorCount;
             newEnclosure.boundaryCount = enclosure.tileCount;
 
-            // Store boundary points - if we need to store them, we need to add this member to EnclosureData
-            // For now, we can free them since they're already used in the hash calculation
             free(boundaryPoints);
 
-            // Add the enclosure to the manager
-            addEnclosure(&globalEnclosureManager, &newEnclosure);;
+            // Add the enclosure and award XP
+            addEnclosure(&globalEnclosureManager, &newEnclosure);
+            if (player) {
+                awardConstructionExp(player, &newEnclosure);
+            }
 
-            // Free the enclosure tiles (but not boundaryPoints, as it's now owned by the enclosure)
             free(enclosure.tiles);
         }
     }
@@ -331,7 +323,6 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
     printf("Placed %s at grid position: %d, %d\n", getStructureName(type), gridX, gridY);
     return true;
 }
-
 /**
  * @brief Cleans up the structure system.
  *
@@ -451,19 +442,9 @@ bool toggleDoor(int gridX, int gridY, Player* player) {
         bool currentlyOpen = GRIDCELL_IS_WALKABLE(grid[gridY][gridX]);
         GRIDCELL_SET_WALKABLE(grid[gridY][gridX], !currentlyOpen);
         
-        // Get orientation and current state
-        bool isVertical = (GRIDCELL_GET_ORIENTATION(grid[gridY][gridX]) == 0);
-        bool willBeOpen = !currentlyOpen;  // What state it will be after toggling
-
-        // Get appropriate texture coordinates
+        // Get appropriate texture coordinates based on new state
         TextureCoords* texCoords;
-        const char* textureId;
-
-        if (isVertical) {
-            textureId = willBeOpen ? "door_vertical_open" : "door_vertical";
-        } else {
-            textureId = willBeOpen ? "door_horizontal_open" : "door_horizontal";
-        }
+        const char* textureId = currentlyOpen ? "door_horizontal" : "door_horizontal_open";
 
         texCoords = getTextureCoords(textureId);
         if (!texCoords) {

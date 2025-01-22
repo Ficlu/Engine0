@@ -763,40 +763,52 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
             if (grid[y][x].structureType != 0) {
                 TextureCoords* structureTex = NULL;
                 
-                if (grid[y][x].structureType == STRUCTURE_WALL) {
-                    // Get appropriate wall texture based on surroundings
-                    bool hasNorth = (y > 0) && isWallOrDoor(x, y-1);
-                    bool hasSouth = (y < GRID_SIZE-1) && isWallOrDoor(x, y+1);
-                    bool hasEast = (x < GRID_SIZE-1) && isWallOrDoor(x+1, y);
-                    bool hasWest = (x > 0) && isWallOrDoor(x-1, y);
+if (grid[y][x].structureType == STRUCTURE_WALL) {
+    bool hasNorth = (y > 0) && isWallOrDoor(x, y-1);
+    bool hasSouth = (y < GRID_SIZE-1) && isWallOrDoor(x, y+1);
+    bool hasEast = (x < GRID_SIZE-1) && isWallOrDoor(x+1, y);
+    bool hasWest = (x > 0) && isWallOrDoor(x-1, y);
 
-                    if (hasNorth && hasEast && !hasWest && !hasSouth) {
-                        structureTex = getTextureCoords("wall_bottom_left");
-                    } 
-                    else if (hasNorth && hasWest && !hasEast && !hasSouth) {
-                        structureTex = getTextureCoords("wall_bottom_right");
-                    } 
-                    else if (hasSouth && hasEast && !hasWest && !hasNorth) {
-                        structureTex = getTextureCoords("wall_top_left");
-                    } 
-                    else if (hasSouth && hasWest && !hasEast && !hasNorth) {
-                        structureTex = getTextureCoords("wall_top_right");
-                    } 
-                    else if (hasNorth || hasSouth) {
-                        structureTex = getTextureCoords("wall_vertical");
-                    } 
-                    else {
-                        structureTex = getTextureCoords("wall_front");
-                    }
-                }
+    if (hasNorth && hasEast && !hasWest && !hasSouth) {
+        structureTex = getTextureCoords("wall_bottom_left");
+    } 
+    else if (hasNorth && hasWest && !hasEast && !hasSouth) {
+        structureTex = getTextureCoords("wall_bottom_right");
+    } 
+    else if (hasSouth && hasEast && !hasWest && !hasNorth) {
+        structureTex = getTextureCoords("wall_top_left");
+    } 
+    else if (hasSouth && hasWest && !hasEast && !hasNorth) {
+        structureTex = getTextureCoords("wall_top_right");
+    }
+    else if (hasEast && hasWest) {
+        if (hasNorth && !hasSouth) {
+            structureTex = getTextureCoords("wall_front");
+        }
+        else if (hasSouth && !hasNorth) {
+            structureTex = getTextureCoords("wall_top_intersection");
+        }
+        else if (hasNorth && hasSouth) {
+            structureTex = getTextureCoords("wall_top_intersection");
+        }
+        else {
+            structureTex = getTextureCoords("wall_front");
+        }
+    }
+    else if (hasNorth || hasSouth) {
+        structureTex = getTextureCoords("wall_vertical");
+    } 
+    else {
+        structureTex = getTextureCoords("wall_front");
+    }
+}
                 else if (grid[y][x].structureType == STRUCTURE_DOOR) {
                     bool isOpen = GRIDCELL_IS_WALKABLE(grid[y][x]);
-                    bool isVertical = (GRIDCELL_GET_ORIENTATION(grid[y][x]) == 0);
+                    structureTex = getTextureCoords(isOpen ? "door_horizontal_open" : "door_horizontal");
                     
-                    if (isVertical) {
-                        structureTex = getTextureCoords(isOpen ? "door_vertical_open" : "door_vertical");
-                    } else {
-                        structureTex = getTextureCoords(isOpen ? "door_horizontal_open" : "door_horizontal");
+                    if (!structureTex) {
+                        fprintf(stderr, "Failed to get door texture coordinates\n");
+                        continue;
                     }
                 }
                 else if (grid[y][x].structureType == STRUCTURE_PLANT) {

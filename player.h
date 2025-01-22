@@ -7,6 +7,8 @@
 #include "structures.h"
 #include "inventory.h"
 #include <SDL2/SDL.h>
+#include "enclosure_types.h"
+
 typedef enum {
     DIRECTION_DOWN,
     DIRECTION_UP,

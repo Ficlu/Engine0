@@ -135,13 +135,13 @@ static void HandleHarvesting(int gridX, int gridY) {
 
 // Handle building placement
 static void HandlePlacement(int gridX, int gridY, Uint8 button) {
+    int playerGridX = atomic_load(&player.entity.gridX);
+    int playerGridY = atomic_load(&player.entity.gridY);
+
     if (button == SDL_BUTTON_LEFT) {
-        int playerGridX = atomic_load(&player.entity.gridX);
-        int playerGridY = atomic_load(&player.entity.gridY);
-        
         if (IsWithinPlayerRange(gridX, gridY, playerGridX, playerGridY)) {
             printf("Attempting direct placement at (%d, %d)\n", gridX, gridY);
-            bool placed = placeStructure(placementMode.currentType, gridX, gridY);
+bool placed = placeStructure(placementMode.currentType, gridX, gridY, &player);
             printf("Direct placement result: %s\n", placed ? "success" : "failed");
         } else {
             AdjacentTile nearest = findNearestAdjacentTile(gridX, gridY,
@@ -160,6 +160,13 @@ static void HandlePlacement(int gridX, int gridY, Uint8 button) {
                 player.hasBuildTarget = true;
                 player.pendingBuildType = placementMode.currentType;
             }
+        }
+    } else if (button == SDL_BUTTON_RIGHT) {
+        if (IsWithinPlayerRange(gridX, gridY, playerGridX, playerGridY)) {
+            // Clear the tile
+            grid[gridY][gridX].structureType = STRUCTURE_NONE;
+            GRIDCELL_SET_WALKABLE(grid[gridY][gridX], true);
+            updateSurroundingStructures(gridX, gridY);
         }
     }
 }
