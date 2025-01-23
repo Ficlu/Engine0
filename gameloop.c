@@ -212,38 +212,13 @@ void InitializeGameState(bool isNewGame) {
        }
    }
 
+   // Initialize entity array first
    allEntities[0] = &player.entity;
-   for (int i = 0; i < MAX_ENEMIES; i++) {
-       int enemyGridX, enemyGridY;
-       int attempts = 0;
-       const int MAX_ATTEMPTS = 1000;
-       bool validPosition = false;
-       
-       do {
-           enemyGridX = rand() % GRID_SIZE;
-           enemyGridY = rand() % GRID_SIZE;
-           attempts++;
-           
-           if (isPositionInLoadedChunk(enemyGridX, enemyGridY) &&
-               grid[enemyGridY][enemyGridX].structureType != STRUCTURE_WALL &&
-               GRIDCELL_IS_WALKABLE(grid[enemyGridY][enemyGridX])) {
-               validPosition = true;
-           }
-           
-           if (attempts >= MAX_ATTEMPTS) {
-               fprintf(stderr, "Warning: Could not find valid spawn location for enemy %d after %d attempts\n", 
-                       i, MAX_ATTEMPTS);
-               enemyGridX = player.entity.gridX + (rand() % 3) - 1;
-               enemyGridY = player.entity.gridY + (rand() % 3) - 1;
-               break;
-           }
-       } while (!validPosition);
-
-       InitEnemy(&enemies[i], enemyGridX, enemyGridY, MOVE_SPEED);
-       allEntities[i + 1] = &enemies[i].entity;
-       printf("Enemy %d initialized at (%d, %d).\n", i, enemyGridX, enemyGridY);
+   for(int i = 1; i < MAX_ENTITIES; i++) {
+       allEntities[i] = NULL;
    }
-      // Spawn ferns on grass tiles after all terrain is set
+
+   // Spawn ferns on grass tiles first
    for (int y = 0; y < GRID_SIZE; y++) {
        for (int x = 0; x < GRID_SIZE; x++) {
            if (isPositionInLoadedChunk(x, y)) {
@@ -259,8 +234,68 @@ void InitializeGameState(bool isNewGame) {
            }
        }
    }
+
+   printf("\n=== Starting Entity Initialization ===\n");
+   printf("MAX_ENEMIES: %d\n", MAX_ENEMIES);
+   printf("MAX_ENTITIES: %d\n", MAX_ENTITIES);
+
+   printf("Player entity pointer stored at allEntities[0]: %p\n", (void*)allEntities[0]);
+
+   // Then initialize enemies
+   for (int i = 0; i < MAX_ENEMIES; i++) {
+       int enemyGridX, enemyGridY;
+       int attempts = 0;
+       const int MAX_ATTEMPTS = 1000;
+       bool validPosition = false;
+       
+       do {
+           enemyGridX = rand() % GRID_SIZE;
+           enemyGridY = rand() % GRID_SIZE;
+           attempts++;
+           
+           if (isPositionInLoadedChunk(enemyGridX, enemyGridY) &&
+               grid[enemyGridY][enemyGridX].structureType != STRUCTURE_WALL &&
+               grid[enemyGridY][enemyGridX].structureType != STRUCTURE_PLANT &&
+               GRIDCELL_IS_WALKABLE(grid[enemyGridY][enemyGridX])) {
+               validPosition = true;
+           }
+           
+           if (attempts >= MAX_ATTEMPTS) {
+               fprintf(stderr, "Warning: Could not find valid spawn location for enemy %d after %d attempts\n", 
+                       i, MAX_ATTEMPTS);
+               enemyGridX = player.entity.gridX + (rand() % 3) - 1;
+               enemyGridY = player.entity.gridY + (rand() % 3) - 1;
+               break;
+           }
+       } while (!validPosition);
+
+       InitEnemy(&enemies[i], enemyGridX, enemyGridY, MOVE_SPEED);
+       allEntities[i + 1] = &enemies[i].entity;
+       printf("Enemy %d initialized:\n", i);
+       printf("  Grid Position: (%d, %d)\n", enemyGridX, enemyGridY);
+       printf("  World Position: (%f, %f)\n", enemies[i].entity.posX, enemies[i].entity.posY);
+       printf("  Entity pointer: %p\n", (void*)&enemies[i].entity);
+       printf("  Stored in allEntities[%d]: %p\n", i+1, (void*)allEntities[i+1]);
+   }
+
+   printf("\n=== Enemy Chunk Loading Check ===\n");
+   for (int i = 0; i < MAX_ENEMIES; i++) {
+       printf("Enemy %d:\n", i);
+       printf("  Position: (%f, %f)\n", enemies[i].entity.posX, enemies[i].entity.posY);
+       printf("  Grid Position: (%d, %d)\n", 
+              atomic_load(&enemies[i].entity.gridX), 
+              atomic_load(&enemies[i].entity.gridY));
+       printf("  In loaded chunk: %s\n",
+              isPositionInLoadedChunk(enemies[i].entity.posX, enemies[i].entity.posY) ? "true" : "false");
+   }
+   printf("===========================\n\n");
+
    ChunkCoord playerChunk = getChunkFromWorldPos(player.entity.gridX, player.entity.gridY);
    int radius = globalChunkManager->loadRadius;
+   
+   printf("\n=== Final Chunk Check ===\n");
+   printf("Player chunk: (%d, %d)\n", playerChunk.x, playerChunk.y);
+   printf("Load radius: %d\n", radius);
    
    for (int cy = 0; cy < NUM_CHUNKS; cy++) {
        for (int cx = 0; cx < NUM_CHUNKS; cx++) {
@@ -287,9 +322,6 @@ void InitializeGameState(bool isNewGame) {
    }
    
    printf("Initial chunk culling complete.\n");
-
-
-
    printf("Game state initialization complete.\n");
 }
 void InitializeEngine(void) {
@@ -763,45 +795,43 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
             if (grid[y][x].structureType != 0) {
                 TextureCoords* structureTex = NULL;
                 
-if (grid[y][x].structureType == STRUCTURE_WALL) {
-    bool hasNorth = (y > 0) && isWallOrDoor(x, y-1);
-    bool hasSouth = (y < GRID_SIZE-1) && isWallOrDoor(x, y+1);
-    bool hasEast = (x < GRID_SIZE-1) && isWallOrDoor(x+1, y);
-    bool hasWest = (x > 0) && isWallOrDoor(x-1, y);
+                if (grid[y][x].structureType == STRUCTURE_WALL) {
+                    bool hasNorth = (y > 0) && isWallOrDoor(x, y-1);
+                    bool hasSouth = (y < GRID_SIZE-1) && isWallOrDoor(x, y+1);
+                    bool hasEast = (x < GRID_SIZE-1) && isWallOrDoor(x+1, y);
+                    bool hasWest = (x > 0) && isWallOrDoor(x-1, y);
 
-    if (hasNorth && hasEast && !hasWest && !hasSouth) {
-        structureTex = getTextureCoords("wall_bottom_left");
-    } 
-    else if (hasNorth && hasWest && !hasEast && !hasSouth) {
-        structureTex = getTextureCoords("wall_bottom_right");
-    } 
-    else if (hasSouth && hasEast && !hasWest && !hasNorth) {
-        structureTex = getTextureCoords("wall_top_left");
-    } 
-    else if (hasSouth && hasWest && !hasEast && !hasNorth) {
-        structureTex = getTextureCoords("wall_top_right");
-    }
-    else if (hasEast && hasWest) {
-        if (hasNorth && !hasSouth) {
-            structureTex = getTextureCoords("wall_front");
-        }
-        else if (hasSouth && !hasNorth) {
-            structureTex = getTextureCoords("wall_top_intersection");
-        }
-        else if (hasNorth && hasSouth) {
-            structureTex = getTextureCoords("wall_top_intersection");
-        }
-        else {
-            structureTex = getTextureCoords("wall_front");
-        }
-    }
-    else if (hasNorth || hasSouth) {
-        structureTex = getTextureCoords("wall_vertical");
-    } 
-    else {
-        structureTex = getTextureCoords("wall_front");
-    }
-}
+                    if (hasNorth && hasEast && !hasWest && !hasSouth) {
+                        structureTex = getTextureCoords("wall_bottom_left");
+                    } 
+                    else if (hasNorth && hasWest && !hasEast && !hasSouth) {
+                        structureTex = getTextureCoords("wall_bottom_right");
+                    } 
+                    else if (hasSouth && hasEast && !hasWest && !hasNorth) {
+                        structureTex = getTextureCoords("wall_top_left");
+                    } 
+                    else if (hasSouth && hasWest && !hasEast && !hasNorth) {
+                        structureTex = getTextureCoords("wall_top_right");
+                    }
+                    else if (hasEast && hasWest) {
+                        if (hasNorth && !hasSouth) {
+                            structureTex = getTextureCoords("wall_front");
+                        }
+                        else if (hasNorth && hasSouth) {
+                            structureTex = getTextureCoords("wall_top_intersection");
+                        }
+                        else {
+                            structureTex = getTextureCoords("wall_front");
+                        }
+                    }
+                    else if (hasNorth || hasSouth) {
+                        structureTex = getTextureCoords("wall_vertical");
+                    } 
+                    else {
+                        structureTex = getTextureCoords("wall_front");
+                    }
+                }
+                
                 else if (grid[y][x].structureType == STRUCTURE_DOOR) {
                     bool isOpen = GRIDCELL_IS_WALKABLE(grid[y][x]);
                     structureTex = getTextureCoords(isOpen ? "door_horizontal_open" : "door_horizontal");
@@ -897,12 +927,13 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     __m128 bottomBound = _mm_sub_ps(minusOne, marginVec);
     __m128 topBound = _mm_add_ps(one, marginVec);
 
-    for (int i = 0; i < MAX_ENEMIES; i += 4) {
+    // Process enemies in groups of 4 for SIMD
+    int i;
+    for (i = 0; i < MAX_ENEMIES - 3; i += 4) {  // Process full groups of 4
         bool enemyValid[4] = {false, false, false, false};
-        int validEnemiesInGroup = (MAX_ENEMIES - i) < 4 ? (MAX_ENEMIES - i) : 4;
 
-        // First check which enemies are in loaded chunks
-        for (int j = 0; j < validEnemiesInGroup; j++) {
+        // Check chunk loading for all 4
+        for (int j = 0; j < 4; j++) {
             if (isPositionInLoadedChunk(enemies[i+j].entity.posX, enemies[i+j].entity.posY)) {
                 enemyValid[j] = true;
             } else {
@@ -928,12 +959,29 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
 
         int visibilityMask = _mm_movemask_ps(visible);
 
-        for (int j = 0; j < validEnemiesInGroup; ++j) {
+        for (int j = 0; j < 4; j++) {
             if (enemyValid[j] && (visibilityMask & (1 << j))) {
                 visibleEnemies[visibleEnemyCount++] = enemies[i + j];
             } else if (enemyValid[j]) {
                 culledEnemyCount++;
             }
+        }
+    }
+
+    // Handle remaining enemies individually
+    for (; i < MAX_ENEMIES; i++) {
+        if (isPositionInLoadedChunk(enemies[i].entity.posX, enemies[i].entity.posY)) {
+            float screenX = (enemies[i].entity.posX - playerWorldX) * zoomFactor;
+            float screenY = (enemies[i].entity.posY - playerWorldY) * zoomFactor;
+            
+            if (screenX >= -1.0f - TILE_SIZE && screenX <= 1.0f + TILE_SIZE &&
+                screenY >= -1.0f - TILE_SIZE && screenY <= 1.0f + TILE_SIZE) {
+                visibleEnemies[visibleEnemyCount++] = enemies[i];
+            } else {
+                culledEnemyCount++;
+            }
+        } else {
+            chunkCulledCount++;
         }
     }
 
@@ -973,7 +1021,7 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
             break;
         default:
             playerTex = getTextureCoords("player");  // Default to original standing frame
-    }
+        }
     } else {
         // Get running animation frame based on direction
         const char* dirStr;
@@ -1045,12 +1093,15 @@ int PhysicsLoop(void* arg) {
             updatePlayerChunk(globalChunkManager, player.entity.posX, player.entity.posY);
         }
 
+        // Get the current time once for all enemies
+        Uint32 currentTime = SDL_GetTicks();
+
         // Update other entities - but only if they're in loaded chunks
         for (int i = 0; i < MAX_ENEMIES; i++) {
             if (isPositionInLoadedChunk(enemies[i].entity.posX, enemies[i].entity.posY)) {
                 UpdateEntity(&enemies[i].entity, allEntities, MAX_ENTITIES);
+                UpdateEnemy(&enemies[i], allEntities, MAX_ENTITIES, currentTime);
             }
-            // Entities in unloaded chunks retain their state but aren't updated
         }
 
         Uint32 endTime = SDL_GetTicks();
@@ -1065,7 +1116,6 @@ int PhysicsLoop(void* arg) {
     }
     return 0;
 }
-
 /*
  * main
  *

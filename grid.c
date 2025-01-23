@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
-#include <immintrin.h>
 
 #include "asciiMap.h" 
 GridCell grid[GRID_SIZE][GRID_SIZE];
@@ -128,48 +127,38 @@ void debugPrintGridSection(int startX, int startY, int width, int height) {
 }
 
 void writeChunkToGrid(const Chunk* chunk) {
-    if (!chunk) {
-        fprintf(stderr, "Error: NULL chunk passed to writeChunkToGrid\n");
-        return;
-    }
-
     int startX = chunk->chunkX * CHUNK_SIZE;
     int startY = chunk->chunkY * CHUNK_SIZE;
     
-    // Process the chunk in aligned groups of 4 cells
     for (int y = 0; y < CHUNK_SIZE; y++) {
-        int gridY = startY + y;
-        if (gridY >= GRID_SIZE) continue;
-
-        for (int x = 0; x < CHUNK_SIZE; x += 4) {
+        for (int x = 0; x < CHUNK_SIZE; x++) {
             int gridX = startX + x;
+            int gridY = startY + y;
             
-            // Process 4 cells at a time
-            for (int i = 0; i < 4 && (x + i) < CHUNK_SIZE; i++) {
-                int targetX = gridX + i;
-                if (targetX >= GRID_SIZE) continue;
-
+            if (gridX < GRID_SIZE && gridY < GRID_SIZE) {
                 // Preserve existing structure data
-                uint8_t oldStructureType = grid[gridY][targetX].structureType;
-                uint8_t oldMaterialType = grid[gridY][targetX].materialType;
-                uint8_t oldOrientation = GRIDCELL_GET_ORIENTATION(grid[gridY][targetX]);
-                float oldTexX = grid[gridY][targetX].wallTexX;
-                float oldTexY = grid[gridY][targetX].wallTexY;
-                bool wasWalkable = GRIDCELL_IS_WALKABLE(grid[gridY][targetX]);
-
-                // Update the grid cell
-                grid[gridY][targetX] = chunk->cells[y][x + i];
-                grid[gridY][targetX].flags &= 0x1F; // Clear reserved bits
-
+                uint8_t oldStructureType = grid[gridY][gridX].structureType;
+                uint8_t oldMaterialType = grid[gridY][gridX].materialType;
+                uint8_t oldOrientation = GRIDCELL_GET_ORIENTATION(grid[gridY][gridX]);
+                bool wasWalkable = GRIDCELL_IS_WALKABLE(grid[gridY][gridX]);
+                float oldTexX = grid[gridY][gridX].wallTexX;
+                float oldTexY = grid[gridY][gridX].wallTexY;
+                
+                // Update the grid cell with new chunk data
+                grid[gridY][gridX] = chunk->cells[y][x];
+                
                 // Restore structure data if it existed
                 if (oldStructureType != 0) {
-                    grid[gridY][targetX].structureType = oldStructureType;
-                    grid[gridY][targetX].materialType = oldMaterialType;
-                    GRIDCELL_SET_ORIENTATION(grid[gridY][targetX], oldOrientation);
-                    GRIDCELL_SET_WALKABLE(grid[gridY][targetX], wasWalkable);
-                    grid[gridY][targetX].wallTexX = oldTexX;
-                    grid[gridY][targetX].wallTexY = oldTexY;
+                    grid[gridY][gridX].structureType = oldStructureType;
+                    grid[gridY][gridX].materialType = oldMaterialType;
+                    GRIDCELL_SET_ORIENTATION(grid[gridY][gridX], oldOrientation);
+                    GRIDCELL_SET_WALKABLE(grid[gridY][gridX], wasWalkable);
+                    grid[gridY][gridX].wallTexX = oldTexX;
+                    grid[gridY][gridX].wallTexY = oldTexY;
                 }
+
+                // Ensure reserved bits are clear
+                grid[gridY][gridX].flags &= 0x1F;
             }
         }
     }

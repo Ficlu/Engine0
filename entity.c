@@ -50,7 +50,6 @@ void UpdateEntity(Entity* entity, Entity** allEntities, int entityCount) {
 
     updateEntityPath(entity);
 
-    // Cache all atomic loads upfront
     int currentGridX = atomic_load(&entity->gridX);
     int currentGridY = atomic_load(&entity->gridY);
     float currentPosX = entity->posX;  // Direct read for _Atomic float
@@ -105,6 +104,7 @@ void UpdateEntity(Entity* entity, Entity** allEntities, int entityCount) {
         atomic_store(&entity->needsPathfinding, true);
     }
 }
+
 /*
  * updateEntityPath
  *

@@ -705,12 +705,6 @@ void initializeEnemyBatchVAO() {
 void updateEnemyBatchVBO(Enemy* enemies, int enemyCount, float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
     if (enemyCount == 0) return;
 
-    TextureCoords* enemyTex = getTextureCoords("enemy");
-    if (!enemyTex) {
-        fprintf(stderr, "Failed to get enemy texture coordinates\n");
-        return;
-    }
-
     float* vertices = (float*)malloc(enemyCount * 24 * sizeof(float));  // 6 vertices * 4 components
     if (!vertices) {
         fprintf(stderr, "Failed to allocate vertex buffer for enemies\n");
@@ -719,9 +713,70 @@ void updateEnemyBatchVBO(Enemy* enemies, int enemyCount, float cameraOffsetX, fl
 
     int vertexIndex = 0;
     for (int i = 0; i < enemyCount; i++) {
+        if (!isPositionInLoadedChunk(enemies[i].entity.posX, enemies[i].entity.posY)) {
+            continue;  // Skip rendering for enemies in unloaded chunks
+        }
+
         float enemyScreenX = (enemies[i].entity.posX - cameraOffsetX) * zoomFactor;
         float enemyScreenY = (enemies[i].entity.posY - cameraOffsetY) * zoomFactor;
         
+        // Get enemy texture based on animation state and direction
+        TextureCoords* enemyTex;
+        char textureName[32];
+
+        if (!enemies[i].animation->isMoving) {
+            // Use standing frame based on direction
+            switch(enemies[i].animation->facing) {
+                case ENEMY_DIR_UP:
+                    enemyTex = getTextureCoords("enemy_run_up_0");
+                    break;
+                case ENEMY_DIR_DOWN:
+                    enemyTex = getTextureCoords("enemy");  // Original standing frame for down
+                    break;
+                case ENEMY_DIR_LEFT:
+                    enemyTex = getTextureCoords("enemy_run_left_0");
+                    break;
+                case ENEMY_DIR_RIGHT:
+                    enemyTex = getTextureCoords("enemy_run_right_0");
+                    break;
+                default:
+                    enemyTex = getTextureCoords("enemy");  // Default to original standing frame
+            }
+        } else {
+            // Get running animation frame based on direction
+            const char* dirStr;
+            switch(enemies[i].animation->facing) {
+                case ENEMY_DIR_UP:
+                    dirStr = "up";
+                    break;
+                case ENEMY_DIR_DOWN:
+                    dirStr = "down";
+                    break;
+                case ENEMY_DIR_LEFT:
+                    dirStr = "left";
+                    break;
+                case ENEMY_DIR_RIGHT:
+                    dirStr = "right";
+                    break;
+                default:
+                    dirStr = "down";
+            }
+            snprintf(textureName, sizeof(textureName), "enemy_run_%s_%d", 
+                    dirStr, enemies[i].animation->currentFrame);
+            enemyTex = getTextureCoords(textureName);
+        }
+
+        // Fallback to default enemy texture if needed
+        if (!enemyTex) {
+            enemyTex = getTextureCoords("enemy");
+            if (!enemyTex) {
+                fprintf(stderr, "Failed to get enemy texture coordinates\n");
+                continue;
+            }
+        }
+
+        // Add vertices for this enemy...
+        // [Rest of vertex generation code remains the same]
         // First triangle
         vertices[vertexIndex++] = enemyScreenX - TILE_SIZE * zoomFactor;
         vertices[vertexIndex++] = enemyScreenY - TILE_SIZE * zoomFactor;

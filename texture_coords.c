@@ -202,7 +202,6 @@ void initializeDefaultTextures(void) {
     registerTexture("wall_top_intersection", 6, 62);
   
     registerTexture("door_horizontal", 7, 62);
-
     registerTexture("door_horizontal_open", 8, 62);
 
     registerTexture("terrain_sand", 0, 61);
@@ -215,7 +214,9 @@ void initializeDefaultTextures(void) {
     registerTexture("player_run_1", 2, 63);     // Second running frame
     registerTexture("player_run_2", 3, 63);     // Third running frame
     registerTexture("player_run_3", 4, 63);     // Fourth running frame  
-        // Down
+    
+    // Player Directional Animations
+    // Down
     registerTexture("player_run_down_0", 0, 63);
     registerTexture("player_run_down_1", 1, 63);
     registerTexture("player_run_down_2", 2, 63);
@@ -239,7 +240,32 @@ void initializeDefaultTextures(void) {
     registerTexture("player_run_right_2", 12, 63);
     registerTexture("player_run_right_3", 13, 63);
     registerTexture("player_run_right_3", 14, 63);
+
+    // Enemy base texture
     registerTexture("enemy", 0, 59);
+    
+    // Enemy Directional Animations
+    // Down
+    registerTexture("enemy_run_down_0", 0, 59);
+    registerTexture("enemy_run_down_1", 1, 59);
+    registerTexture("enemy_run_down_2", 2, 59);
+    registerTexture("enemy_run_down_3", 3, 59);
+    // Up
+    registerTexture("enemy_run_up_0", 15, 59);
+    registerTexture("enemy_run_up_1", 16, 59);
+    registerTexture("enemy_run_up_2", 17, 59);
+    registerTexture("enemy_run_up_3", 18, 59);
+    // Left
+    registerTexture("enemy_run_left_0", 5, 59);
+    registerTexture("enemy_run_left_1", 6, 59);
+    registerTexture("enemy_run_left_2", 7, 59);
+    registerTexture("enemy_run_left_3", 8, 59);
+    // Right
+    registerTexture("enemy_run_right_0", 10, 59);
+    registerTexture("enemy_run_right_1", 11, 59);
+    registerTexture("enemy_run_right_2", 12, 59);
+    registerTexture("enemy_run_right_3", 13, 59);
+
     registerTexture("item_fern", 0, 58);
 
     // Validate registration
@@ -248,7 +274,7 @@ void initializeDefaultTextures(void) {
     const char* testTextures[] = {
         "wall_front", "wall_vertical", "wall_top_left", "wall_top_right",
         "wall_bottom_left", "wall_bottom_right", "door_horizontal",
-         "door_horizontal_open", "terrain_sand", "terrain_water",
+        "door_horizontal_open", "terrain_sand", "terrain_water",
         "terrain_grass", "terrain_stone", "player", "enemy", "item_fern"
     };
 
