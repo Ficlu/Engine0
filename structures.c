@@ -54,19 +54,30 @@ bool canPlaceStructure(StructureType type, int gridX, int gridY) {
         return false;
     }
 
+    // Add detailed cell state logging
+    printf("DEBUG: Checking cell (%d,%d) for placement of structure type %d:\n", gridX, gridY, type);
+    printf("  Current cell state:\n");
+    printf("  - structureType: %d\n", grid[gridY][gridX].structureType);
+    printf("  - terrainType: %d\n", grid[gridY][gridX].terrainType);
+    printf("  - materialType: %d\n", grid[gridY][gridX].materialType);
+    printf("  - biomeType: %d\n", grid[gridY][gridX].biomeType);
+    printf("  - flags: 0x%04X\n", grid[gridY][gridX].flags);
+    printf("  - walkable: %d\n", GRIDCELL_IS_WALKABLE(grid[gridY][gridX]));
+
     // Check if tile is already occupied
     if (grid[gridY][gridX].structureType != STRUCTURE_NONE) {
-        printf("Tile already occupied\n");
+        printf("Tile already occupied with structure type: %d\n", grid[gridY][gridX].structureType);
         return false;
     }
 
     switch (type) {
         case STRUCTURE_WALL:
             // Walls can be placed on any empty tile
+            printf("Wall placement check passed\n");
             return true;
 
         case STRUCTURE_DOOR: {
-            printf("Checking door at (%d,%d)\n", gridX, gridY);
+            printf("Checking door placement at (%d,%d)\n", gridX, gridY);
             
             // Check specifically for WALLS (not just any structure)
             bool hasNorth = (gridY > 0) && grid[gridY-1][gridX].structureType == STRUCTURE_WALL;
@@ -74,7 +85,7 @@ bool canPlaceStructure(StructureType type, int gridX, int gridY) {
             bool hasEast = (gridX < GRID_SIZE-1) && grid[gridY][gridX+1].structureType == STRUCTURE_WALL;
             bool hasWest = (gridX > 0) && grid[gridY][gridX-1].structureType == STRUCTURE_WALL;
             
-            printf("Walls: N:%d S:%d E:%d W:%d\n", hasNorth, hasSouth, hasEast, hasWest);
+            printf("Adjacent walls: N:%d S:%d E:%d W:%d\n", hasNorth, hasSouth, hasEast, hasWest);
             
             bool valid = hasNorth || hasSouth || hasEast || hasWest;
             printf("Door placement: %s\n", valid ? "valid" : "invalid");
@@ -83,13 +94,18 @@ bool canPlaceStructure(StructureType type, int gridX, int gridY) {
 
         case STRUCTURE_PLANT:
             // Plants can only be placed on empty walkable tiles
-            return GRIDCELL_IS_WALKABLE(grid[gridY][gridX]);
+            if (!GRIDCELL_IS_WALKABLE(grid[gridY][gridX])) {
+                printf("Cannot place plant - tile not walkable\n");
+                return false;
+            }
+            printf("Plant placement check passed\n");
+            return true;
 
         default:
+            printf("Unknown structure type: %d\n", type);
             return false;
     }
 }
-
 /**
  * @brief Updates wall textures based on surrounding structures.
  *
@@ -205,8 +221,8 @@ void updateSurroundingStructures(int gridX, int gridY) {
  * @param gridY The Y-coordinate on the grid.
  * @return `true` if the structure was placed successfully; otherwise, `false`.
  */
-bool placeStructure(StructureType type, int gridX, int gridY, Player* player) {
-    if (!canPlaceStructure(type, gridX, gridY)) {
+bool placeStructure(StructureType type, int gridX, int gridY, struct Player* player){
+        if (!canPlaceStructure(type, gridX, gridY)) {
         return false;
     }
 
@@ -238,16 +254,48 @@ bool placeStructure(StructureType type, int gridX, int gridY, Player* player) {
             
         case STRUCTURE_DOOR: {
             GRIDCELL_SET_WALKABLE(grid[gridY][gridX], false);
-            GRIDCELL_SET_ORIENTATION(grid[gridY][gridX], 1);  // 1 = horizontal   
+            // Determine door orientation based on adjacent walls
+            bool hasNorth = (gridY > 0) && isWallOrDoor(gridX, gridY-1);
+            bool hasSouth = (gridY < GRID_SIZE-1) && isWallOrDoor(gridX, gridY+1);
+
+            const char* textureId;
+            // Set door orientation based on adjacent walls
+            if (hasNorth || hasSouth) {
+                // Vertical door
+                GRIDCELL_SET_ORIENTATION(grid[gridY][gridX], 0);
+                textureId = "door_vertical";
+            } else {
+                // Horizontal door
+                GRIDCELL_SET_ORIENTATION(grid[gridY][gridX], 1);
+                textureId = "door_horizontal";
+            }
+
+            texCoords = getTextureCoords(textureId);
+            if (!texCoords) {
+                fprintf(stderr, "Failed to get door texture coordinates for %s\n", textureId);
+                return false;
+            }
+            grid[gridY][gridX].wallTexX = texCoords->u1;
+            grid[gridY][gridX].wallTexY = texCoords->v1;
+            
             updateSurroundingStructures(gridX, gridY);
             break;
         }
+
         case STRUCTURE_PLANT:
             GRIDCELL_SET_WALKABLE(grid[gridY][gridX], false);
-            grid[gridY][gridX].materialType = MATERIAL_FERN; // Default plant type
-            texCoords = getTextureCoords("item_fern");
+            
+            // Random chance for tree vs fern
+            if ((float)rand() / RAND_MAX < 0.3f) {  // 30% chance for tree
+                grid[gridY][gridX].materialType = MATERIAL_TREE;
+                texCoords = getTextureCoords("tree_trunk");
+            } else {
+                grid[gridY][gridX].materialType = MATERIAL_FERN;
+                texCoords = getTextureCoords("item_fern");
+            }
+
             if (!texCoords) {
-                fprintf(stderr, "Failed to get fern texture coordinates\n");
+                fprintf(stderr, "Failed to get plant texture coordinates\n");
                 return false;
             }
             grid[gridY][gridX].wallTexX = texCoords->u1;
@@ -308,14 +356,14 @@ bool placeStructure(StructureType type, int gridX, int gridY, Player* player) {
             newEnclosure.doorCount = doorCount;
             newEnclosure.boundaryCount = enclosure.tileCount;
 
+            // Store boundary points - if we need to store them, we need to add this member to EnclosureData
+            // For now, we can free them since they're already used in the hash calculation
             free(boundaryPoints);
 
-            // Add the enclosure and award XP
+            // Add the enclosure to the manager
             addEnclosure(&globalEnclosureManager, &newEnclosure);
-            if (player) {
-                awardConstructionExp(player, &newEnclosure);
-            }
 
+            // Free the enclosure tiles (but not boundaryPoints, as it's now owned by the enclosure)
             free(enclosure.tiles);
         }
     }

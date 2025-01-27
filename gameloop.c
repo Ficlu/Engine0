@@ -165,7 +165,7 @@ void InitializeGameState(bool isNewGame) {
        generateTerrainFromASCII(asciiMap);
        printf("Terrain generated from ASCII map.\n");
 
-       // Now initialize other grid properties but NOT terrain
+       // First initialize base grid properties 
        for (int y = 0; y < GRID_SIZE; y++) {
            for (int x = 0; x < GRID_SIZE; x++) {
                // Don't touch terrainType, it's already set
@@ -174,42 +174,42 @@ void InitializeGameState(bool isNewGame) {
                grid[y][x].biomeType = BIOME_PLAINS;  // This should probably be based on terrain type
                GRIDCELL_SET_WALKABLE(grid[y][x], grid[y][x].terrainType != TERRAIN_WATER);
                GRIDCELL_SET_ORIENTATION(grid[y][x], 0);
-               grid[y][x].flags &= ~0xE0;  // Clear reserved bits
                grid[y][x].wallTexX = 0.0f;
                grid[y][x].wallTexY = 0.0f;
            }
        }
 
+       // Initialize entities
        int playerGridX = GRID_SIZE / 2;
        int playerGridY = GRID_SIZE / 2;
        InitPlayer(&player, playerGridX, playerGridY, MOVE_SPEED);
-
        printf("Player initialized at (%d, %d).\n", playerGridX, playerGridY);
-   }
 
-   ChunkCoord playerStartChunk = getChunkFromWorldPos(player.entity.gridX, player.entity.gridY);
-   globalChunkManager->playerChunk = playerStartChunk;
-   loadChunksAroundPlayer(globalChunkManager);
-   printf("Initial chunks loaded around player.\n");
-
-   // First store all current terrain data
-   for (int cy = 0; cy < NUM_CHUNKS; cy++) {
-       for (int cx = 0; cx < NUM_CHUNKS; cx++) {
-           int startX = cx * CHUNK_SIZE;
-           int startY = cy * CHUNK_SIZE;
-           
-           for (int y = 0; y < CHUNK_SIZE; y++) {
-               for (int x = 0; x < CHUNK_SIZE; x++) {
-                   int gridX = startX + x;
-                   int gridY = startY + y;
-                   if (gridX >= 0 && gridX < GRID_SIZE && 
-                       gridY >= 0 && gridY < GRID_SIZE) {
-                       globalChunkManager->storedChunkData[cy][cx][y][x] = grid[gridY][gridX];
+       // First store all current terrain data
+       for (int cy = 0; cy < NUM_CHUNKS; cy++) {
+           for (int cx = 0; cx < NUM_CHUNKS; cx++) {
+               int startX = cx * CHUNK_SIZE;
+               int startY = cy * CHUNK_SIZE;
+               
+               for (int y = 0; y < CHUNK_SIZE; y++) {
+                   for (int x = 0; x < CHUNK_SIZE; x++) {
+                       int gridX = startX + x;
+                       int gridY = startY + y;
+                       if (gridX >= 0 && gridX < GRID_SIZE && 
+                           gridY >= 0 && gridY < GRID_SIZE) {
+                           globalChunkManager->storedChunkData[cy][cx][y][x] = grid[gridY][gridX];
+                       }
                    }
                }
+               globalChunkManager->chunkHasData[cy][cx] = true;
            }
-           globalChunkManager->chunkHasData[cy][cx] = true;
        }
+
+       // THEN initialize and load chunks after base grid is set up
+       ChunkCoord playerStartChunk = getChunkFromWorldPos(player.entity.gridX, player.entity.gridY);
+       globalChunkManager->playerChunk = playerStartChunk;
+       loadChunksAroundPlayer(globalChunkManager);
+       printf("Initial chunks loaded around player.\n");
    }
 
    // Initialize entity array first
@@ -219,21 +219,27 @@ void InitializeGameState(bool isNewGame) {
    }
 
    // Spawn ferns on grass tiles first
-   for (int y = 0; y < GRID_SIZE; y++) {
-       for (int x = 0; x < GRID_SIZE; x++) {
-           if (isPositionInLoadedChunk(x, y)) {
-               if (grid[y][x].terrainType == (uint8_t)TERRAIN_GRASS) {
-                   if ((float)rand() / RAND_MAX < 0.1f) {
-                       grid[y][x].structureType = STRUCTURE_PLANT;
-                       grid[y][x].materialType = MATERIAL_FERN;
-                       GRIDCELL_SET_WALKABLE(grid[y][x], false);
-                       grid[y][x].wallTexX = 1.0f/3.0f;
-                       grid[y][x].wallTexY = 0.0f/6.0f;
-                   }
-               }
-           }
-       }
-   }
+// Spawn ferns and trees on grass tiles
+for (int y = 0; y < GRID_SIZE; y++) {
+    for (int x = 0; x < GRID_SIZE; x++) {
+        if (isPositionInLoadedChunk(x, y)) {
+            if (grid[y][x].terrainType == (uint8_t)TERRAIN_GRASS) {
+                float random = (float)rand() / RAND_MAX;
+                if (random < 0.1f) {  // 10% chance for fern
+                    grid[y][x].structureType = STRUCTURE_PLANT;
+                    grid[y][x].materialType = MATERIAL_FERN;
+                    GRIDCELL_SET_WALKABLE(grid[y][x], false);
+
+                }
+                else if (random < 0.15f) {  // Additional 5% chance for tree
+                    grid[y][x].structureType = STRUCTURE_PLANT;
+                    grid[y][x].materialType = MATERIAL_TREE;
+                    GRIDCELL_SET_WALKABLE(grid[y][x], false);
+                }
+            }
+        }
+    }
+}
 
    printf("\n=== Starting Entity Initialization ===\n");
    printf("MAX_ENEMIES: %d\n", MAX_ENEMIES);
@@ -271,24 +277,7 @@ void InitializeGameState(bool isNewGame) {
 
        InitEnemy(&enemies[i], enemyGridX, enemyGridY, MOVE_SPEED);
        allEntities[i + 1] = &enemies[i].entity;
-       printf("Enemy %d initialized:\n", i);
-       printf("  Grid Position: (%d, %d)\n", enemyGridX, enemyGridY);
-       printf("  World Position: (%f, %f)\n", enemies[i].entity.posX, enemies[i].entity.posY);
-       printf("  Entity pointer: %p\n", (void*)&enemies[i].entity);
-       printf("  Stored in allEntities[%d]: %p\n", i+1, (void*)allEntities[i+1]);
    }
-
-   printf("\n=== Enemy Chunk Loading Check ===\n");
-   for (int i = 0; i < MAX_ENEMIES; i++) {
-       printf("Enemy %d:\n", i);
-       printf("  Position: (%f, %f)\n", enemies[i].entity.posX, enemies[i].entity.posY);
-       printf("  Grid Position: (%d, %d)\n", 
-              atomic_load(&enemies[i].entity.gridX), 
-              atomic_load(&enemies[i].entity.gridY));
-       printf("  In loaded chunk: %s\n",
-              isPositionInLoadedChunk(enemies[i].entity.posX, enemies[i].entity.posY) ? "true" : "false");
-   }
-   printf("===========================\n\n");
 
    ChunkCoord playerChunk = getChunkFromWorldPos(player.entity.gridX, player.entity.gridY);
    int radius = globalChunkManager->loadRadius;
@@ -297,6 +286,7 @@ void InitializeGameState(bool isNewGame) {
    printf("Player chunk: (%d, %d)\n", playerChunk.x, playerChunk.y);
    printf("Load radius: %d\n", radius);
    
+   // Final culling of chunks outside radius
    for (int cy = 0; cy < NUM_CHUNKS; cy++) {
        for (int cx = 0; cx < NUM_CHUNKS; cx++) {
            int dx = abs(cx - playerChunk.x);
@@ -324,6 +314,7 @@ void InitializeGameState(bool isNewGame) {
    printf("Initial chunk culling complete.\n");
    printf("Game state initialization complete.\n");
 }
+
 void InitializeEngine(void) {
     printf("Initializing engine systems...\n");
     
@@ -650,13 +641,14 @@ void Render() {
     float cameraOffsetY = player.cameraCurrentY;
     float zoomFactor = player.zoomFactor;
 
-    RenderTiles(cameraOffsetX, cameraOffsetY, zoomFactor);
+    RenderTiles(cameraOffsetX, cameraOffsetY, zoomFactor);  // Terrain and structures only
     RenderEntities(cameraOffsetX, cameraOffsetY, zoomFactor);
+    RenderTreeCanopies(cameraOffsetX, cameraOffsetY, zoomFactor);  // Now canopies render on top
     renderStructurePreview(&placementMode, cameraOffsetX, cameraOffsetY, zoomFactor);
 
     // 2. Render UI elements in sidebar
     applyViewport(&sidebarViewport);
-    RenderUI(&player);  // Now handles everything UI-related including background
+    RenderUI(&player);
 
     SDL_GL_SwapWindow(window);
 }
@@ -680,7 +672,87 @@ void initializeTilesBatchVAO() {
 }
 
 
+void RenderTreeCanopies(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
+    TextureCoords* canopyTex = getTextureCoords("tree_canopy");
+    if (!canopyTex || !tileBatchData.persistentBuffer) return;
+    glUseProgram(shaderProgram);
+    glBindVertexArray(tilesBatchVAO);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    
+    float* batchData = tileBatchData.persistentBuffer;
+    int dataIndex = 0;
+    int renderedTiles = 0;
+    const float texMargin = 0.0000001f;
+    float playerWorldX = player.entity.posX;
+    float playerWorldY = player.entity.posY;
 
+    for (int y = 0; y < GRID_SIZE; y++) {
+        for (int x = 0; x < GRID_SIZE; x++) {
+            if (grid[y][x].terrainType == TERRAIN_UNLOADED) {
+                continue;
+            }
+
+            if (grid[y][x].structureType == STRUCTURE_PLANT && 
+                grid[y][x].materialType == MATERIAL_TREE) {
+                
+                float worldX, worldY;
+                WorldToScreenCoords(x, y - 1, 0, 0, 1, &worldX, &worldY);
+
+                if (!isPointVisible(worldX, worldY, playerWorldX, playerWorldY, zoomFactor)) {
+                    continue;
+                }
+
+                float screenX, screenY;
+                WorldToScreenCoords(x, y - 1, cameraOffsetX, cameraOffsetY, zoomFactor, &screenX, &screenY);
+                
+                float halfSize = TILE_SIZE * zoomFactor;
+
+                // First triangle
+                batchData[dataIndex++] = screenX - halfSize;
+                batchData[dataIndex++] = screenY - halfSize;
+                batchData[dataIndex++] = canopyTex->u1 + texMargin;
+                batchData[dataIndex++] = canopyTex->v1 + texMargin;
+
+                batchData[dataIndex++] = screenX + halfSize;
+                batchData[dataIndex++] = screenY - halfSize;
+                batchData[dataIndex++] = canopyTex->u2 - texMargin;
+                batchData[dataIndex++] = canopyTex->v1 + texMargin;
+
+                batchData[dataIndex++] = screenX + halfSize;
+                batchData[dataIndex++] = screenY + halfSize;
+                batchData[dataIndex++] = canopyTex->u2 - texMargin;
+                batchData[dataIndex++] = canopyTex->v2 - texMargin;
+
+                // Second triangle
+                batchData[dataIndex++] = screenX - halfSize;
+                batchData[dataIndex++] = screenY - halfSize;
+                batchData[dataIndex++] = canopyTex->u1 + texMargin;
+                batchData[dataIndex++] = canopyTex->v1 + texMargin;
+
+                batchData[dataIndex++] = screenX + halfSize;
+                batchData[dataIndex++] = screenY + halfSize;
+                batchData[dataIndex++] = canopyTex->u2 - texMargin;
+                batchData[dataIndex++] = canopyTex->v2 - texMargin;
+
+                batchData[dataIndex++] = screenX - halfSize;
+                batchData[dataIndex++] = screenY + halfSize;
+                batchData[dataIndex++] = canopyTex->u1 + texMargin;
+                batchData[dataIndex++] = canopyTex->v2 - texMargin;
+
+                renderedTiles++;
+            }
+        }
+    }
+
+    if (dataIndex > 0) {
+        glBindBuffer(GL_ARRAY_BUFFER, tilesBatchVBO);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, dataIndex * sizeof(float), batchData);
+        glDrawArrays(GL_TRIANGLES, 0, renderedTiles * 6);
+    }
+    
+    glDisable(GL_BLEND);
+}
 /*
  * RenderTiles
  *
@@ -689,7 +761,7 @@ void initializeTilesBatchVAO() {
  * @param[in] cameraOffsetX The horizontal camera offset
  * @param[in] cameraOffsetY The vertical camera offset
  * @param[in] zoomFactor The zoom factor applied to the view
- */
+*/
 void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
     if (!tileBatchData.persistentBuffer) {
         tileBatchData.bufferCapacity = MAX_VISIBLE_TILES * 6 * 4;
@@ -713,6 +785,7 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
     float* batchData = tileBatchData.persistentBuffer;
     const float texMargin = 0.0000001f;
 
+    // Main tile and structure rendering pass
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
             if (grid[y][x].terrainType == TERRAIN_UNLOADED) {
@@ -727,71 +800,109 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
                 continue;
             }
 
-            renderedTiles++;
-
             float posX, posY;
             WorldToScreenCoords(x, y, cameraOffsetX, cameraOffsetY, zoomFactor, &posX, &posY);
-
-            // Get terrain texture coordinates based on type
-            TextureCoords* terrainTex = NULL;
-            switch (grid[y][x].terrainType) {
-                case TERRAIN_SAND:
-                    terrainTex = getTextureCoords("terrain_sand");
-                    break;
-                case TERRAIN_WATER:
-                    terrainTex = getTextureCoords("terrain_water");
-                    break;
-                case TERRAIN_GRASS:
-                    terrainTex = getTextureCoords("terrain_grass");
-                    break;
-                case TERRAIN_STONE:
-                    terrainTex = getTextureCoords("terrain_stone");
-                    break;
-                default:
-                    terrainTex = getTextureCoords("terrain_grass");
-                    break;
-            }
-
-            if (!terrainTex) {
-                fprintf(stderr, "Failed to get terrain texture for type %d\n", grid[y][x].terrainType);
-                continue;
-            }
-
             float halfSize = TILE_SIZE * zoomFactor;
 
-            // First triangle for terrain
-            batchData[dataIndex++] = posX - halfSize;
-            batchData[dataIndex++] = posY - halfSize;
-            batchData[dataIndex++] = terrainTex->u1 + texMargin;
-            batchData[dataIndex++] = terrainTex->v1 + texMargin;
+            // Get terrain texture coordinates with variation handling
+            const char* terrainId = NULL;
+if (grid[y][x].terrainType == TERRAIN_GRASS) {
+    uint16_t flags = grid[y][x].flags;
+    uint16_t variation = (flags & TERRAIN_VARIATION_MASK) >> 8;
+    switch(variation) {
+        case 0: terrainId = "terrain_grass"; break;
+        case 1: terrainId = "terrain_grass_2"; break;
+        case 2: terrainId = "terrain_grass_3"; break;
+        case 3: terrainId = "terrain_grass_4"; break;
+        default: terrainId = "terrain_grass"; break;
+    }
+} else {
+                switch (grid[y][x].terrainType) {
+                    case TERRAIN_SAND:    terrainId = "terrain_sand"; break;
+                    case TERRAIN_WATER:   terrainId = "terrain_water"; break;
+                    case TERRAIN_STONE:   terrainId = "terrain_stone"; break;
+                    default:              terrainId = "terrain_grass"; break;
+                }
+            }
 
-            batchData[dataIndex++] = posX + halfSize;
-            batchData[dataIndex++] = posY - halfSize;
-            batchData[dataIndex++] = terrainTex->u2 - texMargin;
-            batchData[dataIndex++] = terrainTex->v1 + texMargin;
+            TextureCoords* baseCoords = getTextureCoords(terrainId);
+            if (!baseCoords) continue;
 
-            batchData[dataIndex++] = posX - halfSize;
-            batchData[dataIndex++] = posY + halfSize;
-            batchData[dataIndex++] = terrainTex->u1 + texMargin;
-            batchData[dataIndex++] = terrainTex->v2 - texMargin;
+            // Vertex positions for each corner (TL, TR, BR, BL)
+            float vertices[4][2] = {
+                {posX - halfSize, posY - halfSize},  // Top-Left
+                {posX + halfSize, posY - halfSize},  // Top-Right
+                {posX + halfSize, posY + halfSize},  // Bottom-Right
+                {posX - halfSize, posY + halfSize}   // Bottom-Left
+            };
 
-            // Second triangle for terrain
-            batchData[dataIndex++] = posX + halfSize;
-            batchData[dataIndex++] = posY - halfSize;
-            batchData[dataIndex++] = terrainTex->u2 - texMargin;
-            batchData[dataIndex++] = terrainTex->v1 + texMargin;
+            // UV coordinates for each corner
+            float uvs[4][2] = {
+                {baseCoords->u1 + texMargin, baseCoords->v1 + texMargin},     // Top-Left
+                {baseCoords->u2 - texMargin, baseCoords->v1 + texMargin},     // Top-Right
+                {baseCoords->u2 - texMargin, baseCoords->v2 - texMargin},     // Bottom-Right
+                {baseCoords->u1 + texMargin, baseCoords->v2 - texMargin}      // Bottom-Left
+            };
 
-            batchData[dataIndex++] = posX + halfSize;
-            batchData[dataIndex++] = posY + halfSize;
-            batchData[dataIndex++] = terrainTex->u2 - texMargin;
-            batchData[dataIndex++] = terrainTex->v2 - texMargin;
+            // Apply rotation - rotate vertex indices
+            int rotatedIndices[4];
+            uint8_t terrainRotation = GRIDCELL_GET_TERRAIN_ROTATION(grid[y][x]);
+            switch(terrainRotation & 3) {
+                case 0:  // No rotation
+                    rotatedIndices[0] = 0; rotatedIndices[1] = 1;
+                    rotatedIndices[2] = 2; rotatedIndices[3] = 3;
+                    break;
+                case 1:  // 90 degrees clockwise
+                    rotatedIndices[0] = 3; rotatedIndices[1] = 0;
+                    rotatedIndices[2] = 1; rotatedIndices[3] = 2;
+                    break;
+                case 2:  // 180 degrees
+                    rotatedIndices[0] = 2; rotatedIndices[1] = 3;
+                    rotatedIndices[2] = 0; rotatedIndices[3] = 1;
+                    break;
+                case 3:  // 270 degrees clockwise
+                    rotatedIndices[0] = 1; rotatedIndices[1] = 2;
+                    rotatedIndices[2] = 3; rotatedIndices[3] = 0;
+                    break;
+            }
 
-            batchData[dataIndex++] = posX - halfSize;
-            batchData[dataIndex++] = posY + halfSize;
-            batchData[dataIndex++] = terrainTex->u1 + texMargin;
-            batchData[dataIndex++] = terrainTex->v2 - texMargin;
+            // First triangle with rotation
+            batchData[dataIndex++] = vertices[rotatedIndices[0]][0];
+            batchData[dataIndex++] = vertices[rotatedIndices[0]][1];
+            batchData[dataIndex++] = uvs[0][0];
+            batchData[dataIndex++] = uvs[0][1];
 
-            // If there's a structure, render it
+            batchData[dataIndex++] = vertices[rotatedIndices[1]][0];
+            batchData[dataIndex++] = vertices[rotatedIndices[1]][1];
+            batchData[dataIndex++] = uvs[1][0];
+            batchData[dataIndex++] = uvs[1][1];
+
+            batchData[dataIndex++] = vertices[rotatedIndices[2]][0];
+            batchData[dataIndex++] = vertices[rotatedIndices[2]][1];
+            batchData[dataIndex++] = uvs[2][0];
+            batchData[dataIndex++] = uvs[2][1];
+
+            // Second triangle with rotation
+            batchData[dataIndex++] = vertices[rotatedIndices[0]][0];
+            batchData[dataIndex++] = vertices[rotatedIndices[0]][1];
+            batchData[dataIndex++] = uvs[0][0];
+            batchData[dataIndex++] = uvs[0][1];
+
+            batchData[dataIndex++] = vertices[rotatedIndices[2]][0];
+            batchData[dataIndex++] = vertices[rotatedIndices[2]][1];
+            batchData[dataIndex++] = uvs[2][0];
+            batchData[dataIndex++] = uvs[2][1];
+
+            batchData[dataIndex++] = vertices[rotatedIndices[3]][0];
+            batchData[dataIndex++] = vertices[rotatedIndices[3]][1];
+            batchData[dataIndex++] = uvs[3][0];
+            batchData[dataIndex++] = uvs[3][1];
+
+            renderedTiles++;
+
+            // [Rest of the structure rendering code remains unchanged...]
+
+            // Render structures (unrotated)
             if (grid[y][x].structureType != 0) {
                 TextureCoords* structureTex = NULL;
                 
@@ -812,18 +923,7 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
                     } 
                     else if (hasSouth && hasWest && !hasEast && !hasNorth) {
                         structureTex = getTextureCoords("wall_top_right");
-                    }
-                    else if (hasEast && hasWest) {
-                        if (hasNorth && !hasSouth) {
-                            structureTex = getTextureCoords("wall_front");
-                        }
-                        else if (hasNorth && hasSouth) {
-                            structureTex = getTextureCoords("wall_top_intersection");
-                        }
-                        else {
-                            structureTex = getTextureCoords("wall_front");
-                        }
-                    }
+                    } 
                     else if (hasNorth || hasSouth) {
                         structureTex = getTextureCoords("wall_vertical");
                     } 
@@ -831,28 +931,27 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
                         structureTex = getTextureCoords("wall_front");
                     }
                 }
-                
                 else if (grid[y][x].structureType == STRUCTURE_DOOR) {
                     bool isOpen = GRIDCELL_IS_WALKABLE(grid[y][x]);
-                    structureTex = getTextureCoords(isOpen ? "door_horizontal_open" : "door_horizontal");
+                    bool isVertical = (GRIDCELL_GET_ORIENTATION(grid[y][x]) == 0);
                     
-                    if (!structureTex) {
-                        fprintf(stderr, "Failed to get door texture coordinates\n");
-                        continue;
+                    if (isVertical) {
+                        structureTex = getTextureCoords(isOpen ? "door_vertical_open" : "door_vertical");
+                    } else {
+                        structureTex = getTextureCoords(isOpen ? "door_horizontal_open" : "door_horizontal");
                     }
                 }
                 else if (grid[y][x].structureType == STRUCTURE_PLANT) {
                     if (grid[y][x].materialType == MATERIAL_FERN) {
                         structureTex = getTextureCoords("item_fern");
-                        if (!structureTex) {
-                            fprintf(stderr, "Failed to get fern texture\n");
-                            continue;
-                        }
+                    }
+                    else if (grid[y][x].materialType == MATERIAL_TREE) {
+                        structureTex = getTextureCoords("tree_trunk");
                     }
                 }
 
                 if (structureTex) {
-                    // First triangle for structure
+                    // First triangle for structure (original vertex order)
                     batchData[dataIndex++] = posX - halfSize;
                     batchData[dataIndex++] = posY - halfSize;
                     batchData[dataIndex++] = structureTex->u1 + texMargin;
@@ -863,15 +962,15 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
                     batchData[dataIndex++] = structureTex->u2 - texMargin;
                     batchData[dataIndex++] = structureTex->v1 + texMargin;
 
-                    batchData[dataIndex++] = posX - halfSize;
+                    batchData[dataIndex++] = posX + halfSize;
                     batchData[dataIndex++] = posY + halfSize;
-                    batchData[dataIndex++] = structureTex->u1 + texMargin;
+                    batchData[dataIndex++] = structureTex->u2 - texMargin;
                     batchData[dataIndex++] = structureTex->v2 - texMargin;
 
-                    // Second triangle for structure
-                    batchData[dataIndex++] = posX + halfSize;
+                    // Second triangle for structure (original vertex order)
+                    batchData[dataIndex++] = posX - halfSize;
                     batchData[dataIndex++] = posY - halfSize;
-                    batchData[dataIndex++] = structureTex->u2 - texMargin;
+                    batchData[dataIndex++] = structureTex->u1 + texMargin;
                     batchData[dataIndex++] = structureTex->v1 + texMargin;
 
                     batchData[dataIndex++] = posX + halfSize;
@@ -898,6 +997,7 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
         drawTargetTileOutline(player.entity.finalGoalX, player.entity.finalGoalY, cameraOffsetX, cameraOffsetY, zoomFactor);
     }
 }
+
 /*
  * RenderEntities
  *

@@ -207,6 +207,7 @@ static void HandleMouseInput(SDL_Event* event) {
                     
                     if (!placementMode.active) {
                         switch (grid[coords.gridY][coords.gridX].structureType) {
+                            
                             case STRUCTURE_PLANT:
                                 if (grid[coords.gridY][coords.gridX].materialType == MATERIAL_FERN) {
                                     HandleHarvesting(coords.gridX, coords.gridY);
@@ -252,7 +253,7 @@ static void HandleMouseInput(SDL_Event* event) {
 
 static void HandleZoom(int wheelDelta) {
     float zoomSpeed = 0.2f;
-    float minZoom = 0.2f;
+    float minZoom = 1.0f;
     float maxZoom = 20.0f;
 
     if (wheelDelta > 0) {

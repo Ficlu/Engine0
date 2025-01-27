@@ -26,6 +26,7 @@ typedef enum {
     RES11 = 12,
     // Plant /types
     MATERIAL_FERN = 13,
+    MATERIAL_TREE = 14,
     MATERIAL_COUNT
 } MaterialType;
 
