@@ -84,11 +84,20 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
     atomic_store(&player->cameraTargetY, atomic_load(&player->entity.posY));
     atomic_store(&player->cameraCurrentX, atomic_load(&player->entity.posX));
     atomic_store(&player->cameraCurrentY, atomic_load(&player->entity.posY));
-
+        player->animation = malloc(sizeof(PlayerAnimation));
+    if (!player->animation) {
+        fprintf(stderr, "Failed to allocate player animation\n");
+        return;
+    }
+    player->animation->currentFrame = 0;
+    player->animation->lastFrameUpdate = 0;
+    player->animation->isMoving = false;
+    
     printf("Player initialized at (%d, %d) with inventory\n", 
            atomic_load(&player->entity.gridX), 
            atomic_load(&player->entity.gridY));
 }
+
 /*
  * UpdatePlayer
  *
@@ -103,57 +112,113 @@ void InitPlayer(Player* player, int startGridX, int startGridY, float speed) {
  * @pre entityCount is a positive integer
  */
 void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
+    if (player == NULL || allEntities == NULL) {
+        fprintf(stderr, "Error: NULL pointer passed to UpdatePlayer\n");
+        return;
+    }
+
     UpdateEntity(&player->entity, allEntities, entityCount);
 
-    // Check if we have a build target and have reached it
-    if (player->hasBuildTarget) {
-        int currentX = atomic_load(&player->entity.gridX);
-        int currentY = atomic_load(&player->entity.gridY);
-        
-        bool isNearTarget = (
-            abs(currentX - player->targetBuildX) <= 1 && 
-            abs(currentY - player->targetBuildY) <= 1
-        );
+    // Get current positions once
+    float playerPosX = atomic_load(&player->entity.posX);
+    float playerPosY = atomic_load(&player->entity.posY);
 
-        if (isNearTarget) {
-            bool placed = placeStructure(player->pendingBuildType, 
-                                       player->targetBuildX, 
-                                       player->targetBuildY);
-            printf("Reached build location - placement %s at: %d, %d\n",
-                   placed ? "succeeded" : "failed",
-                   player->targetBuildX, player->targetBuildY);
+    // Calculate distance to target tile center for animation
+    float targetWorldX, targetWorldY;
+    WorldToScreenCoords(
+        atomic_load(&player->entity.targetGridX), 
+        atomic_load(&player->entity.targetGridY), 
+        0, 0, 1, 
+        &targetWorldX, &targetWorldY
+    );
+
+    float dx = targetWorldX - playerPosX;
+    float dy = targetWorldY - playerPosY;
+    float distanceToTarget = sqrt(dx * dx + dy * dy);
+
+    #define POSITION_EPSILON 0.001f
+    player->animation->isMoving = distanceToTarget > POSITION_EPSILON;
+    
+    if (player->animation->isMoving) {
+        // Animation logic remains unchanged
+        float angle = atan2f(dy, dx);
+        
+        const float PI = 3.14159265358979323846f;
+        if (distanceToTarget > POSITION_EPSILON * 2.0f) {
+            if (angle < -3*PI/4 || angle > 3*PI/4) {
+                player->animation->facing = DIRECTION_LEFT;
+            } else if (angle < -PI/4) {
+                player->animation->facing = DIRECTION_DOWN;
+            } else if (angle < PI/4) {
+                player->animation->facing = DIRECTION_RIGHT;
+            } else {
+                player->animation->facing = DIRECTION_UP;
+            }
+        }
+
+        Uint32 currentTime = SDL_GetTicks();
+        if (currentTime - player->animation->lastFrameUpdate >= 70) {
+            player->animation->currentFrame = (player->animation->currentFrame + 1) % 4;
+            player->animation->lastFrameUpdate = currentTime;
+        }
+    } else {
+        player->animation->currentFrame = 0;
+    }
+
+    // Structure placement logic using continuous coordinates
+    if (player->hasBuildTarget) {
+        if (isWithinBuildRange(playerPosX, playerPosY, 
+                             player->targetBuildX, player->targetBuildY)) {
+bool placed = placeStructure(
+    player->pendingBuildType, 
+    player->targetBuildX, 
+    player->targetBuildY,
+    player
+);
             
+            if (placed) {
+                printf("Structure placement succeeded at: %d, %d\n",
+                       player->targetBuildX, player->targetBuildY);
+            } else {
+                printf("Structure placement failed at: %d, %d\n",
+                       player->targetBuildX, player->targetBuildY);
+            }
             player->hasBuildTarget = false;
         }
     }
 
-    // NEW: Check if we have a harvest target and have reached it
-    if (player->hasHarvestTarget) {
-        int currentX = atomic_load(&player->entity.gridX);
-        int currentY = atomic_load(&player->entity.gridY);
-        
-        bool isNearTarget = (
-            abs(currentX - player->targetHarvestX) <= 1 && 
-            abs(currentY - player->targetHarvestY) <= 1
-        );
+    // Rest of the function (camera logic, etc.) remains unchanged
+    float cameraSmoothFactor = 0.05f;
+    float lookAheadFactor = 1.0f;
+    
+    float cameraOffsetX = playerPosX - player->cameraCurrentX;
+    float cameraOffsetY = playerPosY - player->cameraCurrentY;
+    
+    player->lookAheadX = cameraOffsetX * lookAheadFactor;
+    player->lookAheadY = cameraOffsetY * lookAheadFactor;
 
-        if (isNearTarget) {
-            // Create new item based on what we're harvesting
+    player->cameraTargetX = playerPosX + player->lookAheadX;
+    player->cameraTargetY = playerPosY + player->lookAheadY;
+
+    player->cameraCurrentX += (player->cameraTargetX - player->cameraCurrentX) * cameraSmoothFactor;
+    player->cameraCurrentY += (player->cameraTargetY - player->cameraCurrentY) * cameraSmoothFactor;
+
+    // Handle harvest target using the same coordinate system
+    if (player->hasHarvestTarget) {
+        if (isWithinBuildRange(playerPosX, playerPosY,
+                             player->targetHarvestX, player->targetHarvestY)) {
             Item* harvestedItem = NULL;
             switch(player->pendingHarvestType) {
                 case MATERIAL_FERN:
                     harvestedItem = CreateItem(ITEM_FERN);
                     break;
-                // Add other harvestable types here
             }
 
             if (harvestedItem) {
                 bool added = AddItem(player->inventory, harvestedItem);
                 if (added) {
-                    // Award experience before clearing the cell
                     awardForagingExp(player, harvestedItem);
                     
-                    // Clear the harvested object from the grid
                     grid[player->targetHarvestY][player->targetHarvestX].structureType = STRUCTURE_NONE;
                     grid[player->targetHarvestY][player->targetHarvestX].materialType = MATERIAL_NONE;
                     GRIDCELL_SET_WALKABLE(grid[player->targetHarvestY][player->targetHarvestX], true);
@@ -169,26 +234,7 @@ void UpdatePlayer(Player* player, Entity** allEntities, int entityCount) {
             player->pendingHarvestType = 0;
         }
     }
-
-    // Camera follow logic (unchanged)
-    float playerPosX = atomic_load(&player->entity.posX);
-    float playerPosY = atomic_load(&player->entity.posY);
-
-    float dx = playerPosX - player->cameraCurrentX;
-    float dy = playerPosY - player->cameraCurrentY;
-    float lookAheadFactor = 1.0f;
-
-    player->lookAheadX = dx * lookAheadFactor;
-    player->lookAheadY = dy * lookAheadFactor;
-
-    player->cameraTargetX = playerPosX + player->lookAheadX;
-    player->cameraTargetY = playerPosY + player->lookAheadY;
-
-    float cameraSmoothFactor = 0.05f;
-    player->cameraCurrentX += (player->cameraTargetX - player->cameraCurrentX) * cameraSmoothFactor;
-    player->cameraCurrentY += (player->cameraTargetY - player->cameraCurrentY) * cameraSmoothFactor;
 }
-
 /*
  * CleanupPlayer
  *
@@ -202,6 +248,10 @@ void CleanupPlayer(Player* player) {
     if (player == NULL) {
         fprintf(stderr, "Error: player pointer is NULL in CleanupPlayer\n");
         return;
+    }
+    if (player->animation) {
+        free(player->animation);
+        player->animation = NULL;
     }
 
     if (player->entity.cachedPath) {

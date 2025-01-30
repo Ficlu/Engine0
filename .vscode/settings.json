@@ -23,6 +23,10 @@
         "stdint.h": "c",
         "sdl.h": "c",
         "glew.h": "c",
-        "string.h": "c"
+        "string.h": "c",
+        "enclosure_types.h": "c",
+        "texture_coords.h": "c",
+        "storage.h": "c",
+        "inventory.h": "c"
     }
 }

@@ -22,7 +22,8 @@
 #include "input.h"
 #include "ui.h"
 #include "texture_coords.h"
-
+#include "storage.h"
+#include "overlay.h"
 #define UNWALKABLE_PROBABILITY 0.04f
 GLuint outlineShaderProgram;
 atomic_bool isRunning = true;
@@ -152,6 +153,8 @@ void InitializeGameState(bool isNewGame) {
    initEnclosureManager(&globalEnclosureManager);
    printf("Enclosure manager initialized.\n");
 
+    initStorageManager(&globalStorageManager);
+    printf("Storage manager initialized.\n");
    if (isNewGame) {
        // Load and apply ASCII map first
        char* asciiMap = loadASCIIMap("testmap.txt");
@@ -165,7 +168,7 @@ void InitializeGameState(bool isNewGame) {
        generateTerrainFromASCII(asciiMap);
        printf("Terrain generated from ASCII map.\n");
 
-       // Now initialize other grid properties but NOT terrain
+       // First initialize base grid properties 
        for (int y = 0; y < GRID_SIZE; y++) {
            for (int x = 0; x < GRID_SIZE; x++) {
                // Don't touch terrainType, it's already set
@@ -174,45 +177,80 @@ void InitializeGameState(bool isNewGame) {
                grid[y][x].biomeType = BIOME_PLAINS;  // This should probably be based on terrain type
                GRIDCELL_SET_WALKABLE(grid[y][x], grid[y][x].terrainType != TERRAIN_WATER);
                GRIDCELL_SET_ORIENTATION(grid[y][x], 0);
-               grid[y][x].flags &= ~0xE0;  // Clear reserved bits
                grid[y][x].wallTexX = 0.0f;
                grid[y][x].wallTexY = 0.0f;
            }
        }
 
+       // Initialize entities
        int playerGridX = GRID_SIZE / 2;
        int playerGridY = GRID_SIZE / 2;
        InitPlayer(&player, playerGridX, playerGridY, MOVE_SPEED);
-
        printf("Player initialized at (%d, %d).\n", playerGridX, playerGridY);
-   }
 
-   ChunkCoord playerStartChunk = getChunkFromWorldPos(player.entity.gridX, player.entity.gridY);
-   globalChunkManager->playerChunk = playerStartChunk;
-   loadChunksAroundPlayer(globalChunkManager);
-   printf("Initial chunks loaded around player.\n");
-
-   // First store all current terrain data
-   for (int cy = 0; cy < NUM_CHUNKS; cy++) {
-       for (int cx = 0; cx < NUM_CHUNKS; cx++) {
-           int startX = cx * CHUNK_SIZE;
-           int startY = cy * CHUNK_SIZE;
-           
-           for (int y = 0; y < CHUNK_SIZE; y++) {
-               for (int x = 0; x < CHUNK_SIZE; x++) {
-                   int gridX = startX + x;
-                   int gridY = startY + y;
-                   if (gridX >= 0 && gridX < GRID_SIZE && 
-                       gridY >= 0 && gridY < GRID_SIZE) {
-                       globalChunkManager->storedChunkData[cy][cx][y][x] = grid[gridY][gridX];
+       // First store all current terrain data
+       for (int cy = 0; cy < NUM_CHUNKS; cy++) {
+           for (int cx = 0; cx < NUM_CHUNKS; cx++) {
+               int startX = cx * CHUNK_SIZE;
+               int startY = cy * CHUNK_SIZE;
+               
+               for (int y = 0; y < CHUNK_SIZE; y++) {
+                   for (int x = 0; x < CHUNK_SIZE; x++) {
+                       int gridX = startX + x;
+                       int gridY = startY + y;
+                       if (gridX >= 0 && gridX < GRID_SIZE && 
+                           gridY >= 0 && gridY < GRID_SIZE) {
+                           globalChunkManager->storedChunkData[cy][cx][y][x] = grid[gridY][gridX];
+                       }
                    }
                }
+               globalChunkManager->chunkHasData[cy][cx] = true;
            }
-           globalChunkManager->chunkHasData[cy][cx] = true;
        }
+
+       // THEN initialize and load chunks after base grid is set up
+       ChunkCoord playerStartChunk = getChunkFromWorldPos(player.entity.gridX, player.entity.gridY);
+       globalChunkManager->playerChunk = playerStartChunk;
+       loadChunksAroundPlayer(globalChunkManager);
+       printf("Initial chunks loaded around player.\n");
    }
 
+   // Initialize entity array first
    allEntities[0] = &player.entity;
+   for(int i = 1; i < MAX_ENTITIES; i++) {
+       allEntities[i] = NULL;
+   }
+
+   // Spawn ferns on grass tiles first
+// Spawn ferns and trees on grass tiles
+for (int y = 0; y < GRID_SIZE; y++) {
+    for (int x = 0; x < GRID_SIZE; x++) {
+        if (isPositionInLoadedChunk(x, y)) {
+            if (grid[y][x].terrainType == (uint8_t)TERRAIN_GRASS) {
+                float random = (float)rand() / RAND_MAX;
+                if (random < 0.1f) {  // 10% chance for fern
+                    grid[y][x].structureType = STRUCTURE_PLANT;
+                    grid[y][x].materialType = MATERIAL_FERN;
+                    GRIDCELL_SET_WALKABLE(grid[y][x], false);
+
+                }
+                else if (random < 0.15f) {  // Additional 5% chance for tree
+                    grid[y][x].structureType = STRUCTURE_PLANT;
+                    grid[y][x].materialType = MATERIAL_TREE;
+                    GRIDCELL_SET_WALKABLE(grid[y][x], false);
+                }
+            }
+        }
+    }
+}
+
+   printf("\n=== Starting Entity Initialization ===\n");
+   printf("MAX_ENEMIES: %d\n", MAX_ENEMIES);
+   printf("MAX_ENTITIES: %d\n", MAX_ENTITIES);
+
+   printf("Player entity pointer stored at allEntities[0]: %p\n", (void*)allEntities[0]);
+
+   // Then initialize enemies
    for (int i = 0; i < MAX_ENEMIES; i++) {
        int enemyGridX, enemyGridY;
        int attempts = 0;
@@ -226,6 +264,7 @@ void InitializeGameState(bool isNewGame) {
            
            if (isPositionInLoadedChunk(enemyGridX, enemyGridY) &&
                grid[enemyGridY][enemyGridX].structureType != STRUCTURE_WALL &&
+               grid[enemyGridY][enemyGridX].structureType != STRUCTURE_PLANT &&
                GRIDCELL_IS_WALKABLE(grid[enemyGridY][enemyGridX])) {
                validPosition = true;
            }
@@ -241,27 +280,16 @@ void InitializeGameState(bool isNewGame) {
 
        InitEnemy(&enemies[i], enemyGridX, enemyGridY, MOVE_SPEED);
        allEntities[i + 1] = &enemies[i].entity;
-       printf("Enemy %d initialized at (%d, %d).\n", i, enemyGridX, enemyGridY);
    }
-      // Spawn ferns on grass tiles after all terrain is set
-   for (int y = 0; y < GRID_SIZE; y++) {
-       for (int x = 0; x < GRID_SIZE; x++) {
-           if (isPositionInLoadedChunk(x, y)) {
-               if (grid[y][x].terrainType == (uint8_t)TERRAIN_GRASS) {
-                   if ((float)rand() / RAND_MAX < 0.1f) {
-                       grid[y][x].structureType = STRUCTURE_PLANT;
-                       grid[y][x].materialType = MATERIAL_FERN;
-                       GRIDCELL_SET_WALKABLE(grid[y][x], false);
-                       grid[y][x].wallTexX = 1.0f/3.0f;
-                       grid[y][x].wallTexY = 0.0f/6.0f;
-                   }
-               }
-           }
-       }
-   }
+
    ChunkCoord playerChunk = getChunkFromWorldPos(player.entity.gridX, player.entity.gridY);
    int radius = globalChunkManager->loadRadius;
    
+   printf("\n=== Final Chunk Check ===\n");
+   printf("Player chunk: (%d, %d)\n", playerChunk.x, playerChunk.y);
+   printf("Load radius: %d\n", radius);
+   
+   // Final culling of chunks outside radius
    for (int cy = 0; cy < NUM_CHUNKS; cy++) {
        for (int cx = 0; cx < NUM_CHUNKS; cx++) {
            int dx = abs(cx - playerChunk.x);
@@ -287,11 +315,9 @@ void InitializeGameState(bool isNewGame) {
    }
    
    printf("Initial chunk culling complete.\n");
-
-
-
    printf("Game state initialization complete.\n");
 }
+
 void InitializeEngine(void) {
     printf("Initializing engine systems...\n");
     
@@ -343,6 +369,8 @@ void InitializeEngine(void) {
     shaderProgram = createShaderProgram();
     outlineShaderProgram = createOutlineShaderProgram();
     initUIResources();  // Initialize UI resources
+        initializeCrateUIRenderer();  // Add this line
+    printf("Crate UI renderer initialized.\n");
     itemShaderProgram = createItemShaderProgram();
     
     if (!shaderProgram || !outlineShaderProgram || !getUIShaderProgram() || !itemShaderProgram) {
@@ -355,7 +383,7 @@ void InitializeEngine(void) {
     printf("Shader programs created.\n");
 
     // Load texture atlas first
-    textureAtlas = loadBMP("texture_atlas-1.bmp");
+    textureAtlas = loadBMP("sprite-sheet-32.bmp");
     initializeDefaultTextures();  // Add this line
     printf("Texture system initialized.\n");
     if (!textureAtlas) {
@@ -493,75 +521,126 @@ void drawTargetTileOutline(int x, int y, float cameraOffsetX, float cameraOffset
     glUseProgram(shaderProgram);
 }
 void CleanUp() {
-    printf("Cleaning up...\n");
+    printf("Starting cleanup sequence...\n");
+    
+    // 1. Cleanup game systems first
     CleanupEntities();
-
     CleanupUI();
-    printf("UI cleaned up.\n");
-
-    // Clean up enclosure manager
     cleanupEnclosureManager(&globalEnclosureManager);
-    printf("Enclosure manager cleaned up.\n");
+    cleanupStorageManager(&globalStorageManager);  // Add this
+    
+    printf("Game systems cleaned up.\n");
 
+    // 2. Cleanup rendering resources
+    cleanupUIResources();
+    cleanupCrateUIRenderer();
+    // 3. Delete VAOs
     if (gridVAO) {
         glDeleteVertexArrays(1, &gridVAO);
+        gridVAO = 0;
     }
     if (squareVAO) {
         glDeleteVertexArrays(1, &squareVAO);
+        squareVAO = 0;
     }
     if (outlineVAO) {
         glDeleteVertexArrays(1, &outlineVAO);
+        outlineVAO = 0;
     }
+    if (enemyBatchVAO) {
+        glDeleteVertexArrays(1, &enemyBatchVAO);
+        enemyBatchVAO = 0;
+    }
+    if (tilesBatchVAO) {
+        glDeleteVertexArrays(1, &tilesBatchVAO);
+        tilesBatchVAO = 0;
+    }
+    
+    printf("VAOs cleaned up.\n");
+
+    // 4. Delete VBOs
     if (squareVBO) {
         glDeleteBuffers(1, &squareVBO);
+        squareVBO = 0;
     }
+    if (outlineVBO) {
+        glDeleteBuffers(1, &outlineVBO);
+        outlineVBO = 0;
+    }
+    if (enemyBatchVBO) {
+        glDeleteBuffers(1, &enemyBatchVBO);
+        enemyBatchVBO = 0;
+    }
+    if (tilesBatchVBO) {
+        glDeleteBuffers(1, &tilesBatchVBO);
+        tilesBatchVBO = 0;
+    }
+    
+    printf("VBOs cleaned up.\n");
+
+    // 5. Delete shader programs
     if (shaderProgram) {
         glDeleteProgram(shaderProgram);
+        shaderProgram = 0;
     }
     if (outlineShaderProgram) {
         glDeleteProgram(outlineShaderProgram);
+        outlineShaderProgram = 0;
     }
+    if (itemShaderProgram) {
+        glDeleteProgram(itemShaderProgram);
+        itemShaderProgram = 0;
+    }
+    
+    printf("Shader programs cleaned up.\n");
 
-    // Add cleanup function to rendering.h/c instead of direct access
-    cleanupUIResources();  // This will handle UI resource cleanup internally
+    // 6. Clean up batch data
+    cleanupEntityBatchData();
+    cleanupTileBatchData();
+    
+    printf("Batch data cleaned up.\n");
 
+    // 7. Clean up texture resources
+    if (textureAtlas) {
+        glDeleteTextures(1, &textureAtlas);
+        textureAtlas = 0;
+    }
+    cleanupTextureManager();
+    
+    printf("Texture resources cleaned up.\n");
+
+    // 8. Clean up chunk management
     if (globalChunkManager) {
         cleanupChunkManager(globalChunkManager);
         free(globalChunkManager);
         globalChunkManager = NULL;
     }
-    if (textureAtlas) {
-        glDeleteTextures(1, &textureAtlas);
-        textureAtlas = 0;
-    }
-    if (enemyBatchVAO) {
-        glDeleteVertexArrays(1, &enemyBatchVAO);
-    }
-    if (enemyBatchVBO) {
-        glDeleteBuffers(1, &enemyBatchVBO);
-    }
-    if (tilesBatchVAO) {
-        glDeleteVertexArrays(1, &tilesBatchVAO);
-    }
-    if (tilesBatchVBO) {
-        glDeleteBuffers(1, &tilesBatchVBO);
-    }
+    
+    printf("Chunk manager cleaned up.\n");
 
-    cleanupEntityBatchData();
-    cleanupTileBatchData();
+    // 9. Clean up grid resources
+    cleanupGrid();
+    
+    printf("Grid cleaned up.\n");
 
+    // 10. Clean up GPU resources
+    cleanupGPUPathfinding();
+    
+    printf("GPU resources cleaned up.\n");
+
+    // 11. Finally, cleanup SDL resources
     if (mainContext) {
         SDL_GL_DeleteContext(mainContext);
+        mainContext = NULL;
     }
     if (window) {
         SDL_DestroyWindow(window);
+        window = NULL;
     }
-    cleanupGrid();
-
-    cleanupGPUPathfinding();
-
     SDL_Quit();
-    printf("Cleanup complete.\n");
+    
+    printf("SDL resources cleaned up.\n");
+    printf("Cleanup sequence complete.\n");
 }
 bool westIsCorner(int x, int y) {
     if (x <= 0) return false;
@@ -618,13 +697,16 @@ void Render() {
     float cameraOffsetY = player.cameraCurrentY;
     float zoomFactor = player.zoomFactor;
 
-    RenderTiles(cameraOffsetX, cameraOffsetY, zoomFactor);
+    RenderTiles(cameraOffsetX, cameraOffsetY, zoomFactor);  // Terrain and structures only
     RenderEntities(cameraOffsetX, cameraOffsetY, zoomFactor);
+    RenderTreeCanopies(cameraOffsetX, cameraOffsetY, zoomFactor);  // Now canopies render on top
     renderStructurePreview(&placementMode, cameraOffsetX, cameraOffsetY, zoomFactor);
+    // Check all crates in the storage manager
+    RenderCrateUIs(cameraOffsetX, cameraOffsetY, zoomFactor);
 
     // 2. Render UI elements in sidebar
     applyViewport(&sidebarViewport);
-    RenderUI(&player);  // Now handles everything UI-related including background
+    RenderUI(&player);
 
     SDL_GL_SwapWindow(window);
 }
@@ -648,6 +730,88 @@ void initializeTilesBatchVAO() {
 }
 
 
+void RenderTreeCanopies(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
+    TextureCoords* canopyTex = getTextureCoords("tree_canopy");
+    if (!canopyTex || !tileBatchData.persistentBuffer) return;
+    glUseProgram(shaderProgram);
+    glBindVertexArray(tilesBatchVAO);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    
+    float* batchData = tileBatchData.persistentBuffer;
+    int dataIndex = 0;
+    int renderedTiles = 0;
+    const float texMargin = 0.0000001f;
+    float playerWorldX = player.entity.posX;
+    float playerWorldY = player.entity.posY;
+
+    for (int y = 0; y < GRID_SIZE; y++) {
+        for (int x = 0; x < GRID_SIZE; x++) {
+        if (grid[y][x].terrainType == TERRAIN_UNLOADED || 
+            y > 0 && grid[y-1][x].terrainType == TERRAIN_UNLOADED) {
+            continue;
+        }
+
+            if (grid[y][x].structureType == STRUCTURE_PLANT && 
+                grid[y][x].materialType == MATERIAL_TREE) {
+                
+                float worldX, worldY;
+                WorldToScreenCoords(x, y - 1, 0, 0, 1, &worldX, &worldY);
+
+                if (!isPointVisible(worldX, worldY, playerWorldX, playerWorldY, zoomFactor)) {
+                    continue;
+                }
+                
+                float screenX, screenY;
+                WorldToScreenCoords(x, y - 1, cameraOffsetX, cameraOffsetY, zoomFactor, &screenX, &screenY);
+                
+                float halfSize = TILE_SIZE * zoomFactor;
+
+                // First triangle
+                batchData[dataIndex++] = screenX - halfSize;
+                batchData[dataIndex++] = screenY - halfSize;
+                batchData[dataIndex++] = canopyTex->u1 + texMargin;
+                batchData[dataIndex++] = canopyTex->v1 + texMargin;
+
+                batchData[dataIndex++] = screenX + halfSize;
+                batchData[dataIndex++] = screenY - halfSize;
+                batchData[dataIndex++] = canopyTex->u2 - texMargin;
+                batchData[dataIndex++] = canopyTex->v1 + texMargin;
+
+                batchData[dataIndex++] = screenX + halfSize;
+                batchData[dataIndex++] = screenY + halfSize;
+                batchData[dataIndex++] = canopyTex->u2 - texMargin;
+                batchData[dataIndex++] = canopyTex->v2 - texMargin;
+
+                // Second triangle
+                batchData[dataIndex++] = screenX - halfSize;
+                batchData[dataIndex++] = screenY - halfSize;
+                batchData[dataIndex++] = canopyTex->u1 + texMargin;
+                batchData[dataIndex++] = canopyTex->v1 + texMargin;
+
+                batchData[dataIndex++] = screenX + halfSize;
+                batchData[dataIndex++] = screenY + halfSize;
+                batchData[dataIndex++] = canopyTex->u2 - texMargin;
+                batchData[dataIndex++] = canopyTex->v2 - texMargin;
+
+                batchData[dataIndex++] = screenX - halfSize;
+                batchData[dataIndex++] = screenY + halfSize;
+                batchData[dataIndex++] = canopyTex->u1 + texMargin;
+                batchData[dataIndex++] = canopyTex->v2 - texMargin;
+
+                renderedTiles++;
+            }
+        }
+    }
+
+    if (dataIndex > 0) {
+        glBindBuffer(GL_ARRAY_BUFFER, tilesBatchVBO);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, dataIndex * sizeof(float), batchData);
+        glDrawArrays(GL_TRIANGLES, 0, renderedTiles * 6);
+    }
+    
+    glDisable(GL_BLEND);
+}
 
 /*
  * RenderTiles
@@ -657,7 +821,7 @@ void initializeTilesBatchVAO() {
  * @param[in] cameraOffsetX The horizontal camera offset
  * @param[in] cameraOffsetY The vertical camera offset
  * @param[in] zoomFactor The zoom factor applied to the view
- */
+*/
 void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
     if (!tileBatchData.persistentBuffer) {
         tileBatchData.bufferCapacity = MAX_VISIBLE_TILES * 6 * 4;
@@ -679,8 +843,9 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
 
     int dataIndex = 0;
     float* batchData = tileBatchData.persistentBuffer;
-    const float texMargin = 0.0001f;
+    const float texMargin = 0.0000001f;
 
+    // Main tile and structure rendering pass
     for (int y = 0; y < GRID_SIZE; y++) {
         for (int x = 0; x < GRID_SIZE; x++) {
             if (grid[y][x].terrainType == TERRAIN_UNLOADED) {
@@ -695,100 +860,168 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
                 continue;
             }
 
-            renderedTiles++;
-
             float posX, posY;
             WorldToScreenCoords(x, y, cameraOffsetX, cameraOffsetY, zoomFactor, &posX, &posY);
-
-            // Get terrain texture coordinates based on type
-            TextureCoords* terrainTex = NULL;
-            switch (grid[y][x].terrainType) {
-                case TERRAIN_SAND:
-                    terrainTex = getTextureCoords("terrain_sand");
-                    break;
-                case TERRAIN_WATER:
-                    terrainTex = getTextureCoords("terrain_water");
-                    break;
-                case TERRAIN_GRASS:
-                    terrainTex = getTextureCoords("terrain_grass");
-                    break;
-                case TERRAIN_STONE:
-                    terrainTex = getTextureCoords("terrain_stone");
-                    break;
-                default:
-                    terrainTex = getTextureCoords("terrain_grass");
-                    break;
-            }
-
-            if (!terrainTex) {
-                fprintf(stderr, "Failed to get terrain texture for type %d\n", grid[y][x].terrainType);
-                continue;
-            }
-
             float halfSize = TILE_SIZE * zoomFactor;
 
-            // First triangle for terrain
-            batchData[dataIndex++] = posX - halfSize;
-            batchData[dataIndex++] = posY - halfSize;
-            batchData[dataIndex++] = terrainTex->u1 + texMargin;
-            batchData[dataIndex++] = terrainTex->v1 + texMargin;
+            // Get terrain texture coordinates with variation handling
+            const char* terrainId = NULL;
+            
+            // Handle terrain variations
+            if (grid[y][x].terrainType == TERRAIN_GRASS) {
+                uint16_t flags = grid[y][x].flags;
+                uint16_t variation = (flags & TERRAIN_VARIATION_MASK) >> 8;
+                switch(variation) {
+                    case 0: terrainId = "terrain_grass"; break;
+                    case 1: terrainId = "terrain_grass_2"; break;
+                    case 2: terrainId = "terrain_grass_3"; break;
+                    case 3: terrainId = "terrain_grass_4"; break;
+                    case 4: terrainId = "terrain_grass_4"; break;
+                    default: terrainId = "terrain_grass"; break;
+                }
+            } 
+            else if (grid[y][x].terrainType == TERRAIN_STONE) {
+                uint16_t flags = grid[y][x].flags;
+                uint16_t variation = (flags & TERRAIN_VARIATION_MASK) >> 8;
+                switch(variation) {
+                    case 0: terrainId = "terrain_stone_2"; break;
+                    case 1: terrainId = "terrain_stone_3"; break;
+                    case 2: terrainId = "terrain_stone_4"; break;
+                    case 3: terrainId = "terrain_stone_2"; break;
+                    default: terrainId = "terrain_stone"; break;
+                }
+            }
+            else {
+                switch (grid[y][x].terrainType) {
+                    case TERRAIN_SAND:    terrainId = "terrain_sand"; break;
+                    case TERRAIN_WATER:   terrainId = "terrain_water"; break;
+                    default:              terrainId = "terrain_grass"; break;
+                }
+            }
 
-            batchData[dataIndex++] = posX + halfSize;
-            batchData[dataIndex++] = posY - halfSize;
-            batchData[dataIndex++] = terrainTex->u2 - texMargin;
-            batchData[dataIndex++] = terrainTex->v1 + texMargin;
+            TextureCoords* baseCoords = getTextureCoords(terrainId);
+            if (!baseCoords) continue;
 
-            batchData[dataIndex++] = posX - halfSize;
-            batchData[dataIndex++] = posY + halfSize;
-            batchData[dataIndex++] = terrainTex->u1 + texMargin;
-            batchData[dataIndex++] = terrainTex->v2 - texMargin;
+            // Vertex positions for each corner (TL, TR, BR, BL)
+            float vertices[4][2] = {
+                {posX - halfSize, posY - halfSize},  // Top-Left
+                {posX + halfSize, posY - halfSize},  // Top-Right
+                {posX + halfSize, posY + halfSize},  // Bottom-Right
+                {posX - halfSize, posY + halfSize}   // Bottom-Left
+            };
 
-            // Second triangle for terrain
-            batchData[dataIndex++] = posX + halfSize;
-            batchData[dataIndex++] = posY - halfSize;
-            batchData[dataIndex++] = terrainTex->u2 - texMargin;
-            batchData[dataIndex++] = terrainTex->v1 + texMargin;
+            // UV coordinates for each corner
+            float uvs[4][2] = {
+                {baseCoords->u1 + texMargin, baseCoords->v1 + texMargin},     // Top-Left
+                {baseCoords->u2 - texMargin, baseCoords->v1 + texMargin},     // Top-Right
+                {baseCoords->u2 - texMargin, baseCoords->v2 - texMargin},     // Bottom-Right
+                {baseCoords->u1 + texMargin, baseCoords->v2 - texMargin}      // Bottom-Left
+            };
 
-            batchData[dataIndex++] = posX + halfSize;
-            batchData[dataIndex++] = posY + halfSize;
-            batchData[dataIndex++] = terrainTex->u2 - texMargin;
-            batchData[dataIndex++] = terrainTex->v2 - texMargin;
+            // Apply rotation - rotate vertex indices
+            int rotatedIndices[4];
+            uint8_t terrainRotation = GRIDCELL_GET_TERRAIN_ROTATION(grid[y][x]);
+            switch(terrainRotation & 3) {
+                case 0:  // No rotation
+                    rotatedIndices[0] = 0; rotatedIndices[1] = 1;
+                    rotatedIndices[2] = 2; rotatedIndices[3] = 3;
+                    break;
+                case 1:  // 90 degrees clockwise
+                    rotatedIndices[0] = 3; rotatedIndices[1] = 0;
+                    rotatedIndices[2] = 1; rotatedIndices[3] = 2;
+                    break;
+                case 2:  // 180 degrees
+                    rotatedIndices[0] = 2; rotatedIndices[1] = 3;
+                    rotatedIndices[2] = 0; rotatedIndices[3] = 1;
+                    break;
+                case 3:  // 270 degrees clockwise
+                    rotatedIndices[0] = 1; rotatedIndices[1] = 2;
+                    rotatedIndices[2] = 3; rotatedIndices[3] = 0;
+                    break;
+            }
 
-            batchData[dataIndex++] = posX - halfSize;
-            batchData[dataIndex++] = posY + halfSize;
-            batchData[dataIndex++] = terrainTex->u1 + texMargin;
-            batchData[dataIndex++] = terrainTex->v2 - texMargin;
+            // First triangle with rotation
+            batchData[dataIndex++] = vertices[rotatedIndices[0]][0];
+            batchData[dataIndex++] = vertices[rotatedIndices[0]][1];
+            batchData[dataIndex++] = uvs[0][0];
+            batchData[dataIndex++] = uvs[0][1];
 
-            // If there's a structure, render it
+            batchData[dataIndex++] = vertices[rotatedIndices[1]][0];
+            batchData[dataIndex++] = vertices[rotatedIndices[1]][1];
+            batchData[dataIndex++] = uvs[1][0];
+            batchData[dataIndex++] = uvs[1][1];
+
+            batchData[dataIndex++] = vertices[rotatedIndices[2]][0];
+            batchData[dataIndex++] = vertices[rotatedIndices[2]][1];
+            batchData[dataIndex++] = uvs[2][0];
+            batchData[dataIndex++] = uvs[2][1];
+
+            // Second triangle with rotation
+            batchData[dataIndex++] = vertices[rotatedIndices[0]][0];
+            batchData[dataIndex++] = vertices[rotatedIndices[0]][1];
+            batchData[dataIndex++] = uvs[0][0];
+            batchData[dataIndex++] = uvs[0][1];
+
+            batchData[dataIndex++] = vertices[rotatedIndices[2]][0];
+            batchData[dataIndex++] = vertices[rotatedIndices[2]][1];
+            batchData[dataIndex++] = uvs[2][0];
+            batchData[dataIndex++] = uvs[2][1];
+
+            batchData[dataIndex++] = vertices[rotatedIndices[3]][0];
+            batchData[dataIndex++] = vertices[rotatedIndices[3]][1];
+            batchData[dataIndex++] = uvs[3][0];
+            batchData[dataIndex++] = uvs[3][1];
+
+            renderedTiles++;
+
+            // Render structures
             if (grid[y][x].structureType != 0) {
                 TextureCoords* structureTex = NULL;
                 
-                if (grid[y][x].structureType == STRUCTURE_WALL) {
-                    // Get appropriate wall texture based on surroundings
-                    bool hasNorth = (y > 0) && isWallOrDoor(x, y-1);
-                    bool hasSouth = (y < GRID_SIZE-1) && isWallOrDoor(x, y+1);
-                    bool hasEast = (x < GRID_SIZE-1) && isWallOrDoor(x+1, y);
-                    bool hasWest = (x > 0) && isWallOrDoor(x-1, y);
+if (grid[y][x].structureType == STRUCTURE_WALL) {
+    // Get the texture coordinates for this wall from stored values
+    float u1 = grid[y][x].wallTexX;
+    float v1 = grid[y][x].wallTexY;
+    
+    // Get the matching texture u2/v2
+    TextureCoords* structureTex = getTextureCoords("wall_vertical"); // Use any wall texture to get correct width/height
+    float u2 = u1 + (structureTex->u2 - structureTex->u1);
+    float v2 = v1 + (structureTex->v2 - structureTex->v1);
 
-                    if (hasNorth && hasEast && !hasWest && !hasSouth) {
-                        structureTex = getTextureCoords("wall_bottom_left");
-                    } 
-                    else if (hasNorth && hasWest && !hasEast && !hasSouth) {
-                        structureTex = getTextureCoords("wall_bottom_right");
-                    } 
-                    else if (hasSouth && hasEast && !hasWest && !hasNorth) {
-                        structureTex = getTextureCoords("wall_top_left");
-                    } 
-                    else if (hasSouth && hasWest && !hasEast && !hasNorth) {
-                        structureTex = getTextureCoords("wall_top_right");
-                    } 
-                    else if (hasNorth || hasSouth) {
-                        structureTex = getTextureCoords("wall_vertical");
-                    } 
-                    else {
-                        structureTex = getTextureCoords("wall_front");
-                    }
-                }
+    // First triangle
+    batchData[dataIndex++] = posX - halfSize;
+    batchData[dataIndex++] = posY - halfSize;
+    batchData[dataIndex++] = u1 + texMargin;
+    batchData[dataIndex++] = v1 + texMargin;
+
+    batchData[dataIndex++] = posX + halfSize;
+    batchData[dataIndex++] = posY - halfSize;
+    batchData[dataIndex++] = u2 - texMargin;
+    batchData[dataIndex++] = v1 + texMargin;
+
+    batchData[dataIndex++] = posX + halfSize;
+    batchData[dataIndex++] = posY + halfSize;
+    batchData[dataIndex++] = u2 - texMargin;
+    batchData[dataIndex++] = v2 - texMargin;
+
+    // Second triangle
+    batchData[dataIndex++] = posX - halfSize;
+    batchData[dataIndex++] = posY - halfSize;
+    batchData[dataIndex++] = u1 + texMargin;
+    batchData[dataIndex++] = v1 + texMargin;
+
+    batchData[dataIndex++] = posX + halfSize;
+    batchData[dataIndex++] = posY + halfSize;
+    batchData[dataIndex++] = u2 - texMargin;
+    batchData[dataIndex++] = v2 - texMargin;
+
+    batchData[dataIndex++] = posX - halfSize;
+    batchData[dataIndex++] = posY + halfSize;
+    batchData[dataIndex++] = u1 + texMargin;
+    batchData[dataIndex++] = v2 - texMargin;
+
+    renderedTiles++;
+}
                 else if (grid[y][x].structureType == STRUCTURE_DOOR) {
                     bool isOpen = GRIDCELL_IS_WALKABLE(grid[y][x]);
                     bool isVertical = (GRIDCELL_GET_ORIENTATION(grid[y][x]) == 0);
@@ -802,12 +1035,14 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
                 else if (grid[y][x].structureType == STRUCTURE_PLANT) {
                     if (grid[y][x].materialType == MATERIAL_FERN) {
                         structureTex = getTextureCoords("item_fern");
-                        if (!structureTex) {
-                            fprintf(stderr, "Failed to get fern texture\n");
-                            continue;
-                        }
+                    }
+                    else if (grid[y][x].materialType == MATERIAL_TREE) {
+                        structureTex = getTextureCoords("tree_trunk");
                     }
                 }
+                    else if (grid[y][x].structureType == STRUCTURE_CRATE) {
+        structureTex = getTextureCoords("item_plant_crate");
+    }
 
                 if (structureTex) {
                     // First triangle for structure
@@ -821,15 +1056,15 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
                     batchData[dataIndex++] = structureTex->u2 - texMargin;
                     batchData[dataIndex++] = structureTex->v1 + texMargin;
 
-                    batchData[dataIndex++] = posX - halfSize;
+                    batchData[dataIndex++] = posX + halfSize;
                     batchData[dataIndex++] = posY + halfSize;
-                    batchData[dataIndex++] = structureTex->u1 + texMargin;
+                    batchData[dataIndex++] = structureTex->u2 - texMargin;
                     batchData[dataIndex++] = structureTex->v2 - texMargin;
 
                     // Second triangle for structure
-                    batchData[dataIndex++] = posX + halfSize;
+                    batchData[dataIndex++] = posX - halfSize;
                     batchData[dataIndex++] = posY - halfSize;
-                    batchData[dataIndex++] = structureTex->u2 - texMargin;
+                    batchData[dataIndex++] = structureTex->u1 + texMargin;
                     batchData[dataIndex++] = structureTex->v1 + texMargin;
 
                     batchData[dataIndex++] = posX + halfSize;
@@ -856,6 +1091,7 @@ void RenderTiles(float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
         drawTargetTileOutline(player.entity.finalGoalX, player.entity.finalGoalY, cameraOffsetX, cameraOffsetY, zoomFactor);
     }
 }
+
 /*
  * RenderEntities
  *
@@ -885,12 +1121,13 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     __m128 bottomBound = _mm_sub_ps(minusOne, marginVec);
     __m128 topBound = _mm_add_ps(one, marginVec);
 
-    for (int i = 0; i < MAX_ENEMIES; i += 4) {
+    // Process enemies in groups of 4 for SIMD
+    int i;
+    for (i = 0; i < MAX_ENEMIES - 3; i += 4) {  // Process full groups of 4
         bool enemyValid[4] = {false, false, false, false};
-        int validEnemiesInGroup = (MAX_ENEMIES - i) < 4 ? (MAX_ENEMIES - i) : 4;
 
-        // First check which enemies are in loaded chunks
-        for (int j = 0; j < validEnemiesInGroup; j++) {
+        // Check chunk loading for all 4
+        for (int j = 0; j < 4; j++) {
             if (isPositionInLoadedChunk(enemies[i+j].entity.posX, enemies[i+j].entity.posY)) {
                 enemyValid[j] = true;
             } else {
@@ -916,7 +1153,7 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
 
         int visibilityMask = _mm_movemask_ps(visible);
 
-        for (int j = 0; j < validEnemiesInGroup; ++j) {
+        for (int j = 0; j < 4; j++) {
             if (enemyValid[j] && (visibilityMask & (1 << j))) {
                 visibleEnemies[visibleEnemyCount++] = enemies[i + j];
             } else if (enemyValid[j]) {
@@ -925,16 +1162,27 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
         }
     }
 
+    // Handle remaining enemies individually
+    for (; i < MAX_ENEMIES; i++) {
+        if (isPositionInLoadedChunk(enemies[i].entity.posX, enemies[i].entity.posY)) {
+            float screenX = (enemies[i].entity.posX - playerWorldX) * zoomFactor;
+            float screenY = (enemies[i].entity.posY - playerWorldY) * zoomFactor;
+            
+            if (screenX >= -1.0f - TILE_SIZE && screenX <= 1.0f + TILE_SIZE &&
+                screenY >= -1.0f - TILE_SIZE && screenY <= 1.0f + TILE_SIZE) {
+                visibleEnemies[visibleEnemyCount++] = enemies[i];
+            } else {
+                culledEnemyCount++;
+            }
+        } else {
+            chunkCulledCount++;
+        }
+    }
+
     float smoothCameraOffsetX = player.cameraCurrentX;
     float smoothCameraOffsetY = player.cameraCurrentY;
 
-    // Get enemy texture coordinates
-    TextureCoords* enemyTex = getTextureCoords("enemy");
-    if (!enemyTex) {
-        fprintf(stderr, "Failed to get enemy texture coordinates\n");
-        return;
-    }
-
+    // Update enemy batch VBO and render
     updateEnemyBatchVBO(visibleEnemies, visibleEnemyCount, smoothCameraOffsetX, smoothCameraOffsetY, zoomFactor);
     glBindVertexArray(enemyBatchVAO);
     glDrawArrays(GL_TRIANGLES, 0, visibleEnemyCount * 6);
@@ -946,8 +1194,52 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     float playerScreenX = (playerWorldX - smoothCameraOffsetX) * zoomFactor;
     float playerScreenY = (playerWorldY - smoothCameraOffsetY) * zoomFactor;
 
-    // Get player texture coordinates
-    TextureCoords* playerTex = getTextureCoords("player");
+    // Get player texture based on animation state and direction
+    TextureCoords* playerTex;
+    char textureName[32];
+
+    if (!player.animation->isMoving) {
+        // Use standing frame based on direction
+        switch(player.animation->facing) {
+        case DIRECTION_UP:
+            playerTex = getTextureCoords("player_run_up_0");
+            break;
+        case DIRECTION_DOWN:
+            playerTex = getTextureCoords("player");  // Original standing frame for down
+            break;
+        case DIRECTION_LEFT:
+            playerTex = getTextureCoords("player_run_left_0");
+            break;
+        case DIRECTION_RIGHT:
+            playerTex = getTextureCoords("player_run_right_0");
+            break;
+        default:
+            playerTex = getTextureCoords("player");  // Default to original standing frame
+        }
+    } else {
+        // Get running animation frame based on direction
+        const char* dirStr;
+        switch(player.animation->facing) {
+            case DIRECTION_UP:
+                dirStr = "up";
+                break;
+            case DIRECTION_DOWN:
+                dirStr = "down";
+                break;
+            case DIRECTION_LEFT:
+                dirStr = "left";
+                break;
+            case DIRECTION_RIGHT:
+                dirStr = "right";
+                break;
+            default:
+                dirStr = "down";
+        }
+        snprintf(textureName, sizeof(textureName), "player_run_%s_%d", 
+                dirStr, player.animation->currentFrame);
+        playerTex = getTextureCoords(textureName);
+    }
+
     if (!playerTex) {
         fprintf(stderr, "Failed to get player texture coordinates\n");
         return;
@@ -970,6 +1262,7 @@ void RenderEntities(float cameraOffsetX, float cameraOffsetY, float zoomFactor) 
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
+
 /*
  * PhysicsLoop
  *
@@ -994,12 +1287,15 @@ int PhysicsLoop(void* arg) {
             updatePlayerChunk(globalChunkManager, player.entity.posX, player.entity.posY);
         }
 
+        // Get the current time once for all enemies
+        Uint32 currentTime = SDL_GetTicks();
+
         // Update other entities - but only if they're in loaded chunks
         for (int i = 0; i < MAX_ENEMIES; i++) {
             if (isPositionInLoadedChunk(enemies[i].entity.posX, enemies[i].entity.posY)) {
                 UpdateEntity(&enemies[i].entity, allEntities, MAX_ENTITIES);
+                UpdateEnemy(&enemies[i], allEntities, MAX_ENTITIES, currentTime);
             }
-            // Entities in unloaded chunks retain their state but aren't updated
         }
 
         Uint32 endTime = SDL_GetTicks();
@@ -1014,7 +1310,6 @@ int PhysicsLoop(void* arg) {
     }
     return 0;
 }
-
 /*
  * main
  *

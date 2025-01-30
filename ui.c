@@ -61,8 +61,8 @@ void UI_InitBatchRenderer(UIBatchRenderer* renderer) {
     renderer->vertexCount = 0;
     renderer->initialized = true;
 
-    printf("Batch renderer initialized with buffer size: %zu bytes\n",
-           MAX_BATCH_VERTICES * sizeof(BatchVertex));
+ //   printf("Batch renderer initialized with buffer size: %zu bytes\n",
+ //          MAX_BATCH_VERTICES * sizeof(BatchVertex));
 }
 /**
  * @brief Adds a quad to the batch for rendering.
@@ -639,7 +639,7 @@ void RenderUI(const Player* player) {
     if (!gContext || !player) return;
     
     UI_BeginBatch(gContext);
-    printf("\n=== UI RENDER FRAME START ===\n");
+   // printf("\n=== UI RENDER FRAME START ===\n");
     
     // Draw sidebar background first
     UI_RenderSidebarBackground(gContext);
@@ -660,29 +660,29 @@ if (uiState.expBar) {
     UI_RenderElement(gContext, expBar);
     
     // Add some debug output to verify
-    printf("Rendering exp bar for skill %s: %.1f/%.1f (%.1f%%)\n", 
-           getSkillName(skillToShow), 
-           currentLevelExp, 
-           EXP_PER_LEVEL, 
-           progress * 100.0f);
+   // printf("Rendering exp bar for skill %s: %.1f/%.1f (%.1f%%)\n", 
+   //        getSkillName(skillToShow), 
+     //      currentLevelExp, 
+       //    EXP_PER_LEVEL, 
+         //  progress * 100.0f);
 }
     
     if (uiState.inventory) {
         UIElement* grid = (UIElement*)uiState.inventory;
-        printf("Found inventory grid: %dx%d\n", 
-               grid->specific.grid.rows, 
-               grid->specific.grid.cols);
+       // printf("Found inventory grid: %dx%d\n", 
+       //        grid->specific.grid.rows, 
+         //      grid->specific.grid.cols);
 
         // Update grid with current inventory state
         UI_UpdateInventoryGrid(grid, player->inventory);
         
-        printf("Rendering inventory grid...\n");
+      //  printf("Rendering inventory grid...\n");
         UI_RenderElement(gContext, grid);
     } else {
         printf("No inventory grid found!\n");
     }
     
-    printf("=== UI RENDER FRAME END ===\n\n");
+   // printf("=== UI RENDER FRAME END ===\n\n");
     UI_EndBatch(gContext);
 }
 
@@ -728,22 +728,28 @@ void UI_DestroyElement(UIElement* element) {
     // Type-specific cleanup
     switch (element->type) {
         case ELEMENT_GRID:
-            // Grid-specific cleanup if needed
+            for (int i = 0; i < (element->specific.grid.rows * element->specific.grid.cols); i++) {
+                // Don't free the items themselves - they're owned by the inventory
+                element->specific.grid.cells[i].item = NULL;
+            }
             break;
+            
         case ELEMENT_BAR:
-            // Bar-specific cleanup if needed
+            // No additional resources to clean
             break;
+            
         case ELEMENT_CONTAINER:
+            // No additional resources to clean
+            break;
+            
         case ELEMENT_BUTTON:
-            // Other type-specific cleanup
+            // No additional resources to clean
             break;
     }
 
-    // Free the element itself
     free(element);
     printf("Destroyed UI element: %p\n", (void*)element);
 }
-
 /**
  * @brief Cleans up the entire UI system.
  * 

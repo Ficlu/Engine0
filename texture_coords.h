@@ -2,10 +2,10 @@
 #define TEXTURE_COORDS_H
 
 #include <stdbool.h>
-
+#include <stdint.h>
 // Texture atlas dimensions
-#define ATLAS_COLS 3
-#define ATLAS_ROWS 6
+#define ATLAS_COLS 64
+#define ATLAS_ROWS 64
 
 // Basic UV coordinate structure
 typedef struct {
@@ -60,4 +60,7 @@ typedef enum {
 extern TextureError lastTextureError;
 const char* getTextureErrorString(TextureError error);
 void initializeDefaultTextures(void);
+TextureCoords getRotatedTextureCoords(const char* id, uint8_t rotation);
+void rotateUVCoordinates(TextureCoords* baseCoords, uint8_t rotation, 
+                        float* u1, float* v1, float* u2, float* v2);
 #endif // TEXTURE_COORDS_H

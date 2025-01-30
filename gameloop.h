@@ -16,10 +16,10 @@
 #define SIDEBAR_WIDTH 300
 #define WINDOW_WIDTH (GAME_VIEW_WIDTH + SIDEBAR_WIDTH)
 #define WINDOW_HEIGHT 800
-#define MAX_ENEMIES 50
-#define MOVE_SPEED 0.001f
+#define MAX_ENEMIES 80
+#define MOVE_SPEED 0.0005f
 #define GAME_LOGIC_INTERVAL_MS ((Uint32)600)
-#define CAMERA_ZOOM 5.00f  
+#define CAMERA_ZOOM 2.00f  
 #define TILE_SIZE (1.0f / GRID_SIZE)
 #define MAX_ENTITIES (MAX_ENEMIES + 1)
 #define PHYSICS_INTERVAL_MS 12
@@ -58,4 +58,6 @@ void drawTargetTileOutline(int x, int y, float cameraOffsetX, float cameraOffset
 bool westIsCorner(int x, int y);
 bool eastIsCorner(int x, int y);
 void updateWallTextures(int x, int y);  // Add this declaration
+bool isTallStructureVisible(float worldX, float worldY, float heightOffset, float cameraOffsetX, float cameraOffsetY, float zoomFactor);
+void RenderTreeCanopies(float cameraOffsetX, float cameraOffsetY, float zoomFactor);
 #endif // GAMELOOP_H

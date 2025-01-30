@@ -6,6 +6,7 @@ typedef enum {
     STRUCTURE_WALL = 1,
     STRUCTURE_DOOR = 2,
     STRUCTURE_PLANT = 3,
+    STRUCTURE_CRATE = 4,
     STRUCTURE_COUNT
 } StructureType;
 
@@ -26,6 +27,7 @@ typedef enum {
     RES11 = 12,
     // Plant /types
     MATERIAL_FERN = 13,
+    MATERIAL_TREE = 14,
     MATERIAL_COUNT
 } MaterialType;
 

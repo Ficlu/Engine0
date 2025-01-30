@@ -55,6 +55,17 @@ void InitEnemy(Enemy* enemy, int startGridX, int startGridY, float speed) {
     enemy->entity.currentPathIndex = 0;
     enemy->entity.isPlayer = false;
 
+    // Initialize animation structure
+    enemy->animation = malloc(sizeof(EnemyAnimation));
+    if (!enemy->animation) {
+        fprintf(stderr, "Failed to allocate enemy animation\n");
+        return;
+    }
+    enemy->animation->currentFrame = 0;
+    enemy->animation->lastFrameUpdate = 0;
+    enemy->animation->isMoving = false;
+    enemy->animation->facing = ENEMY_DIR_DOWN;
+
     int tempNearestX, tempNearestY;
     int attempts = 0;
     const int MAX_ATTEMPTS = 100;
@@ -102,6 +113,7 @@ void MovementAI(Enemy* enemy, Uint32 currentTime) {
         return;
     }
 
+    // Only recalculate path periodically
     if ((enemy->entity.gridX == enemy->entity.targetGridX &&
          enemy->entity.gridY == enemy->entity.targetGridY) ||
         enemy->entity.needsPathfinding) {
@@ -109,28 +121,79 @@ void MovementAI(Enemy* enemy, Uint32 currentTime) {
         /* Only change path with a 20% chance */
         if (rand() % 10 < 2) {
             int newTargetX, newTargetY;
+            int attempts = 0;
+            const int MAX_ATTEMPTS = 10;
+            bool foundValidTarget = false;
+
             do {
                 newTargetX = rand() % GRID_SIZE;
                 newTargetY = rand() % GRID_SIZE;
-            } while (!isWalkable(newTargetX, newTargetY));
+                attempts++;
 
-            // Only trigger pathfinding if the goal has actually changed
-            if (newTargetX != enemy->entity.finalGoalX || newTargetY != enemy->entity.finalGoalY) {
+                // Check if we can actually path to this location
+                int pathLength;
+                Node* testPath = findPath(enemy->entity.gridX, enemy->entity.gridY,
+                                        newTargetX, newTargetY, &pathLength);
+                
+                if (testPath != NULL) {
+                    foundValidTarget = true;
+                    free(testPath);
+                }
+            } while (!foundValidTarget && attempts < MAX_ATTEMPTS);
+
+            // Only set new target if we found a valid path
+            if (foundValidTarget) {
                 enemy->entity.finalGoalX = newTargetX;
                 enemy->entity.finalGoalY = newTargetY;
                 enemy->entity.needsPathfinding = true;
                 enemy->lastPathfindingTime = currentTime;
-                //printf("Enemy at (%d, %d) set new target: (%d, %d)\n", 
-                //       enemy->entity.gridX, enemy->entity.gridY, 
-                //       enemy->entity.finalGoalX, enemy->entity.finalGoalY);
             }
         } else if (enemy->entity.needsPathfinding) {
-            // If we're not changing the path, but pathfinding is needed (e.g., reached end of current path)
             enemy->lastPathfindingTime = currentTime;
         }
     }
-}
 
+    // Only update animation if we have a valid path
+    if (enemy->entity.cachedPath && enemy->entity.currentPathIndex < enemy->entity.cachedPathLength) {
+        float currentPosX = enemy->entity.posX;
+        float currentPosY = enemy->entity.posY;
+        float targetWorldX, targetWorldY;
+        
+        WorldToScreenCoords(
+            atomic_load(&enemy->entity.targetGridX), 
+            atomic_load(&enemy->entity.targetGridY), 
+            0, 0, 1, 
+            &targetWorldX, &targetWorldY
+        );
+
+        float dx = targetWorldX - currentPosX;
+        float dy = targetWorldY - currentPosY;
+        float distanceToTarget = sqrt(dx * dx + dy * dy);
+
+        #define POSITION_EPSILON 0.001f
+        enemy->animation->isMoving = distanceToTarget > POSITION_EPSILON;
+        
+        if (enemy->animation->isMoving) {
+            float angle = atan2f(dy, dx);
+            const float PI = 3.14159265358979323846f;
+            
+            // Only update direction if we're actually moving a significant amount
+            if (distanceToTarget > POSITION_EPSILON * 2.0f) {
+                if (angle < -3*PI/4 || angle > 3*PI/4) {
+                    enemy->animation->facing = ENEMY_DIR_LEFT;
+                } else if (angle < -PI/4) {
+                    enemy->animation->facing = ENEMY_DIR_DOWN;
+                } else if (angle < PI/4) {
+                    enemy->animation->facing = ENEMY_DIR_RIGHT;
+                } else {
+                    enemy->animation->facing = ENEMY_DIR_UP;
+                }
+            }
+        }
+    } else {
+        enemy->animation->isMoving = false;
+    }
+}
 /*
  * UpdateEnemy
  *
@@ -151,54 +214,71 @@ void UpdateEnemy(Enemy* enemy, Entity** allEntities, int entityCount, Uint32 cur
         return;
     }
 
-    MovementAI(enemy, currentTime);
-    
-    if (enemy->entity.needsPathfinding) {
-        // Check if the current path is still valid before recalculating
-        bool pathStillValid = false;
-        if (enemy->entity.cachedPath && enemy->entity.cachedPathLength > enemy->entity.currentPathIndex) {
-            int nextX = enemy->entity.cachedPath[enemy->entity.currentPathIndex].x;
-            int nextY = enemy->entity.cachedPath[enemy->entity.currentPathIndex].y;
-            if (isWalkable(nextX, nextY)) {
-                pathStillValid = true;
-            }
-        }
-
-        if (!pathStillValid) {
-            int pathLength;
-            Node* newPath = findPathGPU(enemy->entity.gridX, enemy->entity.gridY, 
-                                        enemy->entity.finalGoalX, enemy->entity.finalGoalY, 
-                                        &pathLength);
-            
-            if (newPath) {
-                if (enemy->entity.cachedPath) {
-                    free(enemy->entity.cachedPath);
+    // Only process AI and movement if the enemy is in a loaded chunk
+    if (isPositionInLoadedChunk(enemy->entity.posX, enemy->entity.posY)) {
+        MovementAI(enemy, currentTime);
+        
+        if (enemy->entity.needsPathfinding) {
+            // Check if the current path is still valid before recalculating
+            bool pathStillValid = false;
+            if (enemy->entity.cachedPath && enemy->entity.cachedPathLength > enemy->entity.currentPathIndex) {
+                int nextX = enemy->entity.cachedPath[enemy->entity.currentPathIndex].x;
+                int nextY = enemy->entity.cachedPath[enemy->entity.currentPathIndex].y;
+                if (isWalkable(nextX, nextY)) {
+                    pathStillValid = true;
                 }
+            }
+
+            if (!pathStillValid) {
+                int pathLength;
+                Node* newPath = findPathGPU(enemy->entity.gridX, enemy->entity.gridY, 
+                                          enemy->entity.finalGoalX, enemy->entity.finalGoalY, 
+                                          &pathLength);
                 
-                enemy->entity.cachedPath = newPath;
-                enemy->entity.cachedPathLength = pathLength;
-                enemy->entity.currentPathIndex = 0;
-                enemy->entity.needsPathfinding = false;
-                
-                if (pathLength > 1) {
-                    enemy->entity.targetGridX = newPath[1].x;
-                    enemy->entity.targetGridY = newPath[1].y;
+                if (newPath) {
+                    if (enemy->entity.cachedPath) {
+                        free(enemy->entity.cachedPath);
+                    }
+                    
+                    enemy->entity.cachedPath = newPath;
+                    enemy->entity.cachedPathLength = pathLength;
+                    enemy->entity.currentPathIndex = 0;
+                    enemy->entity.needsPathfinding = false;
+                    
+                    if (pathLength > 1) {
+                        enemy->entity.targetGridX = newPath[1].x;
+                        enemy->entity.targetGridY = newPath[1].y;
+                    } else {
+                        enemy->entity.targetGridX = enemy->entity.gridX;
+                        enemy->entity.targetGridY = enemy->entity.gridY;
+                    }
                 } else {
                     enemy->entity.targetGridX = enemy->entity.gridX;
                     enemy->entity.targetGridY = enemy->entity.gridY;
+                    enemy->entity.needsPathfinding = false;
                 }
-            } else {
-                enemy->entity.targetGridX = enemy->entity.gridX;
-                enemy->entity.targetGridY = enemy->entity.gridY;
-                enemy->entity.needsPathfinding = false;
             }
         }
-    }
-    
-    UpdateEntity(&enemy->entity, allEntities, entityCount);
-    
-    if (enemy->entity.currentPathIndex >= enemy->entity.cachedPathLength) {
-        enemy->entity.needsPathfinding = true;
+        
+        UpdateEntity(&enemy->entity, allEntities, entityCount);
+        
+        // Animation frame update logic using passed-in currentTime
+        if (enemy->animation->isMoving) {
+            if (currentTime - enemy->animation->lastFrameUpdate >= 70) {  // Using passed-in currentTime
+                enemy->animation->currentFrame = (enemy->animation->currentFrame + 1) % 4;
+                enemy->animation->lastFrameUpdate = currentTime;
+            }
+        } else {
+            enemy->animation->currentFrame = 0;  // Reset to standing frame when not moving
+        }
+        
+        if (enemy->entity.currentPathIndex >= enemy->entity.cachedPathLength) {
+            enemy->entity.needsPathfinding = true;
+        }
+    } else {
+        // For enemies in unloaded chunks, maintain their animation state but don't update position
+        enemy->animation->isMoving = false;
+        enemy->animation->currentFrame = 0;
     }
 }
 /*
@@ -216,7 +296,11 @@ void CleanupEnemy(Enemy* enemy) {
         return;
     }
 
-    /* CERT C MEM31-C: Free dynamically allocated memory when no longer needed */
+    if (enemy->animation) {
+        free(enemy->animation);
+        enemy->animation = NULL;
+    }
+
     if (enemy->entity.cachedPath) {
         free(enemy->entity.cachedPath);
         enemy->entity.cachedPath = NULL;

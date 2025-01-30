@@ -7,22 +7,9 @@
 #include "grid.h"
 #include "structure_types.h"
 
-typedef struct {
-    int x, y;
-} Point;
+#include "player.h"
 
-typedef struct {
-    Point* boundaryTiles;
-    int boundaryCount;
-    Point* interiorTiles;
-    int interiorCount;
-    Point centerPoint;
-    uint64_t hash;
-    int totalArea;
-    int wallCount;
-    int doorCount;
-    bool isValid;
-} EnclosureData;
+#include "enclosure_types.h"
 
 typedef struct {
     int* tiles;  // Array of tile indices within the enclosure
@@ -68,12 +55,12 @@ EnclosureData* findEnclosure(EnclosureManager* manager, uint64_t hash);
 void removeEnclosure(EnclosureManager* manager, uint64_t hash);
 void cleanupEnclosureManager(EnclosureManager* manager);
 extern EnclosureManager globalEnclosureManager; 
-
+bool isWithinBuildRange(float entityX, float entityY, int targetGridX, int targetGridY);
 struct Player;  // Forward declaration
 void cycleStructureType(PlacementMode* mode, bool forward);
 void initializeStructureSystem(void);
 bool canPlaceStructure(StructureType type, int gridX, int gridY);
-bool placeStructure(StructureType type, int gridX, int gridY);
+bool placeStructure(StructureType type, int gridX, int gridY, struct Player* player);
 void updateSurroundingStructures(int gridX, int gridY);
 const char* getStructureName(StructureType type);
 void cleanupStructureSystem(void);

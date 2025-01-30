@@ -6,7 +6,22 @@
 #include "structure_types.h"
 #include "structures.h"
 #include "inventory.h"
+#include <SDL2/SDL.h>
+#include "enclosure_types.h"
 
+typedef enum {
+    DIRECTION_DOWN,
+    DIRECTION_UP,
+    DIRECTION_LEFT,
+    DIRECTION_RIGHT
+} PlayerDirection;
+
+typedef struct {
+    uint8_t currentFrame;    
+    Uint32 lastFrameUpdate;  
+    bool isMoving;     
+    PlayerDirection facing;     
+} PlayerAnimation;
 // Define available skills
 typedef enum {
     SKILL_CONSTRUCTION = 0,
@@ -41,6 +56,7 @@ typedef struct Player {
     StructureType pendingBuildType;
     Skills skills;
     Inventory* inventory;
+    PlayerAnimation* animation; 
 } Player;
 
 // Function declarations

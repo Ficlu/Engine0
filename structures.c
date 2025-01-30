@@ -8,7 +8,9 @@
 #include <inttypes.h>
 #include "ui.h"
 #include "texture_coords.h"
-
+#include "player.h"
+#include "inventory.h"
+#include "storage.h"
 // Constants for texture coordinates from your existing system
 
 #define FNV_PRIME 1099511628211ULL
@@ -35,10 +37,10 @@ const char* getStructureName(StructureType type) {
     switch(type) {
         case STRUCTURE_WALL: return "Wall";
         case STRUCTURE_DOOR: return "Door";
+        case STRUCTURE_CRATE: return "Storage Crate";
         default: return "Unknown";
     }
 }
-
 /**
  * @brief Checks if a structure can be placed at the specified grid location.
  *
@@ -54,19 +56,30 @@ bool canPlaceStructure(StructureType type, int gridX, int gridY) {
         return false;
     }
 
+    // Add detailed cell state logging
+    printf("DEBUG: Checking cell (%d,%d) for placement of structure type %d:\n", gridX, gridY, type);
+    printf("  Current cell state:\n");
+    printf("  - structureType: %d\n", grid[gridY][gridX].structureType);
+    printf("  - terrainType: %d\n", grid[gridY][gridX].terrainType);
+    printf("  - materialType: %d\n", grid[gridY][gridX].materialType);
+    printf("  - biomeType: %d\n", grid[gridY][gridX].biomeType);
+    printf("  - flags: 0x%04X\n", grid[gridY][gridX].flags);
+    printf("  - walkable: %d\n", GRIDCELL_IS_WALKABLE(grid[gridY][gridX]));
+
     // Check if tile is already occupied
     if (grid[gridY][gridX].structureType != STRUCTURE_NONE) {
-        printf("Tile already occupied\n");
+        printf("Tile already occupied with structure type: %d\n", grid[gridY][gridX].structureType);
         return false;
     }
 
     switch (type) {
         case STRUCTURE_WALL:
             // Walls can be placed on any empty tile
+            printf("Wall placement check passed\n");
             return true;
 
         case STRUCTURE_DOOR: {
-            printf("Checking door at (%d,%d)\n", gridX, gridY);
+            printf("Checking door placement at (%d,%d)\n", gridX, gridY);
             
             // Check specifically for WALLS (not just any structure)
             bool hasNorth = (gridY > 0) && grid[gridY-1][gridX].structureType == STRUCTURE_WALL;
@@ -74,7 +87,7 @@ bool canPlaceStructure(StructureType type, int gridX, int gridY) {
             bool hasEast = (gridX < GRID_SIZE-1) && grid[gridY][gridX+1].structureType == STRUCTURE_WALL;
             bool hasWest = (gridX > 0) && grid[gridY][gridX-1].structureType == STRUCTURE_WALL;
             
-            printf("Walls: N:%d S:%d E:%d W:%d\n", hasNorth, hasSouth, hasEast, hasWest);
+            printf("Adjacent walls: N:%d S:%d E:%d W:%d\n", hasNorth, hasSouth, hasEast, hasWest);
             
             bool valid = hasNorth || hasSouth || hasEast || hasWest;
             printf("Door placement: %s\n", valid ? "valid" : "invalid");
@@ -83,13 +96,31 @@ bool canPlaceStructure(StructureType type, int gridX, int gridY) {
 
         case STRUCTURE_PLANT:
             // Plants can only be placed on empty walkable tiles
-            return GRIDCELL_IS_WALKABLE(grid[gridY][gridX]);
+            if (!GRIDCELL_IS_WALKABLE(grid[gridY][gridX])) {
+                printf("Cannot place plant - tile not walkable\n");
+                return false;
+            }
+            printf("Plant placement check passed\n");
+            return true;
+
+        case STRUCTURE_CRATE:
+            // Crates can only be placed on walkable, non-water terrain
+            if (!GRIDCELL_IS_WALKABLE(grid[gridY][gridX])) {
+                printf("Cannot place crate - tile not walkable\n");
+                return false;
+            }
+            if (grid[gridY][gridX].terrainType == TERRAIN_WATER) {
+                printf("Cannot place crate on water\n");
+                return false;
+            }
+            printf("Crate placement check passed\n");
+            return true;
 
         default:
+            printf("Unknown structure type: %d\n", type);
             return false;
     }
 }
-
 /**
  * @brief Updates wall textures based on surrounding structures.
  *
@@ -99,15 +130,9 @@ bool canPlaceStructure(StructureType type, int gridX, int gridY) {
  * Adjusts the texture coordinates for a wall tile to reflect its surroundings.
  */
 void updateWallTextures(int gridX, int gridY) {
-    // Skip if not a wall/door
     if (!isWallOrDoor(gridX, gridY)) return;
+    if (grid[gridY][gridX].structureType == STRUCTURE_DOOR) return;
 
-    // Preserve door textures
-    if (grid[gridY][gridX].structureType == STRUCTURE_DOOR) {
-        return;  // Let toggleDoor handle door textures
-    }
-
-    // Get adjacent wall info - explicitly check for walls/doors only
     bool hasNorth = (gridY > 0) && isWallOrDoor(gridX, gridY-1);
     bool hasSouth = (gridY < GRID_SIZE-1) && isWallOrDoor(gridX, gridY+1);
     bool hasEast = (gridX < GRID_SIZE-1) && isWallOrDoor(gridX+1, gridY);
@@ -116,7 +141,14 @@ void updateWallTextures(int gridX, int gridY) {
     TextureCoords* texCoords;
     const char* textureId;
 
-    if (hasNorth && hasEast && !hasWest && !hasSouth) {
+    if (hasEast && hasWest) {
+        if (hasSouth) {
+            textureId = "wall_top_intersection";
+        } else {
+            textureId = "wall_front";
+        }
+    }
+    else if (hasNorth && hasEast && !hasWest && !hasSouth) {
         textureId = "wall_bottom_left";
     } 
     else if (hasNorth && hasWest && !hasEast && !hasSouth) {
@@ -127,13 +159,16 @@ void updateWallTextures(int gridX, int gridY) {
     } 
     else if (hasSouth && hasWest && !hasEast && !hasNorth) {
         textureId = "wall_top_right";
-    } 
-    else if (hasNorth || hasSouth) {
+    }
+    else if ((hasNorth || hasSouth) && (!hasEast || !hasWest)) {
         textureId = "wall_vertical";
     } 
     else {
         textureId = "wall_front";
     }
+
+    printf("Wall at (%d,%d) - N:%d S:%d E:%d W:%d - Selected texture: %s\n",
+           gridX, gridY, hasNorth, hasSouth, hasEast, hasWest, textureId);
 
     texCoords = getTextureCoords(textureId);
     if (!texCoords) {
@@ -144,8 +179,17 @@ void updateWallTextures(int gridX, int gridY) {
     grid[gridY][gridX].wallTexX = texCoords->u1;
     grid[gridY][gridX].wallTexY = texCoords->v1;
 }
+bool isWithinBuildRange(float entityX, float entityY, int targetGridX, int targetGridY) {
+    float targetWorldX, targetWorldY;
+    WorldToScreenCoords(targetGridX, targetGridY, 0, 0, 1, &targetWorldX, &targetWorldY);
 
+    float dx = targetWorldX - entityX;
+    float dy = targetWorldY - entityY;
+    float distance = sqrt(dx * dx + dy * dy);
 
+    // BUILD_RANGE is in world units, matching our continuous coordinate system
+    return distance <= (TILE_SIZE * 1.5f);  // 1.5 tiles reach
+}
 
 /**
  * @brief Updates surrounding structures after a placement.
@@ -179,51 +223,64 @@ void updateSurroundingStructures(int gridX, int gridY) {
  * @param gridY The Y-coordinate on the grid.
  * @return `true` if the structure was placed successfully; otherwise, `false`.
  */
-bool placeStructure(StructureType type, int gridX, int gridY) {
+bool placeStructure(StructureType type, int gridX, int gridY, struct Player* player) {
     if (!canPlaceStructure(type, gridX, gridY)) {
         return false;
     }
 
-    // Check if an entity is targeting the tile
     if (isEntityTargetingTile(gridX, gridY)) {
         printf("Cannot place structure at (%d, %d): entity is targeting this tile.\n", gridX, gridY);
         return false;
     }
 
-    // Set the structure type
     grid[gridY][gridX].structureType = type;
-    grid[gridY][gridX].materialType = MATERIAL_WOOD; // Default to wood for walls/doors
+    grid[gridY][gridX].materialType = MATERIAL_WOOD;
 
     TextureCoords* texCoords;
 
     switch(type) {
-        case STRUCTURE_WALL:
+        case STRUCTURE_WALL: {
             GRIDCELL_SET_WALKABLE(grid[gridY][gridX], false);
-            // Initial texture will be updated by updateSurroundingStructures
-            texCoords = getTextureCoords("wall_front");
-            if (!texCoords) {
-                fprintf(stderr, "Failed to get wall texture coordinates\n");
-                return false;
+            
+            // First update the placed wall based on its surroundings
+            updateWallTextures(gridX, gridY);
+
+            // Check and update each wall connected to our placed wall
+            
+            // North connected wall
+            if (gridY > 0 && isWallOrDoor(gridX, gridY-1)) {
+                updateWallTextures(gridX, gridY-1);
             }
-            grid[gridY][gridX].wallTexX = texCoords->u1;
-            grid[gridY][gridX].wallTexY = texCoords->v1;
-            updateSurroundingStructures(gridX, gridY);
+            
+            // South connected wall
+            if (gridY < GRID_SIZE-1 && isWallOrDoor(gridX, gridY+1)) {
+                updateWallTextures(gridX, gridY+1);
+            }
+            
+            // East connected wall
+            if (gridX < GRID_SIZE-1 && isWallOrDoor(gridX+1, gridY)) {
+                updateWallTextures(gridX+1, gridY);
+            }
+            
+            // West connected wall
+            if (gridX > 0 && isWallOrDoor(gridX-1, gridY)) {
+                updateWallTextures(gridX-1, gridY);
+            }
+            
+
             break;
+        }
             
         case STRUCTURE_DOOR: {
             GRIDCELL_SET_WALKABLE(grid[gridY][gridX], false);
-            // Determine door orientation based on adjacent walls
             bool hasNorth = (gridY > 0) && isWallOrDoor(gridX, gridY-1);
             bool hasSouth = (gridY < GRID_SIZE-1) && isWallOrDoor(gridX, gridY+1);
 
             const char* textureId;
-            // Set door orientation based on adjacent walls
             if (hasNorth || hasSouth) {
-                // Vertical door
                 GRIDCELL_SET_ORIENTATION(grid[gridY][gridX], 0);
                 textureId = "door_vertical";
             } else {
-                // Horizontal door
                 GRIDCELL_SET_ORIENTATION(grid[gridY][gridX], 1);
                 textureId = "door_horizontal";
             }
@@ -236,16 +293,26 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
             grid[gridY][gridX].wallTexX = texCoords->u1;
             grid[gridY][gridX].wallTexY = texCoords->v1;
             
-            updateSurroundingStructures(gridX, gridY);
+            // Update surrounding walls
+            if (gridY > 0) updateWallTextures(gridX, gridY-1);
+            if (gridY < GRID_SIZE-1) updateWallTextures(gridX, gridY+1);
+            if (gridX > 0) updateWallTextures(gridX-1, gridY);
+            if (gridX < GRID_SIZE-1) updateWallTextures(gridX+1, gridY);
             break;
         }
 
         case STRUCTURE_PLANT:
             GRIDCELL_SET_WALKABLE(grid[gridY][gridX], false);
-            grid[gridY][gridX].materialType = MATERIAL_FERN; // Default plant type
-            texCoords = getTextureCoords("item_fern");
+            if ((float)rand() / RAND_MAX < 0.3f) {
+                grid[gridY][gridX].materialType = MATERIAL_TREE;
+                texCoords = getTextureCoords("tree_trunk");
+            } else {
+                grid[gridY][gridX].materialType = MATERIAL_FERN;
+                texCoords = getTextureCoords("item_fern");
+            }
+
             if (!texCoords) {
-                fprintf(stderr, "Failed to get fern texture coordinates\n");
+                fprintf(stderr, "Failed to get plant texture coordinates\n");
                 return false;
             }
             grid[gridY][gridX].wallTexX = texCoords->u1;
@@ -253,14 +320,31 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
             printf("Placed plant: structureType=%d, materialType=%d\n", 
                    grid[gridY][gridX].structureType, 
                    grid[gridY][gridX].materialType);
-            return true; // Return early for plants - skip enclosure detection
-            break;
+            return true;
+
+        case STRUCTURE_CRATE:
+            GRIDCELL_SET_WALKABLE(grid[gridY][gridX], false);
+            texCoords = getTextureCoords("item_plant_crate");
+            if (!texCoords) {
+                fprintf(stderr, "Failed to get crate texture coordinates\n");
+                return false;
+            }
+            
+            CrateInventory* newCrate = createCrate(gridX, gridY);
+            if (!newCrate) {
+                fprintf(stderr, "Failed to create crate storage\n");
+                return false;
+            }
+            
+            grid[gridY][gridX].wallTexX = texCoords->u1;
+            grid[gridY][gridX].wallTexY = texCoords->v1;
+            printf("Placed storage crate at (%d, %d)\n", gridX, gridY);
+            return true;
 
         default:
             return false;
     }
 
-    // Only check for enclosures if we placed a wall or door
     if (type == STRUCTURE_WALL || type == STRUCTURE_DOOR) {
         Enclosure enclosure = detectEnclosure(gridX, gridY);
         if (enclosure.isValid) {
@@ -289,15 +373,12 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
                 }
             }
 
-            // Calculate the centroid for the enclosure
             float centroidX = (float)sumX / enclosure.tileCount;
             float centroidY = (float)sumY / enclosure.tileCount;
 
-            // Calculate enclosure area and perimeter
             int totalArea = enclosure.tileCount;
             int perimeter = wallCount + doorCount;
 
-            // Initialize the enclosure data
             newEnclosure.hash = calculateEnclosureHash(boundaryPoints, enclosure.tileCount, totalArea);
             newEnclosure.centerPoint.x = centroidX;
             newEnclosure.centerPoint.y = centroidY;
@@ -306,14 +387,8 @@ bool placeStructure(StructureType type, int gridX, int gridY) {
             newEnclosure.doorCount = doorCount;
             newEnclosure.boundaryCount = enclosure.tileCount;
 
-            // Store boundary points - if we need to store them, we need to add this member to EnclosureData
-            // For now, we can free them since they're already used in the hash calculation
             free(boundaryPoints);
-
-            // Add the enclosure to the manager
-            addEnclosure(&globalEnclosureManager, &newEnclosure);;
-
-            // Free the enclosure tiles (but not boundaryPoints, as it's now owned by the enclosure)
+            addEnclosure(&globalEnclosureManager, &newEnclosure);
             free(enclosure.tiles);
         }
     }
@@ -342,13 +417,19 @@ void cycleStructureType(PlacementMode* mode, bool forward) {
 
     if (forward) {
         mode->currentType = (mode->currentType + 1);
-        if (mode->currentType >= STRUCTURE_PLANT) {  // Skip plant and wrap back to wall
+        if (mode->currentType == STRUCTURE_PLANT) {  // Skip plant
+            mode->currentType++;
+        }
+        if (mode->currentType >= STRUCTURE_COUNT) {  // Wrap back to wall
             mode->currentType = STRUCTURE_WALL;
         }
     } else {
         mode->currentType = (mode->currentType - 1);
-        if (mode->currentType <= STRUCTURE_NONE) {  // If we hit NONE or below, wrap to door
-            mode->currentType = STRUCTURE_DOOR;
+        if (mode->currentType == STRUCTURE_PLANT) {  // Skip plant
+            mode->currentType--;
+        }
+        if (mode->currentType <= STRUCTURE_NONE) {  // If we hit NONE, wrap to crate
+            mode->currentType = STRUCTURE_CRATE;
         }
     }
 
@@ -441,19 +522,9 @@ bool toggleDoor(int gridX, int gridY, Player* player) {
         bool currentlyOpen = GRIDCELL_IS_WALKABLE(grid[gridY][gridX]);
         GRIDCELL_SET_WALKABLE(grid[gridY][gridX], !currentlyOpen);
         
-        // Get orientation and current state
-        bool isVertical = (GRIDCELL_GET_ORIENTATION(grid[gridY][gridX]) == 0);
-        bool willBeOpen = !currentlyOpen;  // What state it will be after toggling
-
-        // Get appropriate texture coordinates
+        // Get appropriate texture coordinates based on new state
         TextureCoords* texCoords;
-        const char* textureId;
-
-        if (isVertical) {
-            textureId = willBeOpen ? "door_vertical_open" : "door_vertical";
-        } else {
-            textureId = willBeOpen ? "door_horizontal_open" : "door_horizontal";
-        }
+        const char* textureId = currentlyOpen ? "door_horizontal" : "door_horizontal_open";
 
         texCoords = getTextureCoords(textureId);
         if (!texCoords) {

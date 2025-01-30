@@ -12,7 +12,8 @@
 #include "gameloop.h"
 #include "ui.h"
 #include "rendering.h"
-
+#include "storage.h"
+#include "overlay.h"
 // Declare external variables
 extern atomic_bool isRunning;
 extern Player player;
@@ -60,7 +61,115 @@ static void HandleSaveLoad(SDL_KeyboardEvent* key) {
         }
     }
 }
+static void HandleCrateInteraction(int gridX, int gridY, uint8_t button) {
+    if (!IsWithinPlayerRange(gridX, gridY, player.entity.gridX, player.entity.gridY)) {
+        AdjacentTile nearest = findNearestAdjacentTile(gridX, gridY,
+                                                     player.entity.gridX, 
+                                                     player.entity.gridY,
+                                                     true);
+        if (nearest.x != -1) {
+            player.entity.finalGoalX = nearest.x;
+            player.entity.finalGoalY = nearest.y;
+            player.entity.targetGridX = player.entity.gridX;
+            player.entity.targetGridY = player.entity.gridY;
+            player.entity.needsPathfinding = true;
+            
+            player.targetHarvestX = gridX;
+            player.targetHarvestY = gridY;
+            player.hasHarvestTarget = true;
+            player.pendingHarvestType = button;
+        }
+        return;
+    }
 
+    uint32_t crateId = gridY * GRID_SIZE + gridX;
+    CrateInventory* crate = findCrate(crateId);
+    
+    if (!crate) {
+        printf("No crate found at location (%d, %d)\n", gridX, gridY);
+        return;
+    }
+
+    // Get mouse position for slot detection
+    int mouseX, mouseY;
+    SDL_GetMouseState(&mouseX, &mouseY);
+
+    if (crate->isOpen) {
+        // Convert to UI-local coordinates
+        float centeredX = ((float)GAME_VIEW_WIDTH - CRATE_UI_WIDTH) * 0.5f;
+        float centeredY = ((float)WINDOW_HEIGHT - CRATE_UI_HEIGHT) * 0.5f;
+        
+        // Calculate slot dimensions
+        const float SLOT_SIZE = 48.0f;
+        const float PADDING = 16.0f;
+        const int SLOTS_PER_ROW = (int)((CRATE_UI_WIDTH - PADDING) / (SLOT_SIZE + PADDING));
+        
+        // Convert mouse to local coordinates relative to UI start
+        float localX = mouseX - centeredX - PADDING;
+        float localY = mouseY - centeredY - PADDING;
+        
+        // Calculate slot position including padding
+        int slotX = (int)(localX / (SLOT_SIZE + PADDING));
+        int slotY = (int)(localY / (SLOT_SIZE + PADDING));
+        
+        // Calculate precise position within the slot grid
+        float slotStartX = centeredX + PADDING + slotX * (SLOT_SIZE + PADDING);
+        float slotStartY = centeredY + PADDING + slotY * (SLOT_SIZE + PADDING);
+        
+        // Check if click is within actual slot bounds
+        if (mouseX >= slotStartX && mouseX < slotStartX + SLOT_SIZE &&
+            mouseY >= slotStartY && mouseY < slotStartY + SLOT_SIZE &&
+            slotX >= 0 && slotX < SLOTS_PER_ROW) {
+            
+            int slotIndex = slotY * SLOTS_PER_ROW + slotX;
+            printf("Clicked slot %d at position %d,%d\n", slotIndex, slotX, slotY);
+            
+            // Find the material for this slot by counting visible slots
+            int visibleSlot = 0;
+            for (int i = 0; i < MATERIAL_COUNT; i++) {
+                if (isPlantMaterial(i) && crate->items[i].count > 0) {
+                    // For each item, we need to account for all its instances
+                    for (int instance = 0; instance < crate->items[i].count; instance++) {
+                        if (visibleSlot == slotIndex) {
+                            if (removeFromCrateToInventory(crate, i, player.inventory)) {
+                                printf("Successfully moved item from crate to inventory\n");
+                            } else {
+                                printf("Failed to move item - inventory might be full\n");
+                            }
+                            return;
+                        }
+                        visibleSlot++;
+                    }
+                }
+            }
+        }
+        return;
+    }
+
+    if (button == SDL_BUTTON_LEFT) {
+        // Left click: Quick deposit plants from inventory
+        Inventory* playerInv = player.inventory;
+        for (int i = 0; i < playerInv->slotCount; i++) {
+            Item* item = playerInv->slots[i];
+            if (item) {
+                MaterialType matType = itemTypeToMaterialType(item->type);
+                if (isPlantMaterial(matType)) {
+                    if (canAddToCrate(crate, matType, 1)) {
+                        if (addToCrate(crate, matType, 1)) {
+                            playerInv->slots[i] = NULL;
+                            DestroyItem(item);
+                        }
+                    }
+                }
+            }
+        }
+        printf("Deposited available plants into crate\n");
+    }
+    else if (button == SDL_BUTTON_RIGHT) {
+        crate->isOpen = !crate->isOpen;
+        printf("Toggled crate UI: %s\n", crate->isOpen ? "open" : "closed");
+    }
+}
 // Handle mode toggles and placement controls
 static void HandleModeToggles(SDL_KeyboardEvent* key) {
     switch(key->keysym.sym) {
@@ -135,50 +244,41 @@ static void HandleHarvesting(int gridX, int gridY) {
 
 // Handle building placement
 static void HandlePlacement(int gridX, int gridY, Uint8 button) {
+    int playerGridX = atomic_load(&player.entity.gridX);
+    int playerGridY = atomic_load(&player.entity.gridY);
+
     if (button == SDL_BUTTON_LEFT) {
-        if (IsWithinPlayerRange(gridX, gridY, player.entity.gridX, player.entity.gridY)) {
+        if (IsWithinPlayerRange(gridX, gridY, playerGridX, playerGridY)) {
             printf("Attempting direct placement at (%d, %d)\n", gridX, gridY);
-            bool placed = placeStructure(placementMode.currentType, gridX, gridY);
+bool placed = placeStructure(placementMode.currentType, gridX, gridY, &player);
             printf("Direct placement result: %s\n", placed ? "success" : "failed");
         } else {
             AdjacentTile nearest = findNearestAdjacentTile(gridX, gridY,
-                                                         player.entity.gridX,
-                                                         player.entity.gridY,
+                                                         playerGridX, 
+                                                         playerGridY,
                                                          true);
             if (nearest.x != -1) {
-                int pathLength;
-                Node* path = findPath(player.entity.gridX, player.entity.gridY, 
-                                    nearest.x, nearest.y, &pathLength);
+                atomic_store(&player.entity.finalGoalX, nearest.x);
+                atomic_store(&player.entity.finalGoalY, nearest.y);
+                atomic_store(&player.entity.targetGridX, playerGridX);
+                atomic_store(&player.entity.targetGridY, playerGridY);
+                atomic_store(&player.entity.needsPathfinding, true);
                 
-                if (path != NULL) {
-                    player.entity.finalGoalX = nearest.x;
-                    player.entity.finalGoalY = nearest.y;
-                    player.entity.targetGridX = player.entity.gridX;
-                    player.entity.targetGridY = player.entity.gridY;
-                    player.entity.needsPathfinding = true;
-                    player.targetBuildX = gridX;
-                    player.targetBuildY = gridY;
-                    player.hasBuildTarget = true;
-                    player.pendingBuildType = placementMode.currentType;
-                    free(path);
-                }
+                player.targetBuildX = gridX;
+                player.targetBuildY = gridY;
+                player.hasBuildTarget = true;
+                player.pendingBuildType = placementMode.currentType;
             }
         }
     } else if (button == SDL_BUTTON_RIGHT) {
-        if (grid[gridY][gridX].structureType == STRUCTURE_WALL || 
-            grid[gridY][gridX].structureType == STRUCTURE_DOOR) {
-            if (IsWithinPlayerRange(gridX, gridY, player.entity.gridX, player.entity.gridY)) {
-                grid[gridY][gridX].structureType = STRUCTURE_NONE;  
-                GRIDCELL_SET_WALKABLE(grid[gridY][gridX], true);
-                updateSurroundingStructures(gridX, gridY);
-                printf("Removed structure at grid position: %d, %d\n", gridX, gridY);
-            } else {
-                printf("Can't remove structure - too far away\n");
-            }
+        if (IsWithinPlayerRange(gridX, gridY, playerGridX, playerGridY)) {
+            // Clear the tile
+            grid[gridY][gridX].structureType = STRUCTURE_NONE;
+            GRIDCELL_SET_WALKABLE(grid[gridY][gridX], true);
+            updateSurroundingStructures(gridX, gridY);
         }
     }
 }
-
 // Handle player movement
 static void HandleMovement(int gridX, int gridY) {
     player.hasHarvestTarget = false;
@@ -208,31 +308,63 @@ static void HandleMouseInput(SDL_Event* event) {
     switch (event->type) {
         case SDL_MOUSEBUTTONDOWN:
             if (isPointInGameView(mouseX, mouseY)) {
-                GridCoordinates coords = WindowToGridCoordinates(mouseX, mouseY, 
-                    player.cameraCurrentX, player.cameraCurrentY, player.zoomFactor);
-                
-                if (coords.gridX >= 0 && coords.gridX < GRID_SIZE && 
-                    coords.gridY >= 0 && coords.gridY < GRID_SIZE) {
-                    
-                    if (!placementMode.active) {
-                        switch (grid[coords.gridY][coords.gridX].structureType) {
-                            case STRUCTURE_PLANT:
-                                if (grid[coords.gridY][coords.gridX].materialType == MATERIAL_FERN) {
-                                    HandleHarvesting(coords.gridX, coords.gridY);
-                                }
-                                break;
-                            case STRUCTURE_DOOR:
-                                printf("Door clicked, attempting toggle\n");
-                                toggleDoor(coords.gridX, coords.gridY, &player);
-                                break;
-                            default:
-                                if (GRIDCELL_IS_WALKABLE(grid[coords.gridY][coords.gridX])) {
-                                    HandleMovement(coords.gridX, coords.gridY);
-                                }
-                                break;
+                // First check if we clicked in any open crate UI
+                bool clickedCrateUI = false;
+                for (size_t i = 0; i < globalStorageManager.count; i++) {
+                    CrateInventory* crate = &globalStorageManager.crates[i];
+                    if (crate->isOpen) {
+                        // Calculate UI bounds
+                        float centeredX = ((float)GAME_VIEW_WIDTH - CRATE_UI_WIDTH) * 0.5f;
+                        float centeredY = ((float)WINDOW_HEIGHT - CRATE_UI_HEIGHT) * 0.5f;
+
+                        if (mouseX >= centeredX && mouseX <= centeredX + CRATE_UI_WIDTH &&
+                            mouseY >= centeredY && mouseY <= centeredY + CRATE_UI_HEIGHT) {
+                            
+                            int gridX = crate->crateId % GRID_SIZE;
+                            int gridY = crate->crateId / GRID_SIZE;
+                            HandleCrateInteraction(gridX, gridY, event->button.button);
+                            clickedCrateUI = true;
+                            break;
                         }
-                    } else {
-                        HandlePlacement(coords.gridX, coords.gridY, event->button.button);
+                    }
+                }
+
+                // Only process world clicks if we didn't click a UI element
+                if (!clickedCrateUI) {
+                    // Close all open crates when clicking outside
+                    for (size_t i = 0; i < globalStorageManager.count; i++) {
+                        globalStorageManager.crates[i].isOpen = false;
+                    }
+
+                    GridCoordinates coords = WindowToGridCoordinates(mouseX, mouseY, 
+                        player.cameraCurrentX, player.cameraCurrentY, player.zoomFactor);
+                    
+                    if (coords.gridX >= 0 && coords.gridX < GRID_SIZE && 
+                        coords.gridY >= 0 && coords.gridY < GRID_SIZE) {
+                        
+                        if (!placementMode.active) {
+                            switch (grid[coords.gridY][coords.gridX].structureType) {
+                                case STRUCTURE_PLANT:
+                                    if (grid[coords.gridY][coords.gridX].materialType == MATERIAL_FERN) {
+                                        HandleHarvesting(coords.gridX, coords.gridY);
+                                    }
+                                    break;
+                                case STRUCTURE_DOOR:
+                                    printf("Door clicked, attempting toggle\n");
+                                    toggleDoor(coords.gridX, coords.gridY, &player);
+                                    break;
+                                case STRUCTURE_CRATE:
+                                    HandleCrateInteraction(coords.gridX, coords.gridY, event->button.button);
+                                    break;
+                                default:
+                                    if (GRIDCELL_IS_WALKABLE(grid[coords.gridY][coords.gridX])) {
+                                        HandleMovement(coords.gridX, coords.gridY);
+                                    }
+                                    break;
+                            }
+                        } else {
+                            HandlePlacement(coords.gridX, coords.gridY, event->button.button);
+                        }
                     }
                 }
             } else if (isPointInSidebar(mouseX, mouseY)) {
@@ -258,10 +390,9 @@ static void HandleMouseInput(SDL_Event* event) {
             break;
     }
 }
-
 static void HandleZoom(int wheelDelta) {
     float zoomSpeed = 0.2f;
-    float minZoom = 0.2f;
+    float minZoom = 2.0f;
     float maxZoom = 20.0f;
 
     if (wheelDelta > 0) {

@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
+#include <time.h>
 
 #include "asciiMap.h" 
 GridCell grid[GRID_SIZE][GRID_SIZE];
@@ -25,6 +26,10 @@ float smoothNoise(int x, int y);
 float interpolatedNoise(float x, float y);
 float perlinNoise(float x, float y, float persistence, int octaves);
 
+static inline uint8_t getRandomRotation(void) {
+    return rand() % 4;  // Returns 0-3 for 90-degree rotations
+}
+
 /*
  * initializeGrid
  *
@@ -33,20 +38,29 @@ float perlinNoise(float x, float y, float persistence, int octaves);
  * @param[in] size The size of the grid to initialize
  */
 void initializeGrid(int size) {
+    static bool seeded = false;
+    if (!seeded) {
+        srand((unsigned int)time(NULL) ^ (unsigned int)clock());
+        seeded = true;
+    }
+
     for (int y = 0; y < size; y++) {
         for (int x = 0; x < size; x++) {
+            grid[y][x].flags = 0;
             grid[y][x].terrainType = TERRAIN_GRASS;
             grid[y][x].biomeType = BIOME_PLAINS;
             grid[y][x].structureType = 0;
-            grid[y][x].materialType = 0;  // Initialize material
+            grid[y][x].materialType = 0;
+            grid[y][x].wallTexX = 0.0f;
+            grid[y][x].wallTexY = 0.0f;
+            
             GRIDCELL_SET_WALKABLE(grid[y][x], true);
             GRIDCELL_SET_ORIENTATION(grid[y][x], 0);
-            grid[y][x].flags &= ~0xE0;  // Clear reserved bits
-            grid[y][x].wallTexX = 0.0f / 3.0f;  
-            grid[y][x].wallTexY = 1.0f / 4.0f;  
+            GRIDCELL_SET_TERRAIN_ROTATION(grid[y][x], (uint16_t)(rand() % 4));
+            GRIDCELL_SET_STRUCTURE_ROTATION(grid[y][x], 0);
+            GRIDCELL_SET_TERRAIN_VARIATION(grid[y][x], 0);
         }
     }
-    printf("Grid initialized with size %d x %d\n", size, size);
 }
 /*
  * cleanupGrid
@@ -125,10 +139,11 @@ void debugPrintGridSection(int startX, int startY, int width, int height) {
     }
     printf("\n");
 }
-
 void writeChunkToGrid(const Chunk* chunk) {
     int startX = chunk->chunkX * CHUNK_SIZE;
     int startY = chunk->chunkY * CHUNK_SIZE;
+    
+    printf("Writing chunk (%d,%d) to grid\n", chunk->chunkX, chunk->chunkY);
     
     for (int y = 0; y < CHUNK_SIZE; y++) {
         for (int x = 0; x < CHUNK_SIZE; x++) {
@@ -136,29 +151,60 @@ void writeChunkToGrid(const Chunk* chunk) {
             int gridY = startY + y;
             
             if (gridX < GRID_SIZE && gridY < GRID_SIZE) {
-                // Preserve existing structure data
+                // Store existing structure data first
                 uint8_t oldStructureType = grid[gridY][gridX].structureType;
                 uint8_t oldMaterialType = grid[gridY][gridX].materialType;
                 uint8_t oldOrientation = GRIDCELL_GET_ORIENTATION(grid[gridY][gridX]);
                 bool wasWalkable = GRIDCELL_IS_WALKABLE(grid[gridY][gridX]);
                 float oldTexX = grid[gridY][gridX].wallTexX;
                 float oldTexY = grid[gridY][gridX].wallTexY;
-                
-                // Update the grid cell with new chunk data
-                grid[gridY][gridX] = chunk->cells[y][x];
-                
-                // Restore structure data if it existed
+                uint16_t oldFlags = grid[gridY][gridX].flags;
+
+                // Get new terrain data from chunk
+                TerrainType newTerrain = chunk->cells[y][x].terrainType;
+                uint16_t newFlags = chunk->cells[y][x].flags;
+                uint8_t newBiomeType = chunk->cells[y][x].biomeType;
+
                 if (oldStructureType != 0) {
+                    printf("DEBUG: Preserving structure at (%d,%d) - type: %d, material: %d\n",
+                           gridX, gridY, oldStructureType, oldMaterialType);
+                    
+                    // Update terrain data only
+                    grid[gridY][gridX].terrainType = newTerrain;
+                    grid[gridY][gridX].biomeType = newBiomeType;
+                    
+                    // Preserve all structure data
                     grid[gridY][gridX].structureType = oldStructureType;
                     grid[gridY][gridX].materialType = oldMaterialType;
-                    GRIDCELL_SET_ORIENTATION(grid[gridY][gridX], oldOrientation);
-                    GRIDCELL_SET_WALKABLE(grid[gridY][gridX], wasWalkable);
                     grid[gridY][gridX].wallTexX = oldTexX;
                     grid[gridY][gridX].wallTexY = oldTexY;
+                    
+                    // Preserve structure flags while updating terrain flags
+                    uint16_t preservedFlags = oldFlags & STRUCTURE_PRESERVE_MASK;
+                    uint16_t newTerrainFlags = newFlags & TERRAIN_MASK;
+                    grid[gridY][gridX].flags = preservedFlags | newTerrainFlags;
+                    
+                    // Ensure walkability and orientation are maintained
+                    GRIDCELL_SET_WALKABLE(grid[gridY][gridX], wasWalkable);
+                    GRIDCELL_SET_ORIENTATION(grid[gridY][gridX], oldOrientation);
+                    
+                    // Verify structure preservation
+                    if (grid[gridY][gridX].structureType != oldStructureType || 
+                        grid[gridY][gridX].materialType != oldMaterialType ||
+                        GRIDCELL_GET_ORIENTATION(grid[gridY][gridX]) != oldOrientation ||
+                        GRIDCELL_IS_WALKABLE(grid[gridY][gridX]) != wasWalkable) {
+                        printf("ERROR: Structure data corruption at (%d,%d)\n", gridX, gridY);
+                        printf("Original: type=%d, material=%d, orientation=%d, walkable=%d\n",
+                               oldStructureType, oldMaterialType, oldOrientation, wasWalkable);
+                        printf("Current:  type=%d, material=%d, orientation=%d, walkable=%d\n",
+                               grid[gridY][gridX].structureType, grid[gridY][gridX].materialType,
+                               GRIDCELL_GET_ORIENTATION(grid[gridY][gridX]),
+                               GRIDCELL_IS_WALKABLE(grid[gridY][gridX]));
+                    }
+                } else {
+                    // No structure - do a complete cell copy
+                    grid[gridY][gridX] = chunk->cells[y][x];
                 }
-
-                // Ensure reserved bits are clear
-                grid[gridY][gridX].flags &= 0x1F;
             }
         }
     }
@@ -285,10 +331,9 @@ ChunkManager* globalChunkManager = NULL;
 void initChunkManager(ChunkManager* manager, int loadRadius) {
     manager->loadRadius = loadRadius;
     manager->numLoadedChunks = 0;
-    manager->playerChunk.x = -9999;  // Invalid initial position
+    manager->playerChunk.x = -9999;
     manager->playerChunk.y = -9999;
 
-    // Initialize all chunk pointers to NULL
     for (int i = 0; i < MAX_LOADED_CHUNKS; i++) {
         manager->chunks[i] = NULL;
         manager->chunkCoords[i].x = 0;
@@ -304,10 +349,13 @@ void initChunkManager(ChunkManager* manager, int loadRadius) {
                 for (int x = 0; x < CHUNK_SIZE; x++) {
                     manager->storedChunkData[cy][cx][y][x].terrainType = TERRAIN_GRASS;
                     manager->storedChunkData[cy][cx][y][x].biomeType = BIOME_PLAINS;
-                    GRIDCELL_SET_WALKABLE(manager->storedChunkData[cy][cx][y][x], true);
                     manager->storedChunkData[cy][cx][y][x].structureType = 0;
+                    
+                    // Initialize flags without clearing rotation bits
+                    manager->storedChunkData[cy][cx][y][x].flags = 0;
+                    GRIDCELL_SET_WALKABLE(manager->storedChunkData[cy][cx][y][x], true);
                     GRIDCELL_SET_ORIENTATION(manager->storedChunkData[cy][cx][y][x], 0);
-                    manager->storedChunkData[cy][cx][y][x].flags &= 0x1F;
+                    // Don't clear rotation bits anymore
                 }
             }
         }
@@ -316,27 +364,32 @@ void initChunkManager(ChunkManager* manager, int loadRadius) {
     printf("Chunk manager initialized with radius %d\n", loadRadius);
 }
 
-
 void initializeChunk(Chunk* chunk, int chunkX, int chunkY) {
     chunk->chunkX = chunkX;
     chunk->chunkY = chunkY;
     chunk->isLoaded = true;
     
-    // Initialize with default terrain (will be overwritten by map data)
     for (int y = 0; y < CHUNK_SIZE; y++) {
         for (int x = 0; x < CHUNK_SIZE; x++) {
+            int mapX = chunkX * CHUNK_SIZE + x;
+            int mapY = chunkY * CHUNK_SIZE + y;
+            
+            chunk->cells[y][x].flags = 0;
             chunk->cells[y][x].terrainType = TERRAIN_GRASS;
             chunk->cells[y][x].biomeType = BIOME_PLAINS;
-            GRIDCELL_SET_WALKABLE(chunk->cells[y][x], true);
             chunk->cells[y][x].structureType = 0;
+            chunk->cells[y][x].materialType = 0;
+            chunk->cells[y][x].wallTexX = 0.0f;
+            chunk->cells[y][x].wallTexY = 0.0f;
+            
+            GRIDCELL_SET_WALKABLE(chunk->cells[y][x], true);
             GRIDCELL_SET_ORIENTATION(chunk->cells[y][x], 0);
-            chunk->cells[y][x].flags &= 0x1F; // Clear reserved bits
+            GRIDCELL_SET_TERRAIN_VARIATION(chunk->cells[y][x], (uint16_t)((mapX * 31 + mapY * 17) % 4));
+            GRIDCELL_SET_TERRAIN_ROTATION(chunk->cells[y][x], (uint16_t)(rand() % 4));
+            GRIDCELL_SET_STRUCTURE_ROTATION(chunk->cells[y][x], 0);
         }
     }
-
-    printf("Initialized chunk (%d,%d)\n", chunkX, chunkY);
 }
-
 void cleanupChunkManager(ChunkManager* manager) {
     if (!manager) return;
 
@@ -422,36 +475,48 @@ void loadChunksAroundPlayer(ChunkManager* manager) {
     printf("\nUnloading chunks outside radius %d of (%d,%d)\n", 
            effectiveRadius, px, py);
 
-    // First: Aggressively unload all chunks outside radius
+    // First: Unload chunks outside radius
     for (int i = manager->numLoadedChunks - 1; i >= 0; i--) {
         int dx = abs(manager->chunkCoords[i].x - px);
         int dy = abs(manager->chunkCoords[i].y - py);
         
         if (dx > effectiveRadius || dy > effectiveRadius) {
-            printf("Unloading chunk at (%d,%d) - distance (%d,%d) exceeds radius\n",
-                   manager->chunkCoords[i].x, manager->chunkCoords[i].y, dx, dy);
-            
-            // Store chunk data before unloading
             int chunkX = manager->chunkCoords[i].x;
             int chunkY = manager->chunkCoords[i].y;
+            printf("Unloading chunk at (%d,%d)\n", chunkX, chunkY);
+            
+            // Store chunk data
             for (int y = 0; y < CHUNK_SIZE; y++) {
                 for (int x = 0; x < CHUNK_SIZE; x++) {
                     int gridX = chunkX * CHUNK_SIZE + x;
                     int gridY = chunkY * CHUNK_SIZE + y;
+                    
                     if (gridX >= 0 && gridX < GRID_SIZE && 
                         gridY >= 0 && gridY < GRID_SIZE) {
-                        // Store the current state
+                        
+                        // Store complete cell data
                         manager->storedChunkData[chunkY][chunkX][y][x] = grid[gridY][gridX];
-                        // Mark grid as unloaded
+                        
+                        // Verify flag preservation during storage
+                        uint16_t originalFlags = grid[gridY][gridX].flags;
+                        uint16_t storedFlags = manager->storedChunkData[chunkY][chunkX][y][x].flags;
+                        
+                        if (storedFlags != originalFlags) {
+                            printf("WARNING: Flag storage mismatch at (%d,%d):\n", gridX, gridY);
+                            printf("  Original: 0x%04X, Stored: 0x%04X\n", originalFlags, storedFlags);
+                        }
+                        
+                        // Mark grid cell as unloaded
                         grid[gridY][gridX].terrainType = TERRAIN_UNLOADED;
                         GRIDCELL_SET_WALKABLE(grid[gridY][gridX], false);
-
+                        grid[gridY][gridX].structureType = 0;
+                        grid[gridY][gridX].flags = 0;
                     }
                 }
             }
             manager->chunkHasData[chunkY][chunkX] = true;
             
-            // Free and remove the chunk
+            // Remove chunk from active list
             free(manager->chunks[i]);
             if (i < manager->numLoadedChunks - 1) {
                 manager->chunks[i] = manager->chunks[manager->numLoadedChunks - 1];
@@ -468,12 +533,10 @@ void loadChunksAroundPlayer(ChunkManager* manager) {
             int cx = px + dx;
             int cy = py + dy;
             
-            // Skip if out of bounds
             if (cx < 0 || cx >= NUM_CHUNKS || cy < 0 || cy >= NUM_CHUNKS) {
                 continue;
             }
 
-            // Check if already loaded
             bool alreadyLoaded = false;
             for (int i = 0; i < manager->numLoadedChunks; i++) {
                 if (manager->chunkCoords[i].x == cx && 
@@ -489,17 +552,50 @@ void loadChunksAroundPlayer(ChunkManager* manager) {
                 Chunk* newChunk = (Chunk*)malloc(sizeof(Chunk));
                 if (!newChunk) continue;
 
-                initializeChunk(newChunk, cx, cy);
+                newChunk->chunkX = cx;
+                newChunk->chunkY = cy;
+                newChunk->isLoaded = true;
                 
                 if (manager->chunkHasData[cy][cx]) {
                     // Restore saved chunk data
+                    printf("Restoring data for chunk (%d,%d)\n", cx, cy);
                     for (int y = 0; y < CHUNK_SIZE; y++) {
                         for (int x = 0; x < CHUNK_SIZE; x++) {
+                            // Copy complete cell data
                             newChunk->cells[y][x] = manager->storedChunkData[cy][cx][y][x];
+                            
+                            // Verify flag restoration
+                            uint16_t expectedFlags = manager->storedChunkData[cy][cx][y][x].flags;
+                            uint16_t restoredFlags = newChunk->cells[y][x].flags;
+                            
+                            if (restoredFlags != expectedFlags) {
+                                printf("WARNING: Flag restoration mismatch at (%d,%d):\n", x, y);
+                                printf("  Expected: 0x%04X, Restored: 0x%04X\n", expectedFlags, restoredFlags);
+                            }
                         }
                     }
-                } else if (loadedMapData) {
-                    loadMapChunk(loadedMapData, cx, cy, newChunk);
+                } else {
+                    // Initialize new chunk with deterministic variations
+                    for (int y = 0; y < CHUNK_SIZE; y++) {
+                        for (int x = 0; x < CHUNK_SIZE; x++) {
+                            int mapX = cx * CHUNK_SIZE + x;
+                            int mapY = cy * CHUNK_SIZE + y;
+                            
+                            newChunk->cells[y][x].terrainType = TERRAIN_GRASS;
+                            newChunk->cells[y][x].biomeType = BIOME_PLAINS;
+                            newChunk->cells[y][x].structureType = 0;
+                            newChunk->cells[y][x].flags = 0;
+                            
+                            GRIDCELL_SET_WALKABLE(newChunk->cells[y][x], true);
+                            GRIDCELL_SET_ORIENTATION(newChunk->cells[y][x], 0);
+                            
+                            uint8_t variation = (uint8_t)((mapX * 31 + mapY * 17) % 4);
+                            GRIDCELL_SET_TERRAIN_VARIATION(newChunk->cells[y][x], variation);
+                            
+                            uint8_t rotation = (uint8_t)(rand() % 4);
+                            GRIDCELL_SET_TERRAIN_ROTATION(newChunk->cells[y][x], rotation);
+                        }
+                    }
                 }
 
                 manager->chunks[manager->numLoadedChunks] = newChunk;

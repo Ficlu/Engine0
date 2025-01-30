@@ -5,11 +5,14 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
 #include <GL/glew.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include "gameloop.h"
 #include "texture_coords.h"
+#include "inventory.h"
+#include "overlay.h"
 
 // Global variables
 GLuint textureAtlas = 0;
@@ -165,6 +168,36 @@ const char* itemFragmentShaderSource = "#version 330 core\n"
 "    }\n"
 "}\n";
 
+const char* crateUIVertexShader = 
+    "#version 330 core\n"
+    "layout (location = 0) in vec2 aPos;\n"
+    "layout (location = 1) in vec2 aTexCoord;\n"
+    "uniform mat4 projection;\n"
+    "out vec2 TexCoord;\n"
+    "void main() {\n"
+    "    gl_Position = projection * vec4(aPos, 0.0, 1.0);\n"
+    "    TexCoord = aTexCoord;\n"
+    "}\0";
+
+const char* crateUIFragmentShader = 
+    "#version 330 core\n"
+    "in vec2 TexCoord;\n"
+    "out vec4 FragColor;\n"
+    "uniform sampler2D textureAtlas;\n"
+    "uniform bool hasTexture;\n"
+    "uniform vec4 color;\n"
+    "void main() {\n"
+    "    if(hasTexture) {\n"
+    "        vec4 texColor = texture(textureAtlas, TexCoord);\n"
+    "        if(texColor.r == 1.0 && texColor.g == 0.0 && texColor.b == 1.0) {\n"
+    "            discard;\n"  // Discard magenta pixels
+    "        }\n"
+    "        FragColor = texColor * color;\n"
+    "    } else {\n"
+    "        FragColor = color;\n"
+    "    }\n"
+    "}\0";
+
 void initUIResources(void) {
     uiShaderProgram = createUIShaderProgram();
     
@@ -180,6 +213,8 @@ void initUIResources(void) {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 }
+
+
 
 /**
  * @brief Renders a sidebar button with specified dimensions and appearance.
@@ -616,20 +651,42 @@ GLuint loadBMP(const char* filePath) {
     unsigned int imageSize = *(int*)&(header[0x22]);
     unsigned int width = *(int*)&(header[0x12]);
     unsigned int height = *(int*)&(header[0x16]);
+    unsigned int bitsPerPixel = *(short*)&(header[0x1C]);
 
-    if (imageSize == 0) imageSize = width * height * 3;
-    if (dataPos == 0) dataPos = 54;
+    printf("BMP header info:\n");
+    printf("Data position: %u\n", dataPos);
+    printf("Image size: %u\n", imageSize);
+    printf("Width: %u\n", width);
+    printf("Height: %u\n", height);
+    printf("Bits per pixel: %u\n", bitsPerPixel);
+
+    // Calculate proper image size based on bits per pixel
+    if (imageSize == 0) {
+        imageSize = width * height * (bitsPerPixel / 8);
+    }
+
+    // Seek to the actual data position
+    fseek(file, dataPos, SEEK_SET);
 
     unsigned char* data = (unsigned char*)malloc(imageSize);
+    if (!data) {
+        printf("Failed to allocate memory for image data\n");
+        fclose(file);
+        return 0;
+    }
 
-    fread(data, 1, imageSize, file);
+    size_t bytesRead = fread(data, 1, imageSize, file);
+    if (bytesRead != imageSize) {
+        printf("Warning: Read %zu bytes, expected %u bytes\n", bytesRead, imageSize);
+    }
+    
     fclose(file);
 
     GLuint textureID;
     glGenTextures(1, &textureID);
     glBindTexture(GL_TEXTURE_2D, textureID);
 
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_BGR, GL_UNSIGNED_BYTE, data);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_BGRA, GL_UNSIGNED_BYTE, data);
     free(data);
 
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -637,10 +694,8 @@ GLuint loadBMP(const char* filePath) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-    printf("Texture loaded successfully: %s (Width: %d, Height: %d)\n", filePath, width, height);
     return textureID;
 }
-
 /**
  * @brief Initializes the vertex array object (VAO) and buffer for enemy batches.
  * 
@@ -685,12 +740,6 @@ void initializeEnemyBatchVAO() {
 void updateEnemyBatchVBO(Enemy* enemies, int enemyCount, float cameraOffsetX, float cameraOffsetY, float zoomFactor) {
     if (enemyCount == 0) return;
 
-    TextureCoords* enemyTex = getTextureCoords("enemy");
-    if (!enemyTex) {
-        fprintf(stderr, "Failed to get enemy texture coordinates\n");
-        return;
-    }
-
     float* vertices = (float*)malloc(enemyCount * 24 * sizeof(float));  // 6 vertices * 4 components
     if (!vertices) {
         fprintf(stderr, "Failed to allocate vertex buffer for enemies\n");
@@ -699,9 +748,70 @@ void updateEnemyBatchVBO(Enemy* enemies, int enemyCount, float cameraOffsetX, fl
 
     int vertexIndex = 0;
     for (int i = 0; i < enemyCount; i++) {
+        if (!isPositionInLoadedChunk(enemies[i].entity.posX, enemies[i].entity.posY)) {
+            continue;  // Skip rendering for enemies in unloaded chunks
+        }
+
         float enemyScreenX = (enemies[i].entity.posX - cameraOffsetX) * zoomFactor;
         float enemyScreenY = (enemies[i].entity.posY - cameraOffsetY) * zoomFactor;
         
+        // Get enemy texture based on animation state and direction
+        TextureCoords* enemyTex;
+        char textureName[32];
+
+        if (!enemies[i].animation->isMoving) {
+            // Use standing frame based on direction
+            switch(enemies[i].animation->facing) {
+                case ENEMY_DIR_UP:
+                    enemyTex = getTextureCoords("enemy_run_up_0");
+                    break;
+                case ENEMY_DIR_DOWN:
+                    enemyTex = getTextureCoords("enemy");  // Original standing frame for down
+                    break;
+                case ENEMY_DIR_LEFT:
+                    enemyTex = getTextureCoords("enemy_run_left_0");
+                    break;
+                case ENEMY_DIR_RIGHT:
+                    enemyTex = getTextureCoords("enemy_run_right_0");
+                    break;
+                default:
+                    enemyTex = getTextureCoords("enemy");  // Default to original standing frame
+            }
+        } else {
+            // Get running animation frame based on direction
+            const char* dirStr;
+            switch(enemies[i].animation->facing) {
+                case ENEMY_DIR_UP:
+                    dirStr = "up";
+                    break;
+                case ENEMY_DIR_DOWN:
+                    dirStr = "down";
+                    break;
+                case ENEMY_DIR_LEFT:
+                    dirStr = "left";
+                    break;
+                case ENEMY_DIR_RIGHT:
+                    dirStr = "right";
+                    break;
+                default:
+                    dirStr = "down";
+            }
+            snprintf(textureName, sizeof(textureName), "enemy_run_%s_%d", 
+                    dirStr, enemies[i].animation->currentFrame);
+            enemyTex = getTextureCoords(textureName);
+        }
+
+        // Fallback to default enemy texture if needed
+        if (!enemyTex) {
+            enemyTex = getTextureCoords("enemy");
+            if (!enemyTex) {
+                fprintf(stderr, "Failed to get enemy texture coordinates\n");
+                continue;
+            }
+        }
+
+        // Add vertices for this enemy...
+        // [Rest of vertex generation code remains the same]
         // First triangle
         vertices[vertexIndex++] = enemyScreenX - TILE_SIZE * zoomFactor;
         vertices[vertexIndex++] = enemyScreenY - TILE_SIZE * zoomFactor;
@@ -745,26 +855,28 @@ void updateEnemyBatchVBO(Enemy* enemies, int enemyCount, float cameraOffsetX, fl
  * 
  * Releases the memory used by the persistent buffer and resets capacity.
  */
-void cleanupEntityBatchData() {
+void cleanupEntityBatchData(void) {
     if (entityBatchData.persistentBuffer) {
         free(entityBatchData.persistentBuffer);
         entityBatchData.persistentBuffer = NULL;
+        entityBatchData.bufferCapacity = 0;
     }
-    entityBatchData.bufferCapacity = 0;
 }
+
 
 /**
  * @brief Frees resources associated with the tile batch data.
  * 
  * Releases the memory used by the persistent buffer and resets capacity.
  */
-void cleanupTileBatchData() {
+void cleanupTileBatchData(void) {
     if (tileBatchData.persistentBuffer) {
         free(tileBatchData.persistentBuffer);
         tileBatchData.persistentBuffer = NULL;
+        tileBatchData.bufferCapacity = 0;
     }
-    tileBatchData.bufferCapacity = 0;
 }
+
 
 /**
  * @brief Configures the OpenGL viewport for the game area.
@@ -802,31 +914,44 @@ void renderStructurePreview(const PlacementMode* mode, float cameraOffsetX, floa
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    float texX, texY;
-    if (mode->currentType == STRUCTURE_DOOR) {
-        texX = 0.0f / 3.0f;
-        texY = 1.0f / 6.0f;
-    } else {
-        texX = 1.0f / 3.0f;
-        texY = 3.0f / 6.0f;
+    TextureCoords* texCoords;
+    float verticalOffset;
+    
+    switch(mode->currentType) {
+        case STRUCTURE_DOOR:
+            texCoords = getTextureCoords("door_horizontal");
+            verticalOffset = 2*TILE_SIZE;
+            break;
+        case STRUCTURE_CRATE:
+            texCoords = getTextureCoords("item_plant_crate");
+            verticalOffset = 2*TILE_SIZE; // Crates are regular tile height
+            break;
+        default:
+            texCoords = getTextureCoords("wall_front");
+            verticalOffset = 2*TILE_SIZE;
     }
 
-    float texWidth = 1.0f / 3.0f;
-    float texHeight = 1.0f / 6.0f;
+    if (!texCoords) {
+        fprintf(stderr, "Failed to get preview texture coordinates\n");
+        return;
+    }
+
     float halfSize = TILE_SIZE * zoomFactor;
 
-float previewVertices[] = {
-    posX - halfSize, (posY - halfSize) + halfSize, texX, texY + texHeight,
-    posX + halfSize, (posY - halfSize) + halfSize, texX + texWidth, texY + texHeight,
-    posX + halfSize, posY + halfSize + halfSize, texX + texWidth, texY,
-    posX - halfSize, posY + halfSize + halfSize, texX, texY
-};
+    float previewVertices[] = {
+        posX - halfSize,  posY,                      texCoords->u1, texCoords->v2,  // bottom left
+        posX + halfSize,  posY,                      texCoords->u2, texCoords->v2,  // bottom right
+        posX + halfSize,  posY + verticalOffset * zoomFactor,  texCoords->u2, texCoords->v1,  // top right
+        posX - halfSize,  posY + verticalOffset * zoomFactor,  texCoords->u1, texCoords->v1   // top left
+    };
+
     glBindVertexArray(squareVAO);
     glBindBuffer(GL_ARRAY_BUFFER, squareVBO);
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(previewVertices), previewVertices);
 
     GLint alphaUniform = glGetUniformLocation(shaderProgram, "alpha");
-    glUniform1f(alphaUniform, 0.5f);
+    float previewAlpha = mode->validPlacement ? 0.5f : 0.3f;
+    glUniform1f(alphaUniform, previewAlpha);
 
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 
@@ -847,3 +972,4 @@ void cleanupUIResources(void) {
         uiVBO = 0;
     }
 }
+

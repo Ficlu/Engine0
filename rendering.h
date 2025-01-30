@@ -7,7 +7,8 @@
 #include "enemy.h"
 #include "gameloop.h"
 #include "structures.h"
-
+#include "inventory.h"
+#include "storage.h"
 typedef struct {
     float* persistentBuffer;
     size_t bufferCapacity;
@@ -24,6 +25,7 @@ typedef struct {
     int width;
     int height;
 } Viewport;
+
 
 // UI Resource getters
 GLuint getUIShaderProgram(void);
@@ -47,6 +49,7 @@ extern GLuint squareVAO;
 extern GLuint squareVBO;
 extern GLuint shaderProgram;
 GLuint createUIShaderProgram(void); 
+
 extern TileBatchData tileBatchData;
 
 extern EntityBatchData entityBatchData;
@@ -58,6 +61,9 @@ extern GLuint textureUniform;
 extern GLuint enemyBatchVBO;
 extern GLuint enemyBatchVAO;
 extern GLuint outlineVBO;
+extern const char* crateUIVertexShader;
+extern const char* crateUIFragmentShader;
+
 void cleanupUIResources(void);
 GLuint createItemShaderProgram(void);
 void setupGameViewport(void);
